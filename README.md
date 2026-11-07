@@ -352,6 +352,149 @@ remember" to everything.
 The first run has no memories, and will say so. That is correct — it hasn't met
 you yet.
 
+## Choosing a different model
+
+Mati speaks through [Ollama](https://ollama.com), so any model Ollama can run,
+Mati can use. The default is `llama3.2:3b` because it fits an 8 GB machine
+beside the field simulation; nothing else about Mati depends on it.
+
+```sh
+ollama pull qwen2.5:7b                       # get the model
+MATI_MODEL=qwen2.5:7b python3 -m Mati.server # try it once
+```
+
+To keep it, set it in the app's settings rather than the environment — the
+picker lists what Ollama has and flags which ones are tight for your machine.
+
+**What actually fits**, on the 8 GB machine these numbers come from:
+
+| model | notes |
+|---|---|
+| `llama3.2:1b` | faster, and worse at long replies |
+| `llama3.2:3b` | the default — about 2 GB resident at 4-bit, measured |
+| `qwen2.5:7b` | only with the field asleep; otherwise it swaps |
+
+Ollama reports each model's size when you pull it, and the settings picker
+flags the ones that are tight for your machine — those numbers are the ones
+to trust, because they depend on quantisation.
+
+⚠️ **The field needs room too.** Mati is a phase simulation *and* a language
+model on the same machine. A model that fits in RAM on its own may not fit
+beside the field, and the symptom is swapping rather than an error.
+
+⚠️ **Model licences are the model's, not Mati's.** Mati ships no weights and
+has no opinion about what you run — but the models have their own terms, and
+they differ. Llama requires a "Built with Llama" notice if you redistribute
+something built on it; some Qwen sizes are non-commercial while others are
+Apache-2.0. If you are only running Mati for yourself none of this applies.
+Check the model card before you build on one.
+
+**Using a cloud model instead** is possible and off by default — see
+[Talking to something other than your own machine](#talking-to-something-other-than-your-own-machine).
+It means your conversation leaves the computer, which is the one thing Mati
+otherwise promises it never does.
+
+## Adding an encyclopedia
+
+Mati can look things up offline — useful if you are writing with it and want
+it to check a fact rather than guess. This is **off until you connect it**,
+and it needs two things Mati deliberately does not ship.
+
+**1. The server.** `kiwix-serve` reads the encyclopedia files. Mati talks to
+it over a local socket rather than linking it, because it is GPL and Mati is
+Apache-2.0.
+
+⚠️ **It is not in Homebrew.** `brew install kiwix` gets you the desktop app,
+which is a different thing. Download the `kiwix-tools` archive for your chip
+from [download.kiwix.org](https://download.kiwix.org/release/kiwix-tools/) —
+`macos-arm64` for Apple Silicon, `macos-x86_64` for Intel — and put the
+binary anywhere on your `PATH`:
+
+```sh
+tar xzf kiwix-tools_macos-arm64-3.8.2.tar.gz
+mkdir -p ~/bin && mv kiwix-tools_*/kiwix-serve ~/bin/
+```
+
+Mati looks for it on your `PATH`, then in `/usr/local/bin`,
+`/opt/homebrew/bin` and `~/bin`. If you keep it somewhere else, set
+`kiwix_serve` in settings to the full path.
+
+**2. An encyclopedia.** Kiwix publishes **per-subject** builds, and those are
+the ones that belong here — the complete Wikipedia dump is 119 GB and is a
+different product. Browse [library.kiwix.org](https://library.kiwix.org/) and
+download a `.zim`:
+
+| subject | size |
+|---|---|
+| mathematics | ~56 MB |
+| physics | ~51 MB |
+| chemistry | ~22 MB |
+| astronomy | ~339 MB |
+| history | ~701 MB |
+
+Put the `.zim` file in `<MATI_HOME>/encyclopedias/` — by default that is
+`.cache/encyclopedias/` inside this folder. Create it if it is not there.
+
+```sh
+mkdir -p .cache/encyclopedias
+mv ~/Downloads/wikipedia_en_mathematics_nopic_2026-09.zim .cache/encyclopedias/
+python3 -m Mati.encyclopedia --status
+```
+
+Then ask Mati something and it will use it. Nothing about a lookup leaves the
+machine: the address is checked against loopback on **every request**, which
+is the whole reason this is a local server and not Wikipedia's search API —
+a research query says what you are writing about, in your own words.
+
+⚠️ **There is no update mechanism.** Builds are replaced wholesale every few
+months. Drop the new file in and delete the old one; Mati reads the directory,
+not a list.
+
+## Uninstalling
+
+Mati keeps everything in one folder and one keychain item. There is no
+installer, no daemon, and nothing in `/Library` or `/Applications`.
+
+**1. Stop it.**
+
+```sh
+pkill -f Mati.server
+```
+
+**2. Delete the folder.** Everything Mati knows is in `MATI_HOME` — by default
+`.cache/` inside this repository. Deleting it deletes your memories, your
+settings and the field. It cannot be undone and nothing else has a copy.
+
+```sh
+rm -rf .cache          # or your MATI_HOME
+```
+
+**3. Remove the key from your keychain.** ⚠️ **This step is the one people
+miss.** Deleting the folder leaves the encryption key behind in macOS's
+keychain, where it will sit forever protecting nothing.
+
+```sh
+security delete-generic-password -s ollin-vault -a data-key
+```
+
+⚠️ The item is named `ollin-vault` rather than `mati-vault` — Mati was called
+something else during development, and the keychain name was deliberately left
+alone so that existing installs would not lose their key to a rename. It is
+the right item.
+
+**4. Optionally, remove the model.** Ollama is a separate program and Mati does
+not manage it. If you installed it only for Mati:
+
+```sh
+ollama rm llama3.2:3b
+brew uninstall ollama
+```
+
+**If you only want to start over** rather than uninstall, delete the folder and
+run `python3 -m Mati.setup` again. You will get a new key, a new passphrase,
+and Mati's shipped first memories — but none of your conversations, which were
+in the folder you deleted.
+
 ## Use
 
 Mati runs as a small local server that holds the field, and you talk to it
