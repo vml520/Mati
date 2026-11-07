@@ -362,6 +362,58 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
     except Exception:
         pass
 
+    # ⚠️⚠️ WHAT THE WORK IS AIMED AT — THE THIRD THING THAT IS STATE, NOT
+    # MEMORY, and the one that was missing. The user: *"Mati is
+    # awake but not aware... I have to walk Mati through its own memories to
+    # get it to a point where it can help me."*
+    #
+    # The open book above and the shelf below it both got this treatment
+    # because retrieval lost. The work in hand never did — so every session
+    # started cold about the project, and the person narrated it back. The
+    # argument is identical: a person does not search their memory for what
+    # they are trying to finish this week.
+    #
+    # ⚠️ `drafts.py` HELD THIS AND NOTHING READ IT. `block()` and `current()`
+    # had no caller anywhere in the package, no test, and no mention in the
+    # app — a writer with no reader, which this project has now shipped eight
+    # times. Storage was never the missing half.
+    try:
+        from . import brief as _brief
+        aim = _brief.block(db_path)
+        if aim:
+            parts.append(aim)
+    except Exception:
+        pass
+    try:
+        from . import drafts as _drafts
+        d = _drafts.block(db_path)
+        if d:
+            parts.append(d)
+    except Exception:
+        pass
+
+    # ⚠️⚠️ EXPECTATIONS, HELD AS EXPECTATIONS. The user asked that Mati wake
+    # with "its prediction for the day the week and the year in mind". It now
+    # does — labelled as guesses and carrying its own hit rate, which at the
+    # time of writing is 31% across 205 resolved predictions.
+    #
+    # ⚠️ THAT NUMBER IS THE LICENCE TO SAY ANY OF THIS. "You will be back at
+    # nine" is dishonest at 31%; "I expect you around nine, and I have been
+    # right about a third of the time" is honest at any accuracy, and it is
+    # the only version a person can correct.
+    #
+    # ⚠️ AWARENESS IS NOT ACTION. `predict.may_influence()` still gates whether
+    # a prediction may TIME a reminder or justify an interruption, and it is
+    # still correctly False. Holding something in mind and acting on it are
+    # different permissions.
+    try:
+        from . import predict as _predict
+        exp = _predict.expectations_block(db_path)
+        if exp:
+            parts.append(exp)
+    except Exception:
+        pass
+
     owed = _owed(now=now)
     if owed:
         parts.append("Waiting: " + "; ".join(owed) + ".")

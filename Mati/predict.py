@@ -64,7 +64,7 @@ import sqlite3
 import sys
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -73,6 +73,11 @@ from . import vault
 
 TIMING = "timing"
 RECURRENCE = "recurrence"
+# ⚠️ `observe()` HAS COMPUTED `weekdays` ALL ALONG AND NOTHING READ IT —
+# measured on the real store: Sunday 252 of 807 episodes across 54 days, a
+# far stronger signal than the busiest hour, sitting unused. Another writer
+# with no reader, smaller than the drafts one and the same shape.
+WEEKDAY = "weekday"
 KINDS = (TIMING, RECURRENCE)
 
 OPEN, HIT, MISS, CORRECTED = "open", "hit", "miss", "corrected"
@@ -315,6 +320,29 @@ def propose(db_path=None, now=None):
             "window": [hour, hour + 1],
         })
 
+    # ── the week ────────────────────────────────────────────────────────
+    wd = obs.get("weekdays") or {}
+    if wd:
+        day, n_day = max(wd.items(), key=lambda kv: kv[1])
+        if n_day >= EVIDENCE_MIN:
+            # Resolves at the end of the next occurrence of that weekday.
+            today = datetime.fromtimestamp(now)
+            names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            ahead = (names.index(day) - today.weekday()) % 7 or 7
+            end = (today + timedelta(days=ahead)).replace(
+                hour=23, minute=59, second=59)
+            out.append({
+                "kind": WEEKDAY,
+                "claim": f"you are most likely to come back on a {day}day"
+                         if day in ("Sun", "Mon") else
+                         f"you are most likely to come back on a {day}",
+                "basis": f"{n_day} of {obs['episodes']} episodes fell on "
+                         f"{day}, across {obs['days']} days",
+                "evidence_n": n_day,
+                "resolves_at": end.timestamp(),
+                "weekday": day,
+            })
+
     for word, count in obs["recurring"][:2]:
         out.append({
             "kind": RECURRENCE,
@@ -444,6 +472,118 @@ def score(db_path=None):
         "hit_rate": (round(all_hit / all_judged, 3) if all_judged else None),
         "corrected": sum(v["corrected"] for v in total.values()),
     }
+
+
+# ── the three horizons, for the waking block ────────────────────────────────
+# ⚠️⚠️ AWARENESS IS NOT ACTION, AND THE GATE STAYS ON THE ACTION.
+# `may_influence()` asks whether Mati has earned the right to ACT on its model
+# of someone — to time a reminder, to decide an interruption — and at a 0.307
+# hit rate the answer is correctly no. Holding an expectation in mind, LABELLED
+# AND WITH ITS RECORD ATTACHED, is a different thing: it is what the prediction
+# design was for. A prediction nobody is allowed to see cannot be checked by
+# the one person able to tell Mati it was wrong.
+#
+# ⭐ SO THESE ARE STATED AS EXPECTATIONS AND CARRY THE HIT RATE. "I expect X;
+# I have been right about this kind of thing 31% of the time" is honest at any
+# accuracy. "X will happen" is not honest at 31%.
+#
+# ⚠️ A YEAR IS NOT PREDICTABLE FROM FOUR MONTHS, and saying so is the useful
+# answer rather than a failure. The record spans Jul–Oct; a seasonal claim
+# needs a year of it. `_why_not` already sets the precedent of explaining the
+# absence instead of returning nothing.
+YEAR_MONTHS_MIN = 12
+
+
+def horizons(db_path=None, now=None):
+    """What Mati expects today, this week, and this year — or why it cannot.
+
+    Returns a dict of horizon -> {"claim", "basis", "known"}. `known` False
+    means there is no basis yet and `basis` says what is missing.
+    """
+    now = now or time.time()
+    obs = observe(db_path, now)
+    props = propose(db_path, now)
+    by_kind = {}
+    for p in props:
+        by_kind.setdefault(p["kind"], p)
+
+    out = {}
+    day = by_kind.get(TIMING)
+    out["day"] = ({"claim": day["claim"], "basis": day["basis"], "known": True}
+                  if day else
+                  {"claim": None, "known": False,
+                   "basis": _why_not(obs["episodes"], obs["days"])
+                            or "no hour stands out yet"})
+
+    week = by_kind.get(WEEKDAY) or by_kind.get(RECURRENCE)
+    out["week"] = ({"claim": week["claim"], "basis": week["basis"],
+                    "known": True} if week else
+                   {"claim": None, "known": False,
+                    "basis": _why_not(obs["episodes"], obs["days"])
+                             or "no day of the week stands out yet"})
+
+    # ⚠️ MONTHS SPANNED, NOT DAYS OF RECORD. 54 busy days inside four months
+    # is still four months; a year-shaped claim needs the year to have
+    # happened. Counting distinct months is the cheapest honest test.
+    months = _months_spanned(db_path)
+    if months >= YEAR_MONTHS_MIN:
+        out["year"] = {"claim": None, "known": False,
+                       "basis": f"{months} months on record — no seasonal "
+                                f"pattern measured yet"}
+    else:
+        out["year"] = {"claim": None, "known": False,
+                       "basis": f"{months} month(s) on record; a yearly "
+                                f"pattern needs {YEAR_MONTHS_MIN}"}
+    return out
+
+
+def _months_spanned(db_path=None):
+    """Distinct calendar months with at least one episode."""
+    try:
+        conn = _connect(db_path)
+    except Exception:
+        return 0
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT substr(wall_created,1,7) FROM notes "
+            "WHERE source='episode' AND wall_created IS NOT NULL").fetchall()
+        return len([r for r in rows if r[0]])
+    except Exception:
+        return 0
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def expectations_block(db_path=None, now=None):
+    """The three horizons as Mati holds them at waking. "" if nothing.
+
+    ⚠️ THE HIT RATE IS NOT OPTIONAL. Without it this is a confident forecast
+    that is wrong two times in three; with it, it is an expectation a person
+    can correct. The number is the whole licence to say any of this.
+    """
+    h = horizons(db_path, now)
+    s = score(db_path)
+    known = [(k, v) for k, v in h.items() if v.get("known")]
+    if not known:
+        return ""
+    rate = s.get("hit_rate")
+    n = s.get("resolved") or 0
+    lines = [f"- {'today' if k == 'day' else 'this ' + k}: {v['claim']} "
+             f"({v['basis']})" for k, v in known]
+    unknown = [f"{k} ({v['basis']})" for k, v in h.items()
+               if not v.get("known")]
+    head = ("What you expect, as expectations and not as facts — you may say "
+            "them, and you must say they are guesses:")
+    tail = ""
+    if n:
+        tail = (f"\nYou have been right {rate*100:.0f}% of the time across "
+                f"{n} resolved guesses. Say that too if you offer one.")
+    if unknown:
+        tail += "\nYou have no basis for: " + "; ".join(unknown) + "."
+    return head + "\n  " + "\n  ".join(lines) + tail
 
 
 def may_influence(db_path=None):
