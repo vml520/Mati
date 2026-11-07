@@ -2,6 +2,12 @@
 
 **A personal AI that remembers you, and never leaves your machine.**
 
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20this%20work-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/serialtheorist)
+
+Free, Apache-2.0, and funded by the people who use it — there is no paid tier
+and nothing is held back. If Mati is useful to you,
+**[a tip on Ko-fi](https://ko-fi.com/serialtheorist)** keeps the work going.
+
 Mati runs on your own computer. No account, no API key, no subscription. The
 model, the memory, and the field state all live on your disk.
 
