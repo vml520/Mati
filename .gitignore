@@ -1,0 +1,94 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Tooling ──────────────────────────────────────────────────────────────────
+.claude/
+*.log
+
+# ── Generated field state and training artifacts ─────────────────────────────
+# `.cache/` is ~69MB of checkpoints, intermediate θ₀ snapshots and downloaded
+# corpora — all regenerable, none of it worth a git history. Ignore the
+# directory and re-admit, by name, only the small things that cannot be
+# regenerated or would be expensive to.
+.cache/*
+
+.cache/backups/
+!.cache/.gitkeep
+
+# ⭐ OLLIN'S FIRST MEMORIES — the shipped build artefact, tracked on purpose.
+#
+# ⚠️ THE NAMES ARE NOT `ollin_notes.*`, DELIBERATELY. Re-admitting that name
+# would track the PERSONAL field, which the block below untracks for good
+# reason. These are what `make_ship_field` produces — the charter verbatim and
+# four measured self-check rows, identical on every install — and
+# `Ollin/first_run.py` copies them into place when there is no store yet.
+# ⚠️ THE θ₀ EXCEPTIONS LIVE WITH THE `*.npz` RULE FURTHER DOWN, NOT HERE.
+# Git applies the LAST matching rule, so `*.npz` outranked an exception placed
+# at this point and silently ignored two of the three files — the store would
+# have shipped WITHOUT the address space its `feat` column is measured
+# against, which is not a degraded install but a meaningless one.
+!.cache/first_memories.db
+
+# ⚠️ THE PERSONAL FIELD IS NOT TRACKED — untracked 2026-08-03.
+#
+# `teotl_notes.db` and `teotl_notes_theta0.npz` are ONE PERSON'S field: real
+# conversations, and the θ₀ those conversations shaped. They were tracked
+# deliberately, and the reason was good — θ₀ is deformed irreversibly by every
+# turn, the addresses are only meaningful against the θ₀ they were measured in,
+# three corruption paths were found on 2026-07-28, and git was the only undo.
+#
+# That reason expired when `Ollin/backup.py` landed: `/backup` takes a
+# consistent snapshot of the DB *and* its θ₀ together, which is what this
+# needed and what a git commit of a live SQLite file never reliably was.
+#
+# Meanwhile the cost was real. `test_coldstart.MUST_NOT_SHIP` has named both
+# files as disqualifying an install the whole time, and the suite checks a
+# clean ROOM rather than the repository, so it could never catch that a fresh
+# clone arrived carrying somebody else's memories.
+#
+# The release ships a GENERIC field: the checkpoint below. A personal store is
+# created on the first turn and belongs to whoever had that conversation.
+#
+# ⚠️ Earlier commits still contain these files, in plaintext from before the
+# vault existed. That history needs scrubbing before the repo is public.
+.cache/ollin_vault.json
+.cache/field.lock
+
+# The shipped checkpoint (ep40, ppl_nu=965.6) and its base θ₀ + vocab. 2.6MB
+# once, against a training run to reproduce it.
+!.cache/diag_pattern8d_shuf_final.npz
+!.cache/diag_pattern8d_shuf_final_theta0.npz
+# Ollin's first memories travel with their own address space — see the
+# `first_memories` note above.
+!.cache/first_memories_theta0.npz
+!.cache/first_memories_theta0_address.npz
+!.cache/qa_vocab.json
+
+# Everything else in .cache stays out: rolling/backup checkpoints, superseded
+# runs (50ep, expanded, rtr), downloaded corpora (squad_train_raw.json, 30MB),
+# and the legacy apps' θ₀ files.
+
+# ── Large corpora kept on disk, not in history ───────────────────────────────
+archive/cache_snapshots/
+archive/source_texts_p5vocab/
+chunks/
+teotl_lang/Philosophy/
+
+# ── Results that are outputs, not source ─────────────────────────────────────
+*.npy
+*.npz
+!.cache/diag_pattern8d_shuf_final.npz
+!.cache/diag_pattern8d_shuf_final_theta0.npz
+# ⚠️ REPEATED FROM THE `.cache/*` BLOCK ABOVE ON PURPOSE. There are two rules
+# that match these files and git honours the LAST one, so an exception stated
+# only once, higher up, is silently overridden. `git check-ignore -v <path>`
+# names the rule that actually decided.
+!.cache/first_memories_theta0.npz
+!.cache/first_memories_theta0_address.npz

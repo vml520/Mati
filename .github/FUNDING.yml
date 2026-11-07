@@ -1,0 +1,13 @@
+# What puts the Sponsor button on the repository page.
+#
+# ⚠️ GitHub Sponsors is the SLOW half — Stripe Connect plus tax forms, so it
+# cannot be done during the publish week. Ko-fi is minutes.
+#
+# ⚠️ Ko-fi is NOT 0% any more: 5% on all payment types, which is parity with
+# Buy Me a Coffee. It is still the right pick for a different reason — Ko-fi
+# never HOLDS the money. Payments land directly in your own Stripe or PayPal
+# account as they are made, with no payout queue and no intermediary, which is
+# the right property for a project whose pitch is that nothing goes through a
+# middleman. Gold ($12/mo) only pays for itself above ~$240/month.
+github: vml520
+ko_fi: serialtheorist
