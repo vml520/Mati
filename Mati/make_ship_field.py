@@ -61,7 +61,7 @@ import time
 
 CHARTER = "MATI_MISSION_AND_PRINCIPLES.txt"
 # The origin string becomes `studied:charter:…`, which is the shape
-# `bridge.charter_chunks`, `library._NOT_A_WORK` and `mati.py` already expect.
+# `bridge.charter_chunks`, `library._NOT_A_WORK` and `ollin.py` already expect.
 ORIGIN = f"charter:{CHARTER}"
 
 

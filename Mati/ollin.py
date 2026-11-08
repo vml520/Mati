@@ -1,8 +1,8 @@
 """
 Mati — one end-to-end turn.
 
-    python -m Mati.mati "what do you remember about topological defects?"
-    python -m Mati.mati --dry-run "..."      # field only, no API call
+    python -m Mati.ollin "what do you remember about topological defects?"
+    python -m Mati.ollin --dry-run "..."      # field only, no API call
 
 Turn shape (see README):
     imprint user turn -> read field state -> triplet-addressed recall

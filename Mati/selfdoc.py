@@ -83,7 +83,7 @@ _IMPERATIVE = re.compile(
 # Third person -> first. Order matters: possessive before bare.
 _REAIM = (
     (re.compile(r"\bOlin'?s\b"), "my"),
-    (re.compile(r"\bOlin\b"), "I"),
+    (re.compile(r"\bMati\b"), "I"),
 )
 
 # Verbs that follow "Mati" in this documentation, in the third person. Named

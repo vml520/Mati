@@ -644,7 +644,7 @@ def main():
         if rc:
             return rc
         from .llm import make_llm
-        from .mati import system_prompt
+        from .ollin import system_prompt
         llm = make_llm(system_prompt())
         if vault.is_set_up() and not vault.unlocked():
             vault.unlock(reason="let Mati study")

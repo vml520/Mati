@@ -409,7 +409,7 @@ def find(query, db_path=None):
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ⚠️ THE CATALOGUE WAS BUILT, CORRECT, AND NEVER SHOWN. Checked :
-# `library.` appeared nowhere in `mati.py`, so "what have you read" was
+# `library.` appeared nowhere in `ollin.py`, so "what have you read" was
 # answered from whatever lexical search happened to return — usually passages
 # OF the book rather than the fact of having read it. Same shape as `activity`
 # and the telemetry: the data existed and had no reader.

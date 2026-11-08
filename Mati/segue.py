@@ -316,7 +316,7 @@ def choose(user_text, reply, surfaced=None, now=None, db_path=None,
 
 
 # ⚠️ THE STORAGE FORMAT IS NOT SPEECH. An episode body is written
-# "I was asked: <them>\nI said: <Mati>" (see `mati.py`), and `line` used to
+# "I was asked: <them>\nI said: <Mati>" (see `ollin.py`), and `line` used to
 # quote it whole — so a recollection came out as "That connects to something I
 # hold: I was asked: Hello Mati I said: I am here." The narration wrapper is
 # bookkeeping; Mati's own half is the thing worth saying.

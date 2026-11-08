@@ -402,7 +402,7 @@ def block(db_path=None, service=None):
     ⚠️ NOTHING CALLS THIS, AND NOTHING SHOULD. Putting the report in the
     prompt is what made a 3B retype it — 4/4 news truncations completed out
     of nothing and 4/4 sources dropped. The report is
-    EMITTED now: `mati.turn` takes `text()` and streams it through
+    EMITTED now: `ollin.turn` takes `text()` and streams it through
     `on_chunk`. This wrapper is kept only because `<computed>` framing is the
     right shape if the report ever needs to be *referred to* rather than
     shown — it is not the way to show it. See `Mati/test_report.py`, which

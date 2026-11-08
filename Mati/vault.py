@@ -738,6 +738,14 @@ SEALED_COLUMNS = (
     # clearest case. Declared when the table was created, rather than
     # becoming the seventh unclassified one.
     ("drafts", "body"),
+    # ⚠️ THE BRIEF IS THE PERSON'S OWN WORDS ABOUT THEIR OWN WORK. "3000
+    # words on the divorce letter" names a subject as plainly as any episode
+    # does, and `why` is their reason for abandoning something. `test_vault`
+    # caught these unclassified the day the module landed, which is the only
+    # reason they are here rather than in plaintext on disk.
+    ("targets", "what"),
+    ("targets", "basis"),
+    ("targets", "why"),
     # ⚠️ AN ANNOTATION QUOTES THE PERSON'S PROSE in its anchor and is
     # Mati's own observation in its note — both sealed, for the two
     # separate reasons the rule already covers.
@@ -843,6 +851,14 @@ CLEAR_COLUMNS = {
     # error this file exists to prevent: a declaration is a claim, and a
     # claim that outruns the code turns `test_vault` green over plaintext.
     ("drafts", "title"): "the lookup key; the unique index compares it",
+    ("targets", "draft"): "the draft's title — the same lookup key as "
+                          "drafts.title, and compared against it",
+    ("targets", "measure"): "words/passages/sessions/done — an enum",
+    ("targets", "due"): "a date the person gave; no content",
+    ("targets", "source"): "user/inferred — provenance, not content",
+    ("targets", "status"): "open/met/superseded/withdrawn — a state",
+    ("targets", "created"): "timestamp",
+    ("targets", "touched"): "timestamp",
     ("draft_notes", "title"): "which draft it belongs to; the lookup key",
     ("draft_notes", "created"): "timestamp",
     ("drafts", "status"): "open/done — a state, not content",

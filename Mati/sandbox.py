@@ -88,7 +88,7 @@ def create(dest=None, verbose=True):
         print("\n  Use it — every path in the package follows MATI_HOME:\n")
         print(f"      export MATI_HOME={dest}")
         print("      python3 -m Mati.server --port 8757")
-        print(f"      MATI_HOME={dest} python3 -m Mati.mati \"hello\"\n")
+        print(f"      MATI_HOME={dest} python3 -m Mati.ollin \"hello\"\n")
         print("  The real store is untouched. Delete with "
               "`python3 -m Mati.sandbox --clean`.\n")
     return dest

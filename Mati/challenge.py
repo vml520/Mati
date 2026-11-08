@@ -1,7 +1,7 @@
 """
 When Mati has grounds to push back.
 
-    (used by `mati.turn` — no CLI)
+    (used by `ollin.turn` — no CLI)
 
 Being corrected is usually the end of it: you were there, Mati was not, and
 most of what it holds came from a 3B model that confabulates. Deferring is not

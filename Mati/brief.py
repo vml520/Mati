@@ -58,6 +58,11 @@ import os
 import re
 import sqlite3
 
+# ⚠️⚠️ DECLARING IS NOT SEALING — this project's own audit says so. `what`,
+# `basis` and `why` are listed in `vault.SEALED_COLUMNS`, and that listing is
+# a promise this module has to keep: "3000 words on the divorce letter" names
+# a subject as plainly as any episode. `test_sealed` checks the BYTES.
+
 TABLE = "targets"
 
 # What a target can be measured in. `done` is the binary case — a thing is
@@ -91,6 +96,31 @@ def _conn(db_path=None):
         )""")
     conn.commit()
     return conn
+
+
+def _seal(text):
+    """Encrypt a person-supplied field. Pass-through when no vault is set up."""
+    if text is None:
+        return None
+    from . import vault
+    try:
+        return vault.seal(text)
+    except Exception:
+        # ⚠️ A LOCKED VAULT MUST NOT LOSE A TARGET. `seal_soft`'s argument
+        # applies here: a crash that drops what someone just asked for is a
+        # worse outcome than the window of plaintext that `migrate_tables`
+        # closes at the next startup.
+        return text
+
+
+def _open(text):
+    if text is None:
+        return None
+    from . import vault
+    try:
+        return vault.open_body(text)
+    except Exception:
+        return text
 
 
 def _now():
@@ -146,8 +176,8 @@ def set_target(what, *, draft=None, amount=None, measure="done", due=None,
             f"INSERT INTO {TABLE} (what, draft, measure, amount, due, source,"
             f" basis, status, created, touched)"
             f" VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (what, draft, measure, amount, due, source, basis, OPEN,
-             _now(), _now()))
+            (_seal(what), draft, measure, amount, due, source,
+             _seal(basis), OPEN, _now(), _now()))
         conn.commit()
         return cur.lastrowid
     finally:
@@ -174,12 +204,13 @@ def revise(target_id, *, what=None, amount=None, measure=None, due=None,
         o_what, o_draft, o_measure, o_amount, o_due, o_source = row
         conn.execute(f"UPDATE {TABLE} SET status=?, why=?, touched=?"
                      f" WHERE target_id=?",
-                     (SUPERSEDED, why, _now(), target_id))
+                     (SUPERSEDED, _seal(why), _now(), target_id))
         cur = conn.execute(
             f"INSERT INTO {TABLE} (what, draft, measure, amount, due, source,"
             f" basis, status, supersedes, created, touched)"
             f" VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (what or o_what, o_draft, measure or o_measure,
+            (_seal(what) if what else o_what, o_draft,
+             measure or o_measure,
              o_amount if amount is None else amount, due or o_due, o_source,
              None, OPEN, target_id, _now(), _now()))
         conn.commit()
@@ -200,7 +231,7 @@ def withdraw(target_id, why, db_path=None):
     try:
         conn.execute(f"UPDATE {TABLE} SET status=?, why=?, touched=?"
                      f" WHERE target_id=? AND status=?",
-                     (WITHDRAWN, why, _now(), target_id, OPEN))
+                     (WITHDRAWN, _seal(why), _now(), target_id, OPEN))
         conn.commit()
     finally:
         conn.close()
@@ -229,7 +260,16 @@ def open_targets(db_path=None):
         conn.close()
     keys = ("id", "what", "draft", "measure", "amount", "due", "source",
             "basis", "supersedes", "created")
-    return [dict(zip(keys, r)) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(zip(keys, r))
+        # ⚠️ UNSEALED ON THE WAY OUT, never in the store. `open_body` passes
+        # plaintext through unchanged, so a store written before the vault
+        # existed still reads.
+        d["what"] = _open(d["what"])
+        d["basis"] = _open(d["basis"])
+        out.append(d)
+    return out
 
 
 def progress(target, db_path=None):

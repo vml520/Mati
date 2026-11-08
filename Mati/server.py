@@ -79,7 +79,7 @@ from . import reading
 from . import speaker
 from . import gatelog
 from . import learning
-from .mati import SYSTEM_PROMPT, system_prompt, turn
+from .ollin import SYSTEM_PROMPT, system_prompt, turn
 
 
 def _takes_should_stop(fn):
@@ -1335,7 +1335,7 @@ class FieldService:
         come from the field at all. What happened, happened.
         """
         try:
-            from . import mati as _O
+            from . import ollin as _O
             with self.field():
                 bridge.remember(self.lm, self.tok,
                                 f"I was asked: {asked}\nI did it: {said}",

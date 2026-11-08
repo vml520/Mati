@@ -692,7 +692,7 @@ def _as_named(text):
     Mati"; renaming the assistant must not go back and edit stored memories,
     and an install that already has a charter must not need rebuilding.
 
-    ⚠️ AND THIS IS THE HALF THE RENAME WAS MISSING. `mati.system_prompt()`
+    ⚠️ AND THIS IS THE HALF THE RENAME WAS MISSING. `ollin.system_prompt()`
     changed the identity line, but the charter is handed over WHOLE on
     identity turns — exactly the turns where someone asks "what are you". So
     the prompt said "I am Tochtli" while the charter it was reading from said
@@ -707,7 +707,7 @@ def _as_named(text):
     name = _C.assistant_name()
     if name == _C.DEFAULT_ASSISTANT_NAME or not text:
         return text
-    return re.sub(r"\bOlin\b", name, text)
+    return re.sub(r"\bMati\b", name, text)
 
 
 def charter_chunks(db_path=None):
@@ -1344,7 +1344,7 @@ def think_while(lm, chunk_iter, steps_per_chunk=None, budget_s=None,
     long reply cannot turn a 1s cost into a large one. At current settings it
     never binds; it is a guard, not a fix. `budget_s=0` disables it.
 
-    Yields chunks through unchanged; returns nothing (see `Work` in mati.py).
+    Yields chunks through unchanged; returns nothing (see `Work` in ollin.py).
     """
     n = C.THINK_STEPS_PER_CHUNK if steps_per_chunk is None else steps_per_chunk
     budget = C.THINK_BUDGET_S if budget_s is None else budget_s
