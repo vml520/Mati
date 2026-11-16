@@ -197,9 +197,9 @@ def reply_tokens(default=None):
 #      so does sending no User-Agent at all.
 #
 # ⚠️ KEEP IT DESCRIPTIVE. Radio Browser and the Overpass usage policy both ask
-# that a client say what it is so operators can see who is calling; "Mati/1.0"
+# that a client say what it is so operators can see who is calling; "Mati/0.1"
 # alone does not. What must stay out is anything unique to the person.
-USER_AGENT = "Mati/1.0 (personal assistant)"
+USER_AGENT = "Mati/0.1 (personal assistant)"
 
 
 # ── what the assistant is called ────────────────────────────────────────────

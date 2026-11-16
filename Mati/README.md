@@ -250,7 +250,7 @@ Mati ships neither.
 | something to read | `archive.org` | the search words |
 | local deals | `backflipp.wishabi.com` | a postal code and what you are shopping for |
 
-Every one of those carries the same fixed header — `Mati/1.0 (personal
+Every one of those carries the same fixed header — `Mati/0.1 (personal
 assistant)` — with no machine identifier and nothing unique to you. It is one
 constant, `config.USER_AGENT`, which every outbound module reads; there is no
 second string to drift. Mati identifies itself honestly and never presents as

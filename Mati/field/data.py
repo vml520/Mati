@@ -53,7 +53,7 @@ def download(url: str, filename: str = None, timeout: int = 60) -> str:
 
     print(f"  Downloading {url} ...")
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mati/1.0'})
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mati/0.1'})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
         text = raw.decode('utf-8', errors='replace')
