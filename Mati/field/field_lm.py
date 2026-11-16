@@ -1,8 +1,7 @@
 # Part of Mati's field — the phase-field substrate its memory is built on.
 #
-# ⚠️ THIS IS THE AUTHORITATIVE COPY. These modules began as a shared study
-# codebase and were split off so the field could change without anything
-# else moving under it. Nothing outside Mati imports them.
+# ⚠️ THIS IS THE AUTHORITATIVE COPY. Nothing outside Mati imports these
+# modules, so the field can change without anything else moving under it.
 #
 # ⚠️ KEEP THIS A COMMENT, NOT A DOCSTRING. A docstring here would sit
 # before `from __future__`, which is a SyntaxError that `ast.parse`
@@ -480,17 +479,17 @@ class MultiModeFieldLM:
 
         # Whether a question may reshape the most stable attractors.
         #
-        # The original stance was that it always may — "a genuine question
-        # re-opens what seemed settled" — and it is a coherent one. But it made
-        # the constitution unenforceable: this method is the PRIMARY training
-        # signal (every user turn goes through it), so protection lifted here
-        # is protection that never applies anywhere. Measured: "frozen" nodes
-        # drifted 1.7476 over six ordinary turns against 1.5343 for unfrozen
-        # ones — they moved MORE. Measured in the constitution study.
+        # "A genuine question re-opens what seemed settled" is a coherent
+        # stance, but it makes the constitution unenforceable: this method is
+        # the PRIMARY training signal (every user turn goes through it), so
+        # protection lifted here is protection that never applies anywhere.
+        # Measured in the constitution study: "frozen" nodes drifted 1.7476
+        # over six ordinary turns against 1.5343 for unfrozen ones — they
+        # moved MORE.
         #
         # Default stays True so training runs and the diagnostics behind the
         # results ladder are unchanged. Mati passes False: there, a question
-        # must not be able to reshape the constitution (user).
+        # must not be able to reshape the constitution.
         saved_defects       = self.mf.defect_nodes.copy()
         saved_constitution  = self.mf.constitution_nodes.copy()
         if lift_protection:

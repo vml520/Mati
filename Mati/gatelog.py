@@ -1,23 +1,22 @@
 """
 Every turn's coherence, whether it was kept or not.
 
-⚠️ WHY THIS HAD TO BE BUILT BEFORE THE QUESTION COULD BE ASKED. An episode is
-written only when `coherence >= EPISODE_GATE_MIN` (0.7). A turn that misses the
-gate leaves **no trace at all** — no row, no counter, nothing. And coherence is
-not stored on the episodes that do pass, so even the passing side is invisible
-afterwards.
+⚠️ WITHOUT THIS THE GATE CANNOT BE TUNED. An episode is written only when
+`coherence >= EPISODE_GATE_MIN` (0.7). A turn that misses the gate leaves **no
+trace at all** — no row, no counter, nothing. And coherence is not stored on
+the episodes that do pass, so even the passing side is invisible afterwards.
 
-So "is 0.7 the right threshold" was unanswerable from the store. Not hard to
-answer — impossible. There was no record of what had been rejected, or by how
-much it missed.
+So "is 0.7 the right threshold" cannot be answered from the store. Not hard to
+answer — impossible. There is no record of what was rejected, or by how much
+it missed.
 
 This records one row per turn: when, the coherence, whether it cleared, and a
 HASH of the text. The hash rather than the text because the point is a
 distribution, not a transcript, and a second plaintext copy of every
 conversation is a poor trade for a histogram.
 
-Changes no behaviour. The gate still decides exactly what it decided before;
-this only writes down what it decided and on what number.
+Changes no behaviour. The gate decides exactly what it would decide without
+this; this only writes down what it decided and on what number.
 """
 
 from __future__ import annotations

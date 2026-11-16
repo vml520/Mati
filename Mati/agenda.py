@@ -1,37 +1,24 @@
-# Vendored from Hum (github.com/vml520/Hum), MIT, Copyright (c) 2026 the user
-# Luna: `_unfold`, `_parse_dt`, `parse_ics`, `parse_rrule` are Hum's
-# deterministic calendar core, copied rather than imported so the two projects
-# stay separable — the same choice `Mati/field/` made.
-#
-# ⚠️ THE COHERENCE ENGINE IS DELIBERATELY NOT VENDORED. Hum's own spec
-# withdrew its claim on measurement: -0.19% over 72 paired runs, p = 0.42,
-# 28 wins / 37 losses, no detectable contribution. Bringing
-# `build_couplings` / `_strain_at` / `coherence` across would import a
-# measured-negative component into Mati, where it would be re-narrated as a
-# feature. The split is at the function boundary and it stays there.
 """
 Mati's own calendar — imported from iCloud, owned here.
 
-The user: *"I meant import the events from iCloud Calendar and create an Mati
-calendar that is separate from iCloud."*
-
-See `STUDY_calendar_sync.md`. The design, in one line: **copy in, never write
-back**. iCloud stays authoritative for itself and Mati cannot damage it; the
-copy is Mati's, encrypted, portable, and readable with no permission once the
-import has happened.
+The events come in from iCloud Calendar into a Mati calendar that is separate
+from iCloud. The design, in one line: **copy in, never write back**. iCloud
+stays authoritative for itself and Mati cannot damage it; the copy is Mati's,
+encrypted, portable, and readable with no permission once the import has
+happened.
 
 ⚠️ THE PERMISSION IS ONLY NEEDED AT IMPORT TIME. That is the whole argument for
 importing rather than reading through: afterwards this works offline, on a
 thumb drive, on a machine that has never seen iCloud.
 
-⚠️ DEDUP KEYS ON (ext_id, start), NOT ON ext_id. Measured on the real calendar:
-65 unique identifiers for 74 events, because recurring occurrences carry their
-SERIES identifier. Keying on the id alone would collapse a weekly meeting into
+⚠️ DEDUP KEYS ON (ext_id, start), NOT ON ext_id. Recurring occurrences carry
+their SERIES identifier, so a real calendar holds fewer identifiers than events
+— 65 for 74 in one. Keying on the id alone would collapse a weekly meeting into
 one row or overwrite the wrong occurrence.
 
-⚠️ THE RULE IS IMPORTED, NOT THE EXPANSION. 52 of 74 events recur; storing
-expanded occurrences would be thousands of rows a year and a re-import that has
-to diff all of them.
+⚠️ THE RULE IS IMPORTED, NOT THE EXPANSION. Most events in a working calendar
+recur; storing expanded occurrences would be thousands of rows a year and a
+re-import that has to diff all of them.
 
 ⚠️ DELETION IS A WITHDRAWAL, NOT AN ERASE. A meeting cancelled in iCloud must
 stop appearing — but Mati's standing rule is that corrections annotate and
@@ -43,9 +30,9 @@ from a read that actually succeeded and returned a complete window. A denied or
 partial read changes nothing — otherwise a permission revoked at the wrong
 moment silently cancels the person's whole calendar.
 
-⚠️ MATI NEVER DECIDES A TIME. Hum's spec keeps the field language model away
-from scheduling decisions until a measured gate is passed. This module imports,
-stores and reports; it does not propose, move or resolve anything.
+⚠️ MATI NEVER DECIDES A TIME. A schedule is a decision about someone's day,
+and nothing here has earned the right to make it. This module imports, stores
+and reports; it does not propose, move or resolve anything.
 """
 
 from __future__ import annotations
@@ -67,7 +54,7 @@ IMPORT_DAYS_AHEAD = 365
 IMPORT_DAYS_BACK = 30
 
 
-# ── Hum's deterministic core, vendored ───────────────────────────────────────
+# ── the deterministic calendar core ─────────────────────────────────────────
 
 def _unfold(text):
     # RFC 5545: a CRLF followed by space/tab continues the previous line
@@ -101,8 +88,8 @@ def parse_ics(text):
             if key == "SUMMARY":
                 ev["summary"] = val.strip()
             elif key == "UID":
-                # ⚠️ Hum does not read UID because it does not persist events.
-                # Mati does, and without it a re-import has no key at all.
+                # ⚠️ UID IS READ BECAUSE EVENTS PERSIST HERE: without it a
+                # re-import has no key at all.
                 ev["uid"] = val.strip()
             elif key == "DTSTART":
                 ev["dtstart"], ev["allday"] = _parse_dt(val)
@@ -335,7 +322,7 @@ _FREQ = {0: "DAILY", 1: "WEEKLY", 2: "MONTHLY", 3: "YEARLY"}
 
 
 def _rule_to_rrule(rr):
-    """EKRecurrenceRule -> an RRULE string Hum's `parse_rrule` understands."""
+    """EKRecurrenceRule -> an RRULE string `parse_rrule` understands."""
     try:
         bits = [f"FREQ={_FREQ.get(rr.frequency(), 'WEEKLY')}"]
         if rr.interval() and rr.interval() != 1:
@@ -392,10 +379,10 @@ def import_ics(text, db_path=None, verbose=False):
     """
     events = parse_ics(text)
     ensure(db_path)
-    # ⚠️ COUNT ROWS, NOT CALLS. The first version counted successful `put`s and
-    # so reported "2 added" on every re-import of the same file — a number that
-    # looks like duplication and would have sent someone hunting a bug that was
-    # not there, or hidden one that was.
+    # ⚠️ COUNT ROWS, NOT CALLS. Counting successful `put`s would report
+    # "2 added" on every re-import of the same file — a number that looks like
+    # duplication and would send someone hunting a bug that is not there, or
+    # hide one that is.
     conn = sqlite3.connect(
         f"file:{db_path or bridge.NOTES_DB_PATH}?mode=ro", uri=True)
     try:

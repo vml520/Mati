@@ -1,21 +1,19 @@
 """
 What Mati did, and when. A log, not a gauge.
 
-⚠️ NOTHING RECORDED THIS. The user asked for a way to see when Mati sleeps and
-wakes, and when it studies, reads and dreams. There was no such thing:
-`Telemetry` holds the LAST KNOWN state and fans it out to live subscribers — a
-gauge, which is exactly right for a dial and useless for a question about
-yesterday. Every transition was visible for the instant it happened and then
-gone.
+⚠️ A GAUGE CANNOT ANSWER A QUESTION ABOUT YESTERDAY. Seeing when Mati sleeps
+and wakes, and when it studies, reads and dreams, needs a record. `Telemetry`
+holds the LAST KNOWN state and fans it out to live subscribers — a gauge,
+which is exactly right for a dial and useless for a question about yesterday.
+Every transition is visible for the instant it happens and then gone.
 
-That is the same shape as the faults this codebase kept producing: a monitor
-that cannot answer "when did this start" cannot tell you that it started eleven
-days ago and never stopped.
+And a monitor that cannot answer "when did this start" cannot tell you that it
+started eleven days ago and never stopped.
 
 ⚠️ SOME OF IT IS RECOVERABLE AND IS RECOVERED. `study_queue.studied`, the
 reading memories and the episodes all carry timestamps, so the history does not
-begin empty — `backfill()` reads them once. What was never written down anywhere
-is sleeping, waking and dreaming, and those begin from now.
+begin empty — `backfill()` reads them once. Sleeping, waking and dreaming are
+written down nowhere else, so those begin when the log does.
 
 Deliberately small: an event name, a moment, and a short detail. Not a second
 copy of what happened — `notes` already holds that, encrypted — just the shape

@@ -1,22 +1,22 @@
 """
 The weather where the person is, worked out at the moment it is asked.
 
-The user asked whether local weather was in the world module. It was not, and it
-does not belong there — `world.py` INGESTS, and everything it takes in becomes
-a stored note with a 30-day life. A temperature is true for about an hour. A
-weather reading written into the store would be recited back days later as a
-remembered fact, which is the exact failure this project keeps guarding
-against: a stored fact outliving its truth.
+Weather does not belong in the world module — `world.py` INGESTS, and
+everything it takes in becomes a stored note with a 30-day life. A temperature
+is true for about an hour. A weather reading written into the store would be
+recited back days later as a remembered fact: a stored fact outliving its
+truth.
 
 So this follows `health.py` instead — COMPUTED, NEVER STORED — and arrives
 under `<computed>`, the provenance kind that already exists for things worked
 out rather than remembered.
 
-Source: Open-Meteo. Free, keyless, no account, global. :
+Source: Open-Meteo. Free, keyless, no account, global. The obvious
+alternatives do not cover the world:
 
-    api.weather.gov                       404 for 19.43,-99.13 — US only
+    api.weather.gov                       404 outside the US
     forecast.weather.gov/xml/current_obs  empty response
-    api.open-meteo.com                    answered, global          ✓
+    api.open-meteo.com                    answers, global          ✓
 
 ⚠️ THE LOCATION LIVES IN SETTINGS, NOT IN THE PROFILE. Every other personal
 fact Mati holds is imprinted into the field and injected each turn. A field
@@ -24,11 +24,11 @@ cannot forget — `forget_place()` would be a promise nothing could keep. In
 `mati_settings.json` a location is one key that can actually be deleted, it
 never enters θ₀, and it costs no tokens on turns nobody asked about the sky.
 
-⚠️ THE COORDINATES ARE COARSENED, AND IT COSTS NOTHING. Measured: sending
-19.43,-99.13 returns 19.437609,-99.10715 — the service snaps to its own grid
-about 2.4 km away regardless. Precision past two decimals buys accuracy of
-exactly zero and gives away where someone sleeps, so it is rounded before it is
-ever saved, not merely before it is sent.
+⚠️ THE COORDINATES ARE COARSENED, AND IT COSTS NOTHING. The service snaps a
+request to its own grid, about 2.4 km away, whatever precision it is sent.
+Precision past two decimals buys accuracy of exactly zero and gives away where
+someone sleeps, so it is rounded before it is ever saved, not merely before it
+is sent.
 
 ⚠️ A FAILED FETCH SAYS NOTHING. No cached value is passed off as current, no
 number is estimated. Offline, Mati has nothing to say about the weather, and
@@ -36,8 +36,8 @@ that is the honest answer.
 
 ⚠️ LOCAL TIMES COME FROM THE SERVICE, ALREADY LOCAL. `timezone=auto` returns
 wall-clock strings for the place being asked about. They are printed as given
-and never re-converted — re-deriving a local day from UTC is the bug this
-project has now shipped twice.
+and never re-converted — re-deriving a local day from UTC is an easy bug to
+ship and a hard one to notice.
 """
 
 from __future__ import annotations
@@ -148,13 +148,12 @@ def set_place(place):
         "imperial" if (place.get("country_code") or "").upper()
         in ("US", "BS", "BZ", "KY", "LR", "PW", "FM", "MH") else "metric")
     # ⚠️ THE COUNTRY CODE IS SAVED TOO, and it is not for weather. `radio.near`
-    # needs it: without a country filter the nearest station to the test
-    # location came back from 574km away, because the rows fetched are the
-    # world's most-clicked and hold almost none from the user's own region.
-    # The user: *"as long as we get nearby stations first before stations from
-    # outside of the the US, or whatever country the user happens to be in."*
-    # Two characters answers that, and asking a second time for a fact already
-    # on screen would not.
+    # needs it: without a country filter the "nearest" station can be hundreds
+    # of kilometres away, because the rows fetched are the world's most-clicked
+    # and hold almost none from the person's own region. Nearby stations should
+    # come first, before stations from outside whatever country the person is
+    # in. Two characters answers that, and asking a second time for a fact
+    # already on screen would not.
     C.save_settings(weather_place=place["label"],
                     weather_lat=round(float(place["latitude"]), PLACES),
                     weather_lon=round(float(place["longitude"]), PLACES),
@@ -166,14 +165,14 @@ def set_place(place):
 
 
 def forget_place():
-    """Delete the location. ⚠️ This is why it was never put in the field."""
+    """Delete the location. ⚠️ This is why it is not put in the field."""
     cur = C._settings()
     # ⚠️ `weather_country` BELONGS IN THIS LIST AND IS EASY TO MISS.
-    # `set_place` writes five keys and this once removed only four, so
-    # "forget where I am" left the country code behind — and the whole reason
-    # the location lives in settings rather than the field is that settings
-    # CAN forget. A delete that leaves part of the thing is the failure this
-    # design exists to avoid. `test_weather` had been reporting it.
+    # `set_place` writes five keys, and removing only four would leave the
+    # country code behind after "forget where I am" — and the whole reason the
+    # location lives in settings rather than the field is that settings CAN
+    # forget. A delete that leaves part of the thing is the failure this design
+    # exists to avoid.
     removed = [k for k in ("weather_place", "weather_lat", "weather_lon",
                            "weather_units", "weather_country") if k in cur]
     for k in removed:

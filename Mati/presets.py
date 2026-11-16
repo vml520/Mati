@@ -1,14 +1,13 @@
 """
 Ten station buttons, like a car radio.
 
-The user: *"restructure the music service so that it is more like a
-car radio with station presets rather than a music streaming app with a music
-library… I don't want to use random station."*
+The music service is a car radio with station presets, not a streaming app
+with a music library — and it never picks a random station.
 
-⚠️ "RANDOM STATION" WAS NEVER THE DIRECTORY'S FAULT. `radio.play("jazz")`
-searched by genre and took the top hit, so the station changed whenever the
-click counts did. Nothing stored *your* stations. A different directory would
-have had the same problem; a preset is the fix.
+⚠️ A RANDOM STATION IS NOT THE DIRECTORY'S FAULT. Searching by genre and
+taking the top hit changes the station whenever the click counts do, and
+nothing in that stores *your* stations. A different directory would have the
+same problem; a preset is the fix.
 
 ⚠️ THE RESOLVED STREAM URL IS WHAT GETS PINNED, not the station's name or its
 directory id. Radio Browser is community-edited: names get retyped, entries get

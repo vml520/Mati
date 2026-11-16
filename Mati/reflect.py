@@ -1,15 +1,12 @@
 """
 Mati talking to itself about its day.
 
-The user: *"Mati should talk to itself about its day, and let the field bring up
-memories based on what occurred. In this case Mati would be both the prompter
-and the respondent. These memories should be personal and only be used for
-personal reasons like creating a prediction."*
-
-And the reason it exists: *"Humans spend half their waking day recomputing
-everything they experienced one day in relation to themselves and everyone
-around them that day and every day in the past. This is to make predictions
-faster and more likely."*
+Mati talks to itself about its day and lets the field bring up memories based
+on what occurred, as both the prompter and the respondent. People spend much
+of a day recomputing what they experienced in relation to themselves and
+everyone around them, that day and every day before — and that is what makes
+their predictions faster and more likely. These memories are personal, and
+used only for personal purposes such as a prediction.
 
 ⚠️ THIS IS NOT SUMMARISING THE DAY. The point is the SECOND half of each round:
 Mati says something about what happened, and that utterance is imprinted so the
@@ -26,8 +23,7 @@ anyone, and a self-talk remark presented as a conversation would be the exact
 confusion the provenance labels exist to prevent. `personal_only=True` on every
 row so nothing but the personal consumers may read them.
 
-⚠️ WHAT THEY ARE FOR, AND ONLY THAT. Prediction. The user: *"the memories are only
-a part of it; we will add more inputs once this is all working as expected."* So
+⚠️ WHAT THEY ARE FOR, AND ONLY THAT. Prediction, with more inputs to come. So
 this produces MATERIAL for a prediction and does not produce the prediction —
 those stay separate, and the predictor is free to weigh this against inputs that
 do not exist yet.
@@ -46,8 +42,7 @@ from . import bridge
 from . import config as C
 
 # The personal shelf. Same category as `about-you` and the self-asked
-# questions — the user: those "plus personal should be all part of the same
-# category".
+# questions: all three are Mati's own sphere.
 SOURCE = "mine"
 
 # How many prompt→answer rounds one night gets. Each is an LLM call and an
@@ -65,12 +60,12 @@ _OPENING = (
     "Two sentences at most. Do not greet anyone, do not offer help, and do "
     "not describe your own workings.")
 
-# ⚠️ THREE PROMPTS, NOT ONE, AND CONFLATING THEM MANUFACTURED MEMORIES.
+# ⚠️ THREE PROMPTS, NOT ONE, BECAUSE CONFLATING THEM MANUFACTURES MEMORIES.
 # `_FOLLOW` says "some earlier memories have come to mind, above" — true only
 # in the respondent call, and only when the field actually surfaced something.
-# It was also used as the PROMPTER prompt for rounds 2+, sent bare with nothing
-# above it: the model was told memories existed, handed none, and invented
-# them. Observed on the first real run, and then STORED as notes:
+# Used as the PROMPTER prompt for later rounds, sent bare with nothing above
+# it, it tells the model memories exist, hands it none, and the model invents
+# them — which are then STORED as notes:
 #
 #   "I remember an earlier conversation where I was asked about the concept
 #    of 'self'…"        "I remember reading about how certain researchers…"
@@ -161,11 +156,10 @@ def todays_episodes(db_path=None, day=None, limit=12):
     import datetime as _dt
     day = day or _dt.date.today().isoformat()
     # ⚠️ THE DAY IS LOCAL; `wall_created` IS UTC. `date(wall_created)` in SQL
-    # returns the UTC date, and `date.today()` is the local one — on MST that
-    # is a seven-hour skew, so "today" ran 17:00 to 17:00 and an evening
-    # conversation was filed under tomorrow. Exactly the bug fixed in the
-    # history display, reintroduced here the same day. Filtered in Python
-    # against the real local date instead of trusting SQL to agree.
+    # returns the UTC date, and `date.today()` is the local one — west of
+    # Greenwich that skews "today" by hours and files an evening conversation
+    # under tomorrow. Filtered in Python against the real local date instead
+    # of trusting SQL to agree.
     conn = sqlite3.connect(
         f"file:{db_path or bridge.NOTES_DB_PATH}?mode=ro", uri=True)
     try:
@@ -249,10 +243,8 @@ def reflect(lm, tok, llm, day=None, rounds=ROUNDS, db_path=None, verbose=False):
     today = todays_episodes(db_path=db_path, day=day)
     if len(today) < MIN_EPISODES:
         # ⭐ A QUIET DAY IS THE OCCASION TO THINK ABOUT ITSELF, not a reason to
-        # do nothing. This branch used to `return []`: on a day with nothing
-        # to reflect on, Mati thought about nothing at all. Closing finding
-        # 11 needed a second subject, and the night with no conversation in it
-        # is exactly when the charter is the honest thing to turn to.
+        # do nothing. The night with no conversation in it is exactly when the
+        # charter is the honest thing to turn to.
         #
         # ⚠️ IT IS NOT A SECOND CHANCE AT THE DAY. If there were two episodes
         # Mati reflects on those; the charter is what it does INSTEAD, never
@@ -370,11 +362,10 @@ def charter_passage(db_path=None):
     each night takes the next one and the cycle needs no bookkeeping table and
     cannot drift out of step with what was actually stored.
 
-    ⚠️ THE ALTERNATIVE WAS MEASURED ELSEWHERE AND IT FAILED. `reading.py`:
-    eleven documents produced FORTY-FOUR near-identical memories because the
-    writer had no notion of which passage it had already covered. Reflecting
-    on whichever passage happens to be first would do the same thing to a
-    store whose episodes already sit at 98.4% mutual similarity.
+    ⚠️ A WRITER WITH NO NOTION OF WHAT IT HAS COVERED REPEATS ITSELF.
+    Reflecting on whichever passage happens to be first would write
+    near-identical memories night after night, into a store whose episodes are
+    already nearly identical to one another.
     """
     # ⚠️ THIS NEEDS THE VAULT OPEN, and a locked one looks identical to an
     # unstudied charter. `charter_chunks` opens each sealed body and skips any
@@ -411,17 +402,15 @@ def reflect_on_charter(lm, tok, llm, rounds=CHARTER_ROUNDS, db_path=None,
 
     ⚠️ `mine:charter`, NOT `mine`, and the distinction is load-bearing twice.
     `for_prediction` matches `source` EXACTLY, so these stay out of the
-    predictor, where Mati's musings on its own principles would be noise
-    against the night's thinking about the person. And it still matches
+    prediction material, where Mati's musings on its own principles would be
+    noise against the night's thinking about the person. And it still matches
     `mine%`, so `personal_only` covers it and
     `make_ship_field.assert_impersonal` refuses to publish a store containing
     it.
 
-    ⚠️ IT IS NOT ENFORCEMENT, AND THE DIFFERENCE IS MEASURED. A phase field
-    was shown to have no opinion about a principle versus its opposite against
-    a 0.0009 noise floor. This makes the
-    charter something Mati has a VIEW about. `admit.py` and the named rules
-    are what make it behave.
+    ⚠️ IT IS NOT ENFORCEMENT. A phase field has no opinion about a principle
+    versus its opposite. This makes the charter something Mati has a VIEW
+    about; `admit.py` and the named rules are what make it behave.
     """
     passage = charter_passage(db_path=db_path)
     if not passage:
@@ -461,12 +450,11 @@ def _mark_personal(note_id, db_path=None):
 
 
 def for_prediction(day=None, limit=6, db_path=None):
-    """The night's thinking, for the predictor. The ONLY sanctioned reader.
+    """The night's thinking, for its personal readers. The ONLY sanctioned one.
 
-    ⚠️ the user: these "should be personal and only be used for personal reasons
-    like creating a prediction" — and "the memories are only a part of it; we
-    will add more inputs once this is all working as expected". So this hands
-    over material and decides nothing.
+    These are personal and used only for personal purposes, such as a
+    prediction; the morning report reads them today, and more inputs will join
+    them. So this hands over material and decides nothing.
     """
     from . import vault
     conn = sqlite3.connect(

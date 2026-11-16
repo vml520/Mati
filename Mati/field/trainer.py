@@ -1,8 +1,7 @@
 # Part of Mati's field — the phase-field substrate its memory is built on.
 #
-# ⚠️ THIS IS THE AUTHORITATIVE COPY. These modules began as a shared study
-# codebase and were split off so the field could change without anything
-# else moving under it. Nothing outside Mati imports them.
+# ⚠️ THIS IS THE AUTHORITATIVE COPY. Nothing outside Mati imports these
+# modules, so the field can change without anything else moving under it.
 #
 # ⚠️ KEEP THIS A COMMENT, NOT A DOCSTRING. A docstring here would sit
 # before `from __future__`, which is a SyntaxError that `ast.parse`
@@ -690,9 +689,9 @@ def train_supervised_rtr(lm, qa_pairs, tokenizer=None,
                 _occ_win = np.zeros(n_sinks)
                 for _s in occ_window:
                     _occ_win[_s] += 1
-                # Consolidate by force_idx (encoder phase) — NOT readout-sw.
-                # Cuts the feedback loop: consolidation no longer reads back from
-                # the attractor depths it is shaping.
+                # Consolidate by force_idx (encoder phase) — NOT readout-sw,
+                # so consolidation does not read back from the attractor
+                # depths it is shaping.
                 _force_onehot = np.zeros(n_sinks)
                 _force_onehot[force_idx] = 1.0
                 lm.update_ground_state(pinned_states, locked, weight=1.0,

@@ -1,20 +1,36 @@
 """
-Mati's memories, encrypted at rest, unlocked by your fingerprint.
+Mati's memories, encrypted at rest.
 
     python3 -m Mati.vault --setup       # once: make a key, print recovery phrase
     python3 -m Mati.vault --status
-    python3 -m Mati.vault --lock        # forget the key held in memory
+    python3 -m Mati.vault --unlock      # open it, and the running Mati with it
     python3 -m Mati.vault --export out.txt
 
 WHY NOT JUST PROMPT BEFORE OPENING MATI. Because that protects nothing. The
-episodes live in `.cache/mati_notes.db`, a plain SQLite file that was
-world-readable (`-rw-r--r--`) until this existed — anyone with a shell reads
-every one of them without Mati running. And Mati ships open source, so a
-prompt in Python is a prompt anyone can delete.
+episodes live in `.cache/mati_notes.db`, a plain SQLite file — anyone with a
+shell could read every one of them without Mati running. And Mati ships open
+source, so a prompt in Python is a prompt anyone can delete.
 
-So Touch ID is not a gate here. It releases a KEY. The enforcement lives in the
-T2 Secure Enclave and the login keychain, not in this file: without the key the
-bodies are ciphertext, and editing this source does not change that.
+So the protection is a KEY, not a prompt: without the key the bodies are
+ciphertext, and editing this source does not change that.
+
+WHERE THE KEY LIVES. Three modes, chosen at setup and recorded in the vault
+file (`unlock_method()` reads it back):
+
+    touch_id     the key is in the login keychain, and Mati asks for a
+                 fingerprint before reading it
+    keychain     the key is in the login keychain, and Mati reads it when it
+                 starts, unattended — for a Mac with no Touch ID
+    passphrase   the key is nowhere on the machine; someone types the
+                 passphrase each time Mati starts
+
+⚠️ TOUCH ID HERE IS A PRESENCE CHECK, NOT ENFORCEMENT. The keychain item is an
+ordinary generic password written and read by `/usr/bin/security`, and any
+process running as the person reads it the same way with no fingerprint. A
+biometric rule on the item itself needs a signed app with a keychain
+entitlement, which a Python package cannot have. So `touch_id` and `keychain`
+protect exactly the same things and differ only in whether someone must be
+present when Mati starts. Only `passphrase` keeps the key off the machine.
 
 WHAT IS AND IS NOT ENCRYPTED. Note bodies. Not the addresses.
 
@@ -28,14 +44,16 @@ SQLCipher (a dependency Mati does not have) or decrypting to a temp file —
 which leaves plaintext on disk while running and after a crash.
 
 THREAT MODEL, stated plainly. This protects against another account on the
-machine, a stolen or imaged disk, and Time Machine backups. It does NOT protect
-against you: you can always unlock, and anything you can unlock, malware
-running as you can unlock too. That is the correct model for a personal AI, and
-overstating it would be worse than not having it.
+machine, a stolen or imaged disk, a copied or synced `.cache/`, and Time
+Machine backups. It does NOT protect against you: you can always unlock, and
+anything you can unlock, software running as you can unlock too — in the two
+keychain modes at any time, in `passphrase` mode while Mati is running. That
+is the correct model for a personal AI, and overstating it would be worse than
+not having it.
 
-RECOVERY. The key is wrapped twice — once into the keychain behind Touch ID,
-once with a passphrase printed at setup. A wiped Mac, a new machine, or a reset
-Touch ID loses the keychain copy; the passphrase is the only way back. Nothing
+RECOVERY. The key is kept twice — in the keychain (except in `passphrase`
+mode), and wrapped with a passphrase printed at setup. A wiped Mac or a new
+machine loses the keychain copy; the passphrase is the only way back. Nothing
 here can recover a lost key, and it does not pretend to.
 
 CRYPTO. Nothing invented: AES-256-CBC via `/usr/bin/openssl` (LibreSSL, present
@@ -60,45 +78,54 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from . import config as C
 
 OPENSSL = "/usr/bin/openssl"           # ships with macOS; not the Homebrew one
-# ⚠️⚠️ NOT RENAMED WITH THE PRODUCT, AND THAT IS DELIBERATE. When Mati
-# became Mati on  every other "mati" went; this string stayed.
+# ⚠️⚠️ NOT RENAMED WITH THE PRODUCT, AND THAT IS DELIBERATE.
 #
 # The data key lives in the macOS keychain UNDER THIS NAME. Changing it does
 # not move the key — it orphans it, and the only person who would notice is
-# someone who already had a vault. This project has destroyed that key TWICE
-# and recovered it by luck both times (`recovery_kit()` exists because of it).
+# someone who already had a vault, and then could not open it.
 #
 # ⭐ A KEYCHAIN IS NOT A PATH: there is no rename, only a write under a new
 # name and an entry nobody looks for under the old one. Nothing a user ever
 # sees contains this string, so consistency here buys nothing and risks
-# everything. `test_vault` pins it.
+# everything. The tests pin it.
 KEYCHAIN_SERVICE = "ollin-vault"
 KEYCHAIN_ACCOUNT = "data-key"
 # ⚠️ What the constants were at import. Anything else means a caller
 # redirected them on purpose, and that intent outranks the vault's record.
 _DEFAULT_KEYCHAIN = (KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
-# ⚠️ C.CACHE_DIR, NOT C.ROOT/.cache. This was hardcoded to the repo's own
-# .cache and so ignored MATI_HOME, unlike every other path in the package.
-# Three things broke, found once the vault was actually enabled:
+# ⚠️ C.CACHE_DIR, NOT C.ROOT/.cache, so it follows MATI_HOME like every other
+# path in the package. Hardcoded to the repo's own `.cache`, three things would
+# break:
 #
-#   - a sandbox or clean room saw the REAL vault as set up and tried to seal
-#     with a key its own store had no descriptor for — `test_coldstart` died
-#     on `Locked` while writing its first episode;
+#   - a sandbox or clean room would see the REAL vault as set up and try to
+#     seal with a key its own store has no descriptor for;
 #   - `transfer.manifest()` carries `mati_vault.json`, so backup/restore and
-#     the thumb-drive install wrote the descriptor into CACHE_DIR while this
-#     module went on reading somewhere else entirely — the portable install
-#     would have looked fine and been unopenable;
+#     the thumb-drive install would write the descriptor into CACHE_DIR while
+#     this module read somewhere else entirely — a portable install that looks
+#     fine and is unopenable;
 #   - `python3 -m Mati.sandbox` could not produce an unencrypted scratch copy
 #     at all.
 #
-# On an install with no MATI_HOME set, CACHE_DIR *is* ROOT/.cache, so this
-# changes nothing about where an existing vault lives.
+# On an install with no MATI_HOME set, CACHE_DIR *is* ROOT/.cache.
 VAULT_PATH = os.path.join(C.CACHE_DIR, "mati_vault.json")
 # The path as shipped. `_keychain_is_safe` compares against this so a
 # redirected VAULT_PATH cannot reach the real keychain account.
 _DEFAULT_VAULT_PATH = VAULT_PATH
 
-PREFIX = "mati1:"                     # marks an encrypted body
+# ⚠️⚠️ A DATA FORMAT MARKER, NOT A PRODUCT NAME — AND IT MUST NEVER BE
+# RENAMED. Every sealed body on disk begins with this string, so changing it
+# does not re-tag anything: it makes `is_encrypted()` answer False for the
+# whole store, `open_body()` pass ciphertext through as if it were plaintext,
+# and `ollin1:U2FsdGVkX1...` land in the prompt and in front of the person.
+#
+# It is pinned for the same reason `KEYCHAIN_SERVICE` is: nothing a user sees
+# contains it, and the cost of changing it is their memories turning to
+# gibberish.
+#
+# ⚠️ READ ACCEPTS EVERY HISTORICAL SPELLING, WRITE USES ONE. A store sealed
+# under an older build must keep opening; `PREFIX` is what new writes get.
+PREFIX = "ollin1:"                    # marks an encrypted body — DO NOT RENAME
+KNOWN_PREFIXES = ("ollin1:", "olin1:", "mati1:")
 PBKDF2_ITERS = 600_000                 # for the recovery passphrase only
 
 # Short, unambiguous words. Deliberately not a dictionary file — a recovery
@@ -157,10 +184,28 @@ def _subkey(data_key, label):
     return hmac.new(data_key, label, hashlib.sha256).digest()
 
 
+# ⚠️⚠️ FORMAT CONSTANTS, NOT PRODUCT NAMES — THE SAME RULE AS `PREFIX`. The
+# subkeys are HMAC(data_key, label), so the label is part of the key
+# derivation: change one letter and the right key derives the wrong subkeys,
+# every MAC fails, and the error says "wrong key" — about the right key, with
+# nothing wrong except this string.
+#
+# ⭐ WRITE ONE, READ ALL — same rule as `KNOWN_PREFIXES`. A store sealed under
+# any historical build must keep opening. The MAC is checked under each family
+# in turn; that costs nothing in security, because every family's subkey is
+# still derived from the data key, so a forgery needs the key under any label.
+LABEL_FAMILY = "ollin"                 # what new writes get — DO NOT RENAME
+KNOWN_LABEL_FAMILIES = ("ollin", "olin", "mati")
+
+
+def _subkeys(data_key, family):
+    return (_subkey(data_key, f"{family}-body-enc".encode()).hex(),
+            _subkey(data_key, f"{family}-body-mac".encode()))
+
+
 def encrypt(data_key, text):
     """Encrypt-then-MAC. Returns a self-contained string safe to store."""
-    enc = _subkey(data_key, b"mati-body-enc").hex()
-    mac = _subkey(data_key, b"mati-body-mac")
+    enc, mac = _subkeys(data_key, LABEL_FAMILY)
     blob = _openssl(["-aes-256-cbc"], text.encode("utf-8"), enc)
     tag = hmac.new(mac, blob, hashlib.sha256).digest()
     return PREFIX + base64.b64encode(blob).decode() + ":" + \
@@ -172,21 +217,30 @@ def decrypt(data_key, stored):
     if not is_encrypted(stored):
         return stored                          # not yet migrated
     try:
-        blob_b64, tag_b64 = stored[len(PREFIX):].split(":", 1)
+        # ⚠️ STRIP THE PREFIX THAT IS ACTUALLY THERE, not `len(PREFIX)`.
+        # The historical spellings are different lengths — `ollin1:` is 7,
+        # `olin1:` and `mati1:` are 6 — so a fixed strip eats a character of
+        # base64 from one of them and raises "corrupt ciphertext" on a body
+        # that is perfectly intact.
+        _p = next(p for p in KNOWN_PREFIXES if stored.startswith(p))
+        blob_b64, tag_b64 = stored[len(_p):].split(":", 1)
         blob = base64.b64decode(blob_b64)
         tag = base64.b64decode(tag_b64)
     except (ValueError, base64.binascii.Error) as e:
         raise VaultError(f"corrupt ciphertext: {e}") from e
-    mac = _subkey(data_key, b"mati-body-mac")
-    if not hmac.compare_digest(hmac.new(mac, blob, hashlib.sha256).digest(), tag):
-        raise VaultError("ciphertext failed its integrity check — wrong key, "
-                         "or the stored note was tampered with")
-    enc = _subkey(data_key, b"mati-body-enc").hex()
-    return _openssl(["-aes-256-cbc", "-d"], blob, enc).decode("utf-8")
+    for family in KNOWN_LABEL_FAMILIES:
+        enc, mac = _subkeys(data_key, family)
+        if hmac.compare_digest(hmac.new(mac, blob, hashlib.sha256).digest(),
+                               tag):
+            return _openssl(["-aes-256-cbc", "-d"], blob, enc).decode("utf-8")
+    raise VaultError("ciphertext failed its integrity check — wrong key, "
+                     "or the stored note was tampered with")
 
 
 def is_encrypted(text):
-    return isinstance(text, str) and text.startswith(PREFIX)
+    # ⚠️ ANY KNOWN SPELLING. Checking only the current one is exactly how
+    # 20,444 sealed bodies read as plaintext.
+    return isinstance(text, str) and text.startswith(KNOWN_PREFIXES)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -196,19 +250,15 @@ def is_encrypted(text):
 def _keychain_ids():
     """(service, account) for THIS vault. Reads the vault's own record.
 
-    ⚠️⚠️ TWO INSTALLS USED TO SHARE ONE KEYCHAIN ENTRY, AND THE SECOND
-    OVERWROTE THE FIRST. `KEYCHAIN_SERVICE`/`KEYCHAIN_ACCOUNT` are module
-    constants, identical in every copy of Mati — so a person with a working
-    install who set up a second copy silently replaced the first one's data
-    key under `mati-vault/data-key`. Touch ID then produced a key that could
-    not open the first vault, which is exactly the incident this module's
-    `_keychain_is_safe` note describes, arriving by a route that guard cannot
-    see: it compares VAULT_PATH against THIS install's own default, and for a
-    second install those match.
+    ⚠️⚠️ ONE KEYCHAIN ENTRY PER INSTALL. `KEYCHAIN_SERVICE`/`KEYCHAIN_ACCOUNT`
+    are module constants, identical in every copy of Mati; read from those, a
+    person who set up a second copy would silently replace the first one's
+    data key, and the first vault would no longer open — by a route
+    `_keychain_is_safe` cannot see, since for a second install VAULT_PATH and
+    its own default match.
 
-    ⭐ THE VAULT FILE ALREADY RECORDED ITS OWN service/account — the format
-    had the answer and the accessors ignored it, reading the constants
-    instead. This reads the record.
+    ⭐ THE VAULT FILE RECORDS ITS OWN service/account, and this reads the
+    record.
 
     ⚠️ LEGACY INSTALLS KEEP WORKING. A vault written before per-install
     accounts has `{"service": "mati-vault", "account": "data-key"}` in it, so
@@ -262,14 +312,11 @@ def _keychain_get():
 
 
 def _keychain_delete():
-    """⚠️ GUARDED, AND IT WAS NOT. `_keychain_set` refused when VAULT_PATH was
-    redirected and `_keychain_delete` — the DESTRUCTIVE one — had no guard at
-    all. That is exactly backwards, and it cost a real data key: a cleanup
-    line reading `_keychain_delete()  # the TEST account, never the real one`
-    resolved to the REAL account once ids came from the vault doc, because by
-    then the caller had already restored VAULT_PATH. Nothing was lost — the
-    vault FILE still wrapped the key — but Touch ID stopped working and the
-    comment asserting safety was no longer true.
+    """⚠️ GUARDED, like `_keychain_set` — and it matters more here, because
+    this is the DESTRUCTIVE one. A cleanup that means the TEST account can
+    resolve to the REAL one once ids come from the vault document and the
+    caller has already restored VAULT_PATH. The vault FILE would still wrap the
+    key, so nothing would be lost, but Mati would no longer open itself.
     """
     if not _keychain_is_safe():
         return False
@@ -331,7 +378,20 @@ def biometrics_available():
 # The vault file — the recovery wrap, and a canary
 # ─────────────────────────────────────────────────────────────────────────────
 
-CANARY = "mati-vault-canary"
+# ⚠️ A FORMAT CONSTANT — the plaintext sealed into every vault document at
+# setup. Renamed with the product, it made every correct key "not open this
+# vault". Write one, accept every historical spelling.
+CANARY = "ollin-vault-canary"          # DO NOT RENAME
+KNOWN_CANARIES = ("ollin-vault-canary", "olin-vault-canary",
+                  "mati-vault-canary")
+
+
+def _opens_canary(key, doc):
+    """Does `key` open this document's canary? Never raises."""
+    try:
+        return decrypt(key, doc["canary"]) in KNOWN_CANARIES
+    except Exception:
+        return False
 
 
 def _read_vault():
@@ -401,7 +461,12 @@ def unlock(passphrase=None, reason="unlock Mati's memories", quiet=False):
                      "keychain by design. Unlock with:\n"
                      "         python3 -m Mati.vault --unlock")
     else:
-        if not touch_id(reason):
+        # ⚠️ THE FINGERPRINT IS ASKED FOR ONLY WHERE SETUP PROMISED IT. A
+        # vault made on a Mac with no Touch ID records `touch_id: False`, and
+        # prompting there could only ever fail — leaving Mati locked on every
+        # start with a key sitting in the keychain it was allowed to read.
+        # A vault with no record predates the choice and keeps the prompt.
+        if doc["keychain"].get("touch_id", True) and not touch_id(reason):
             raise Locked("Touch ID declined or unavailable. Unlock with the "
                          "recovery passphrase instead.")
         hex_key = _keychain_get()
@@ -410,7 +475,7 @@ def unlock(passphrase=None, reason="unlock Mati's memories", quiet=False):
                          "recovery passphrase: python3 -m Mati.vault --unlock")
         key = bytes.fromhex(hex_key)
 
-    if decrypt(key, doc["canary"]) != CANARY:
+    if not _opens_canary(key, doc):
         raise VaultError("that key does not open this vault")
     _key = key
     if not quiet:
@@ -418,22 +483,58 @@ def unlock(passphrase=None, reason="unlock Mati's memories", quiet=False):
         # A passphrase unlock on a machine whose keychain has no copy is the
         # signature of an install that has just been carried here. Say so
         # once, rather than letting the user conclude Touch ID is broken.
-        if passphrase and not adopted():
+        # ⚠️ NOT FOR A PASSPHRASE VAULT. Having no keychain copy is what that
+        # mode IS; suggesting `--adopt` there would talk someone into undoing
+        # the choice they made at setup.
+        if passphrase and "keychain" in doc and not adopted():
             print("  [vault] this Mac's keychain does not hold the key — "
-                  "Touch ID will not work here until you run:\n"
+                  "Mati cannot open itself here until you run:\n"
                   "         python3 -m Mati.vault --adopt", file=sys.stderr)
     return _key
+
+
+def unlock_method():
+    """How THIS vault opens: 'touch_id', 'keychain', 'passphrase', or None.
+
+    None means no vault. Read from the vault file, never from the machine: a
+    Touch ID vault carried to a Mac without a sensor is still a Touch ID
+    vault, and saying otherwise would hide why it will not open.
+    """
+    try:
+        doc = _read_vault()
+    except Exception:
+        doc = None
+    if doc is None:
+        return None
+    kc = doc.get("keychain")
+    if not kc:
+        return "passphrase"
+    return "touch_id" if kc.get("touch_id", True) else "keychain"
+
+
+def vault_id():
+    """A short, non-secret name for this vault, or None.
+
+    Derived from the salt, which is public. It exists so that something about
+    to hand a passphrase to a running Mati can check that Mati is serving
+    THIS vault and not another install on the same port.
+    """
+    try:
+        doc = _read_vault()
+    except Exception:
+        doc = None
+    if not doc or not doc.get("salt"):
+        return None
+    return hashlib.sha256(doc["salt"].encode()).hexdigest()[:12]
 
 
 def adopted():
     """Does this machine's keychain hold a key that OPENS THIS VAULT?
 
-    ⚠️ THIS CHECKED PRESENCE, NOT VALIDITY, AND THAT MADE `--adopt` REFUSE THE
-    ONE CASE IT EXISTS FOR. Found : the keychain held a key that
-    could not open the vault, `adopted()` saw a key and returned True, and
-    `--adopt` printed "this Mac's keychain already holds the key" and exited 0
-    without doing anything. The repair command reported success while leaving
-    the fault in place, and Touch ID went on failing.
+    ⚠️ VALIDITY, NOT PRESENCE. A keychain can hold a key that cannot open the
+    vault; checking only that one is there would make `--adopt` print "this
+    Mac's keychain already holds the key" and exit 0 without doing anything —
+    a repair command reporting success while leaving the fault in place.
 
     A wrong key is not the same as a key. Verifying costs one decrypt of the
     canary that `unlock` performs anyway.
@@ -445,28 +546,29 @@ def adopted():
     if doc is None:
         return False
     try:
-        return decrypt(bytes.fromhex(hex_key), doc["canary"]) == CANARY
+        return _opens_canary(bytes.fromhex(hex_key), doc)
     except Exception:
         return False        # unreadable, wrong length, wrong key — all "no"
 
 
-KIT_HEADER = "mati-recovery-kit/1"
+# ⚠️ A FORMAT CONSTANT: it tags a file the person keeps OFF this machine,
+# possibly for years. A rename would make every kit already written refuse to
+# restore. Write one, accept every historical spelling.
+KIT_HEADER = "ollin-recovery-kit/1"    # DO NOT RENAME
+KNOWN_KIT_HEADERS = ("ollin-recovery-kit/1", "olin-recovery-kit/1",
+                     "mati-recovery-kit/1")
 
 
 def recovery_kit(path):
     """Write the key to a file you keep ELSEWHERE. Returns the path.
 
-    ⚠️⚠️ WHY THIS EXISTS: THE KEY HAS BEEN DESTROYED TWICE AND RECOVERED BY
-    LUCK BOTH TIMES — once because a process happened to still be running with
-    it in memory, once because the passphrase had been printed to a screen and
-    that output happened to persist.
-    The vault file was intact on both occasions; the memories were never at
-    risk. The KEY was.
+    ⚠️⚠️ WHY THIS EXISTS: the keychain copy and the passphrase wrap are
+    independent in principle and can be lost together in practice — a wiped
+    keychain and a passphrase that was never written down. The vault file
+    survives that; the KEY does not, and without it the memories are gone.
 
-    ⚠️ THE EXISTING "TWO WRAPS" ARE NOT TWO CHANCES. The keychain wrap and the
-    passphrase wrap are independent in principle and were lost together in
-    practice, because the passphrase was never written down. A third wrap
-    under a third thing the person has to remember would fail the same way.
+    ⚠️ A THIRD WRAP WOULD NOT HELP. A wrap under a third thing the person has
+    to remember fails the same way the passphrase does.
 
     ⭐ SO THIS STORES THE KEY ITSELF, not a wrap of it. That is the whole
     point and the whole cost: **this file IS the vault.** Anyone holding it
@@ -482,11 +584,10 @@ def recovery_kit(path):
 
     k = key()                       # ⚠️ requires an unlocked vault: authorised
     dest = os.path.abspath(os.path.expanduser(path))
-    # ⚠️ BOTH THE LIVE VAULT AND THE DEFAULT. The first version guarded only
-    # `_DEFAULT_VAULT_PATH`, so it protected the shipped `.cache` and happily
-    # wrote a key beside a REDIRECTED vault — which is every test, and any
-    # second install. Using a default where the live value was meant is the
-    # same mistake that destroyed the key twice.
+    # ⚠️ BOTH THE LIVE VAULT AND THE DEFAULT. Guarding only
+    # `_DEFAULT_VAULT_PATH` would protect the shipped `.cache` and happily write
+    # a key beside a REDIRECTED vault — which is every test, and any second
+    # install.
     guards = {os.path.abspath(os.path.dirname(VAULT_PATH)),
               os.path.abspath(os.path.dirname(_DEFAULT_VAULT_PATH))}
     if any(dest.startswith(g + os.sep) or os.path.dirname(dest) == g
@@ -520,8 +621,7 @@ def restore_kit(path):
 
     ⚠️ VERIFIED AGAINST THE CANARY BEFORE IT IS TRUSTED. A kit from a
     different vault would otherwise be adopted silently and every read would
-    return noise — the failure `adopted()` used to permit, arriving from a
-    file instead of a keychain.
+    return noise.
     """
     import json as _json
     global _key
@@ -529,7 +629,7 @@ def restore_kit(path):
     src = os.path.abspath(os.path.expanduser(path))
     with open(src, encoding="utf-8") as f:
         body = _json.load(f)
-    if body.get("kind") != KIT_HEADER:
+    if body.get("kind") not in KNOWN_KIT_HEADERS:
         raise VaultError(f"{src} is not an Mati recovery kit")
     k = bytes.fromhex(body["data_key_hex"])
 
@@ -540,11 +640,7 @@ def restore_kit(path):
     # the result was not enough — the real failure arrived as a decryption
     # error and escaped as something the caller could not interpret. Both
     # outcomes mean the same thing and both say so.
-    try:
-        matched = decrypt(k, doc["canary"]) == CANARY
-    except Exception:
-        matched = False
-    if not matched:
+    if not _opens_canary(k, doc):
         raise VaultError(
             "this kit does not open THIS vault — it is probably from another "
             "install. Nothing was changed.")
@@ -553,15 +649,14 @@ def restore_kit(path):
 
 
 def adopt():
-    """Re-wrap the open key into this machine's keychain. For a transfer.
+    """Write the open key into this machine's keychain. For a transfer.
 
     Mati is meant to be carried — the whole install is a few megabytes and
-    moves on a drive. But the key is wrapped twice and **only one wrap
-    travels**: the passphrase wrap lives in `mati_vault.json`, while the
-    Touch ID wrap lives in this Mac's Secure Enclave and stays behind.
+    moves on a drive. But **only the passphrase wrap travels**: it lives in
+    `mati_vault.json`, while the keychain copy stays behind on the old Mac.
 
-    So on a destination machine the passphrase works and Touch ID does not,
-    for ever — the user retypes a twelve-word passphrase at every launch and
+    So on a destination machine the passphrase works and Mati cannot open
+    itself, for ever — the person retypes the passphrase at every launch and
     reasonably concludes the feature is broken. This is the one step that
     finishes a transfer.
 
@@ -573,11 +668,9 @@ def adopt():
     """
     if _key is None:
         raise Locked("unlock first — there is no key to adopt")
-    # ⚠️ VERIFY THE WRITE. This returned True unconditionally, so a keychain
-    # write that was refused or silently dropped still reported success — and
-    # the caller printed "Touch ID will work on this Mac from now on" over a
-    # keychain that had not changed. Third time this week a function has
-    # reported an outcome it never checked.
+    # ⚠️ VERIFY THE WRITE. A keychain write can be refused or silently dropped,
+    # and reporting success over a keychain that has not changed would tell the
+    # person Mati will open itself here when it will not.
     _keychain_set(_key.hex())
     if not adopted():
         raise VaultError(
@@ -634,40 +727,38 @@ def open_body(stored):
 def _keychain_is_safe():
     """Is this process pointed at the real vault, or a redirected one?
 
-    ⚠️ A DIAGNOSTIC ONCE OVERWROTE THE REAL KEYCHAIN KEY WITH A THROWAWAY. A
-    diagnostic script redirected `VAULT_PATH` to a temp file and called
-    `setup()` — which writes the new data key to the REAL keychain account,
-    because the account name is a module constant and does not follow
-    VAULT_PATH. Touch ID then produced a key that could not open the real
-    vault, and `unlock()` failed its canary check.
+    ⚠️ A REDIRECTED VAULT MUST NOT REACH THE REAL KEYCHAIN ACCOUNT. A script
+    that points `VAULT_PATH` at a temp file and calls `setup()` would write its
+    new data key to the REAL account if the account name followed nothing but
+    a module constant — and the real vault would then fail its canary check,
+    silently, until some unrelated command tried to unlock it. Nothing would be
+    lost (the vault FILE still holds the passphrase-wrapped key, and
+    `--unlock` plus `--adopt` restores it), but nothing would say so either.
 
-    Nothing was lost: the vault FILE still holds the passphrase-wrapped key,
-    and `--unlock` plus `--adopt` restores it. But the failure was silent at
-    the moment it happened and only surfaced minutes later, on an unrelated
-    command.
-
-    `test_vault` had this right all along — it swaps KEYCHAIN_ACCOUNT to
-    "data-key-TEST" and deletes only that. This makes the discipline the
-    module's rather than the caller's.
+    This makes that discipline the module's rather than the caller's.
     """
     return os.path.abspath(VAULT_PATH) == os.path.abspath(_DEFAULT_VAULT_PATH)
 
 
-def setup(force=False, passphrase_only=False):
+def setup(force=False, passphrase_only=False, presence_check=True):
     """Create the key, wrap it, and encrypt whatever is already stored.
 
-    ⚠️ `passphrase_only=True` IS FOR MACS WITHOUT TOUCH ID, AND IT IS NOT A
-    DEGRADED MODE — it is the only honest one there. Until  setup
-    SKIPPED ENCRYPTION ENTIRELY on such a machine and printed a note about it,
-    so those installs kept every memory in the clear while the README's
-    privacy wording read exactly the same as everywhere else.
+    The two arguments choose one of the three modes in this module's header:
 
-    ⚠️ AND IT MUST NOT WRITE THE KEY TO THE KEYCHAIN. The keychain entry is
-    what Touch ID gates; with no biometrics it is readable by anything running
-    in the login session, so storing the key there would make the encryption
-    theatre — a vault whose key sits beside it. Passphrase-only means the
-    passphrase is genuinely the only way in, which is why `setup.py` makes the
-    person confirm they have written it down before continuing.
+        passphrase_only=True                 'passphrase'
+        presence_check=True  (the default)   'touch_id'
+        presence_check=False                 'keychain'
+
+    ⚠️ `passphrase_only` WRITES NOTHING TO THE KEYCHAIN, and that is the whole
+    of what it offers: the key is nowhere on the machine, so nothing running
+    there can read it while Mati is stopped. The price is that someone types
+    the passphrase every time Mati starts, and `setup.py` makes them confirm
+    they have written it down before continuing.
+
+    ⚠️ `presence_check=False` IS FOR A MAC WITH NO TOUCH ID. A fingerprint
+    prompt there can only fail, and Mati would start locked every time with
+    its key one line away. The mode is recorded in the vault file, so `unlock`
+    knows not to ask.
     """
     global _key
     if is_set_up() and not force:
@@ -689,7 +780,8 @@ def setup(force=False, passphrase_only=False):
         # one's key. Written into the vault BEFORE `_keychain_set` below, or
         # the write would land on the account this vault no longer claims.
         doc["keychain"] = {"service": KEYCHAIN_SERVICE,
-                           "account": _new_keychain_account()}
+                           "account": _new_keychain_account(),
+                           "touch_id": bool(presence_check)}
     _write_vault(doc)
     if not passphrase_only:
         _keychain_set(data_key.hex())
@@ -699,24 +791,16 @@ def setup(force=False, passphrase_only=False):
 # ─────────────────────────────────────────────────────────────────────────────
 # WHICH COLUMNS HOLD SOMETHING A PERSON WROTE OR READ
 #
-# ⚠️ THE VAULT PROTECTED ONE TABLE AND EVERYTHING ELSE WENT ROUND IT. Found
-# found by chasing a `test_vault` failure that had been dismissed as noise
-# three times. `notes.body` and `notes.verbatim` were sealed; four sibling
-# tables in the SAME FILE were not:
+# ⚠️ PROTECTION IS A PROPERTY OF THE STORE, NOT A HABIT OF ONE MODULE. The vault
+# is built around `notes`, but other tables in the SAME FILE hold just as much
+# — the book text waiting to be studied, what Mati means to say to the person,
+# its own questions, the passages it declined to learn. Every table added later
+# brings its own writer, and a writer that does not know about the vault does
+# not call it.
 #
-#     study_queue.body      2,776 rows   551,988 characters of book text
-#     to_say.body/topic     1,153 rows   what Mati means to SAY to the person
-#     inquiry_topics        9 rows       its own questions
-#     refusals.body         16 rows      passages it declined to learn
-#
-# The cause was structural: the vault was built around `notes`, and every table
-# added afterwards brought its own writer and simply did not call it.
-# Protection was a habit of one module rather than a property of the store, and
-# a habit cannot be relied on by a table that does not know it exists.
-#
-# So the two sets are DECLARED, and `test_vault` fails if a text column appears
-# in neither. A new table cannot opt out by omission any more; it has to be
-# classified, in the open, by someone who thought about it.
+# So the two sets are DECLARED, and the tests fail if a text column appears in
+# neither. A new table cannot opt out by omission; it has to be classified, in
+# the open, by someone who thought about it.
 SEALED_COLUMNS = (
     # ── classified columns ──────────────────────────────
     # ⚠️ EVERY ONE OF THESE WAS CHECKED BY WRITING A SENTINEL THROUGH THE REAL
@@ -730,19 +814,15 @@ SEALED_COLUMNS = (
     ("spending", "item"),             # what was bought
     ("spending", "note"),
     ("watchlist", "note"),            # sealed
-    ("price_seen", "merchant"),       # sealed  — where they shop
-    ("radio_presets", "name"),        # sealed  — what they listen to
+    ("price_seen", "merchant"),       # sealed — where they shop
+    ("radio_presets", "name"),        # sealed — what they listen to
     ("radio_presets", "url"),         # sealed
-    # ⚠️ A DRAFT IS THE PERSON'S OWN WRITING — the rule says anything
-    # they supplied is identifying, and prose they wrote is the
-    # clearest case. Declared when the table was created, rather than
-    # becoming the seventh unclassified one.
+    # ⚠️ A DRAFT IS THE PERSON'S OWN WRITING — anything they supplied is
+    # identifying, and prose they wrote is the clearest case.
     ("drafts", "body"),
     # ⚠️ THE BRIEF IS THE PERSON'S OWN WORDS ABOUT THEIR OWN WORK. "3000
     # words on the divorce letter" names a subject as plainly as any episode
-    # does, and `why` is their reason for abandoning something. `test_vault`
-    # caught these unclassified the day the module landed, which is the only
-    # reason they are here rather than in plaintext on disk.
+    # does, and `why` is their reason for abandoning something.
     ("targets", "what"),
     ("targets", "basis"),
     ("targets", "why"),
@@ -755,8 +835,8 @@ SEALED_COLUMNS = (
     ("study_queue", "body"),
     ("inquiry_topics", "topic"), ("inquiry_topics", "next_q"),
     ("refusals", "body"),
-    # Found by the classification guard, which sees columns that have no rows
-    # yet and so were invisible to a scan of the live store.
+    # Columns with no rows yet are classified too: a scan of a live store
+    # cannot see them, and the classification guard can.
     ("to_say", "detail"),
     ("predictions", "claim"), ("predictions", "basis"),
     ("predictions", "correction"),
@@ -775,12 +855,8 @@ SEALED_COLUMNS = (
     ("agenda", "title"), ("agenda", "location"),
     # What someone listens to is as personal as a note body.
     ("played", "name"), ("played", "detail"),
-    # ⚠️ FOUND BY THE CLASSIFICATION GUARD, AND IT IS THE PERSON'S
-    # OWN WORDS. `rapport.question` stores settled exchanges learned from the
-    # record — 'hello', 'i am <name>' — verbatim and, until now, in the clear.
-    # Exactly the finding a security sweep recorded for the
-    # sibling tables; `rapport` was built after that sweep and inherited none of
-    # it. The guard caught it, nobody did.
+    # ⚠️ THE PERSON'S OWN WORDS. `rapport.question` stores settled exchanges
+    # learned from the record — 'hello', 'i am <name>' — verbatim.
     ("rapport", "question"),
     # Empty in the live store today, and designed to hold words lifted from
     # memories — so it is sealed BEFORE it has content rather than after.
@@ -791,11 +867,11 @@ SEALED_COLUMNS = (
 CLEAR_COLUMNS = {
     # ── classified columns ──────────────────────────────
     # ⚠️⚠️ THREE OF THESE ARE A REAL EXCEPTION TO THE RULE, NOT AN APPLICATION
-    # OF IT. The rule is the user's: "anything that contains information provided
-    # by the user is identifying data, and should be marked and secured."
-    # `budgets.name`, `watchlist.item` and `price_seen.item` ARE supplied by
-    # the person — "grocery", "coffee", "book" are in the live table — and
-    # they are plaintext anyway, because each is a lookup key:
+    # OF IT. The rule: anything that contains information provided by the user
+    # is identifying data, and is marked and secured. `budgets.name`,
+    # `watchlist.item` and `price_seen.item` ARE supplied by the person —
+    # "grocery", "coffee", "book" — and they are plaintext anyway, because
+    # each is a lookup key:
     #
     #   budgets.name      UNIQUE INDEX, and `spending.budget` joins to it
     #   watchlist.item    `ON CONFLICT(item)` upsert; `WHERE item=?` in
@@ -809,13 +885,11 @@ CLEAR_COLUMNS = {
     # deterministic index plus a sealed display column — a schema migration,
     # not a declaration.
     #
-    # ⭐ DECIDED by the user: ship as-is, knowingly. Someone who can
-    # already read the raw database learns the envelope names and the
-    # shopping list — and nothing else. Amounts, merchants, notes and every
-    # transcript are sealed, and a test proves that on each run rather than
-    # asserting it here. Settled, not an open question. What would reopen it
-    # is a column that
-    # is BOTH a lookup key and genuinely sensitive.
+    # ⭐ DECIDED: ship as-is, knowingly. Someone who can already read the raw
+    # database learns the envelope names and the shopping list — and nothing
+    # else. Amounts, merchants, notes and every transcript are sealed, and a
+    # test proves that on each run rather than asserting it here. What would
+    # reopen it is a column that is BOTH a lookup key and genuinely sensitive.
     ("budgets", "name"): "⚠️ user-supplied, plain: UNIQUE index + the join key "
                          "spending.budget matches on — see the note above",
     ("watchlist", "item"): "⚠️ user-supplied, plain: the ON CONFLICT upsert key "
@@ -847,9 +921,9 @@ CLEAR_COLUMNS = {
     # index and every WHERE clause use it, and sealed values do not compare.
     # Same reason `notes.source` is plain. The BODY, which is the person's
     # actual writing, is sealed.
-    # ⚠️ THIS WAS DECLARED SEALED BEFORE IT WAS, which is precisely the
-    # error this file exists to prevent: a declaration is a claim, and a
-    # claim that outruns the code turns `test_vault` green over plaintext.
+    # ⚠️ A DECLARATION IS A CLAIM. A column declared sealed that the code does
+    # not actually seal would turn the tests green over plaintext, which is
+    # precisely the error this file exists to prevent.
     ("drafts", "title"): "the lookup key; the unique index compares it",
     ("targets", "draft"): "the draft's title — the same lookup key as "
                           "drafts.title, and compared against it",
@@ -879,7 +953,7 @@ CLEAR_COLUMNS = {
     ("agenda", "imported"): "timestamp",
     ("agenda", "withdrawn"): "timestamp when it left the source; NULL means live",
     ("agenda", "ext_id"): "the source's own opaque identifier, not text of ours",
-    ("notes", "personal_only"): "a 0/1 flag marking MATI'S OWN introspection — likes, self-discoveries, interests, goals. Set on `mine` rows and nothing else. ⭐ IT HAS A READER AS OF : `make_ship_field.assert_impersonal` REFUSES to call a store shippable if any of these rows are in it, which is what makes the flag mean something. That was previously true only by accident: 'a build is from scratch' is a property of how the build RUNS, not of what it emits. ⚠️ Deliberately NOT filtered on transfer: a copy to the same person's new Mac SHOULD carry them, they are what makes it the same Mati. ⚠️ Today the flag is exactly equivalent to `source = 'mine'` (measured: 40 of 6669, zero asymmetry); it is kept because a planned export to ANOTHER person needs it as the precedent for what must not travel, and a test trips if the two ever diverge. Plain, so the flag is readable without the key",
+    ("notes", "personal_only"): "a 0/1 flag marking MATI'S OWN introspection — likes, self-discoveries, interests, goals. Set on `mine` rows and nothing else. ⭐ `make_ship_field.assert_impersonal` REFUSES to call a store shippable if any of these rows are in it, which is what makes the flag mean something: 'a build is from scratch' is a property of how the build RUNS, not of what it emits. ⚠️ Deliberately NOT filtered on transfer: a copy to the same person's new Mac SHOULD carry them, they are what makes it the same Mati. ⚠️ The flag is equivalent to `source LIKE 'mine%'`; it is kept because an export to ANOTHER person needs it as the precedent for what must not travel, and a test trips if the two ever diverge. Plain, so the flag is readable without the key",
     ("rapport", "kind"): "greeting/introduction — a category, not content",
     ("rapport", "qhash"): "a hash, deliberately — it is the lookup key for the sealed question beside it, and equality search cannot work on salted ciphertext",
     ("rapport", "for_day"): "timestamp",
@@ -944,14 +1018,13 @@ def seal_soft(text):
 
     ⚠️ `seal()` RAISES when locked, and these writers are not all on paths that
     hold the key — `say_later` fires from the sleep loop, `study` enqueues in
-    the background. Making them hard-fail turned a locked vault into a crash
-    that lost a reminder, which is a worse outcome than the exposure it was
-    meant to prevent.
+    the background. Hard-failing would turn a locked vault into a crash that
+    loses a reminder, which is a worse outcome than the exposure it prevents.
 
     This is the pattern the module already uses for `notes`: plaintext rows
     accumulate before setup, `is_encrypted` tolerates a mixed store, and
-    `migrate` catches up. `migrate_tables` is idempotent and runs at startup,
-    so the window is one process lifetime, not forever.
+    `migrate` catches up. `migrate_tables` is idempotent and runs at startup
+    and after an unlock, so the window is one locked spell, not forever.
 
     ⚠️ It is a WINDOW, not an exemption. Anything written while locked is in
     the clear until the next migration, and that is the honest cost of not
@@ -1052,6 +1125,48 @@ def harden_permissions():
     return changed
 
 
+def unlock_running(passphrase=None, timeout=90):
+    """Ask the Mati running on this machine to open its vault. Its answer.
+
+    Unlocking in a process of your own opens nothing for the one that is
+    actually answering, so this is how a locked Mati gets its memories back
+    without being restarted. With no passphrase it retries the vault's own
+    way — the keychain, after a fingerprint where the vault calls for one.
+
+    ⚠️ ONLY TO A MATI SERVING THIS VAULT. The port is per machine, not per
+    install: a second copy could be the one listening, and a passphrase is not
+    something to hand to whatever answers. `vault_id` is compared first, and
+    nothing is sent on a mismatch.
+
+    Returns `running` and `same_vault`, then whatever `/unlock` replied.
+    """
+    import urllib.error
+    import urllib.request
+    base = f"http://{C.SERVER_HOST}:{C.SERVER_PORT}"
+    try:
+        with urllib.request.urlopen(base + "/health", timeout=5) as r:
+            health = json.loads(r.read().decode())
+    except Exception:
+        return {"running": False}
+    if not vault_id() or health.get("vault_id") != vault_id():
+        return {"running": True, "same_vault": False}
+    req = urllib.request.Request(
+        base + "/unlock",
+        data=json.dumps({"passphrase": passphrase} if passphrase else {}).encode(),
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            reply = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            reply = json.loads(e.read().decode())
+        except Exception:
+            reply = {"unlocked": False, "error": f"HTTP {e.code}"}
+    except Exception as e:
+        reply = {"unlocked": False, "error": str(e)}
+    return {"running": True, "same_vault": True, **reply}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1061,7 +1176,7 @@ def main():
                     help="with --setup: replace the key, losing every memory")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--unlock", action="store_true",
-                    help="unlock with the recovery passphrase")
+                    help="open the vault, and the Mati that is running")
     ap.add_argument("--export", metavar="PATH",
                     help="write decrypted memories to a file you choose")
     ap.add_argument("--recovery-kit", metavar="PATH",
@@ -1139,11 +1254,22 @@ def main():
 
     if args.status or not any((args.setup, args.unlock, args.export, args.adopt)):
         doc = _read_vault()
+        mode = unlock_method()
         print(f"  vault        : {'set up' if doc else 'not set up'}")
+        if mode:
+            print(f"  opens with   : " + {
+                "touch_id": "the keychain, after a fingerprint",
+                "keychain": "the keychain, by itself when Mati starts",
+                "passphrase": "the passphrase, typed each time Mati starts",
+            }[mode])
         print(f"  biometrics   : {'available' if biometrics_available() else 'no'}")
-        print(f"  keychain key : {'present' if _keychain_get() else 'absent'}"
-              + ("" if _keychain_get() or not doc else
-                 "  <- carried here? run --adopt"))
+        if mode == "passphrase":
+            print("  keychain key : none, by design")
+        else:
+            held = bool(_keychain_get())
+            print(f"  keychain key : {'present' if held else 'absent'}"
+                  + ("" if held or not doc else
+                     "  <- carried here? run --adopt"))
         if doc:
             import sqlite3
             from . import bridge
@@ -1157,26 +1283,61 @@ def main():
         return 0
 
     if args.setup:
-        phrase = setup(force=args.force)
+        # ⚠️ ASK THE MACHINE. A Touch ID vault on a Mac with no sensor can
+        # never open itself; `python3 -m Mati.setup` offers the full choice.
+        touch = biometrics_available()
+        phrase = setup(force=args.force, presence_check=touch)
         n = migrate()
         harden_permissions()
         print("\n" + "=" * 62)
         print("  Mati's memories are now encrypted.")
         print("\n  RECOVERY PASSPHRASE — write this down now:\n")
         print(f"      {phrase}\n")
-        print("  Touch ID unlocks Mati day to day. This passphrase is the")
-        print("  ONLY way back if the keychain is lost — a wiped Mac, a new")
-        print("  machine, a reset Touch ID. It is not stored anywhere you can")
-        print("  read it again, and nothing can recover it.")
+        print("  " + ("Touch ID unlocks Mati day to day." if touch else
+                     "Mati opens its own key from your keychain when it starts.")
+              + " This passphrase is the")
+        print("  ONLY way back if the keychain is lost — a wiped Mac or a new")
+        print("  machine. It is not stored anywhere you can read it again,")
+        print("  and nothing can recover it.")
         print("=" * 62)
         print(f"\n  {n} existing memories encrypted.")
         return 0
 
     if args.unlock:
         import getpass
-        unlock(passphrase=getpass.getpass("recovery passphrase: "))
-        print("  unlocked (this process only)")
-        return 0
+        mode = unlock_method()
+        if mode is None:
+            print("  there is no vault here to unlock"); return 1
+        ask = ("recovery passphrase" if mode == "passphrase" else
+               "recovery passphrase (or just return, to have Mati open "
+               "its own key)")
+        phrase = getpass.getpass(f"  {ask}: ").strip()
+        if phrase:
+            # ⚠️ CHECKED HERE FIRST, so a mistyped passphrase is never sent
+            # anywhere and never counts against the running Mati's limit.
+            try:
+                unlock(passphrase=phrase, quiet=True)
+            except Exception as e:
+                print(f"  that passphrase did not open the vault: {e}")
+                return 1
+        elif mode == "passphrase":
+            print("  this vault opens only with its passphrase"); return 1
+        out = unlock_running(phrase or None)
+        if not out.get("running"):
+            print("  " + ("the passphrase is right, but " if phrase else "")
+                  + f"no Mati is running on port {C.SERVER_PORT} — start it, "
+                  "then run this again")
+            return 0 if phrase else 1
+        if not out.get("same_vault"):
+            print(f"  a Mati is running on port {C.SERVER_PORT}, but it is a "
+                  "different install — nothing was sent to it")
+            return 1
+        if out.get("unlocked"):
+            print("  Mati is unlocked" + (" — it already was" if out.get("already")
+                                          else " and can read its memories now"))
+            return 0
+        print(f"  Mati stayed locked: {out.get('error') or 'no reason given'}")
+        return 1
 
     if args.export:
         import sqlite3

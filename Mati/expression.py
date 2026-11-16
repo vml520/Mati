@@ -1,5 +1,5 @@
 """
-Which clip the avatar is playing — one at a time, with transitions.
+Which state the avatar shows: one at a time, with transitions.
 
     from Mati import expression
     expression.read(stage="idle", info={"challenging": {...}})
@@ -7,56 +7,43 @@ Which clip the avatar is playing — one at a time, with transitions.
     expression.transition("thinking", "standing")
     # ['thinking-to-standing', 'standing']
 
-⚠️⚠️ SCOPE CHANGED, AND THIS FILE SAID OTHERWISE FOR SIX WEEKS. It described
-a set of short video clips, decided  — "**Not a procedurally
-animated avatar**" in as many words. The app replaced those seven mp4s with a
-procedural animation on  and untracked the video . The
-clips are gone; this module's description of them was not, and a reader
-(including me) took the stale half as current and concluded the avatar had
-been lost.
+**WHAT THIS MODULE DECIDES: WHICH STATE MATI IS IN.** One name, from the stage
+and the turn's info. The frontend owns the rendering, a procedural animation,
+and maps each name to a scene. That mapping is `SCENE` in the app's
+`index.html`, not here, because the scene vocabulary belongs to the art.
 
-**WHAT THIS MODULE ACTUALLY DECIDES: WHICH STATE MATI IS IN.** One name, from
-the stage and the turn's info. The frontend owns the rendering and maps each
-name to a scene in its animation component — that mapping is `SCENE` in the
-app's `index.html`, not here, because the scene vocabulary belongs to the art.
+**THE LIVE FIELD IS EXPRESSED BY THE FRAME COLOUR ONLY**, not by the face. See
+`signal.py`, which turns coherence into an ambient frame hue. Everything in
+this module is *what Mati is doing*, which is discrete and state-shaped; the
+continuous state rides entirely on the frame.
 
-**THE LIVE FIELD IS EXPRESSED BY THE FRAME COLOUR ONLY.** Not by the face. See
-`signal.py`, which turns coherence into an ambient frame hue. Everything in this
-module is *what Mati is doing*, which is discrete and state-shaped; the
-continuous state rides entirely on the frame. ⭐ That split still holds and is
-the reason the change above cost nothing structural — the face was never the
-field's channel.
+⚠️ **THE BASIN → HEAD ANGLE MAPPING IS NOT RENDERED.** `head_angle()` and
+`BASIN_CALIBRATION` are kept because they are calibrated and correct, but
+nothing draws them. Do not describe Mati as expressing its basin through the
+avatar; it does not.
 
-⚠️ **CONSEQUENCE: THE BASIN → HEAD ANGLE MAPPING IS NOT USED THIS RELEASE.**
-`head_angle()` and `BASIN_CALIBRATION` are kept because they are measured and
-correct, but nothing renders them. They belong to the animated-avatar version.
-Do not describe Mati as expressing its basin through the avatar — it does not.
+TWO RULES DECIDE THINGS.
 
-TWO RULES SURVIVE FROM THE DESIGN, AND STILL DECIDE THINGS.
+**ONE STATE AT A TIME.** A turn can set half a dozen flags at once: corrected
+*and* recomputed *and* consolidated. `read()` returns exactly one, chosen from
+the STAGE alone, so the frontend never invents its own ordering and two
+clients never disagree about what Mati is doing.
 
-**ONE CLIP AT A TIME.** A turn can set half a dozen flags at once — corrected
-*and* recomputed *and* consolidated. `read()` returns exactly one clip, chosen
-from the STAGE alone, so the frontend never invents its own ordering and two
-clients never disagree about what Mati is doing. Same reasoning as the colour
-signal being computed here.
+The flags come back beside it as `also`, all of them, unranked. Nothing has
+to lose; see MOMENTS.
 
-The flags come back beside it as `also`, all of them, unranked. They used to
-each have their own head loop and a PRIORITY list to pick between them; that
-list existed only because one slot could not hold a turn that was genuinely two
-things at once. Nothing has to lose now — see MOMENTS.
-
-**STILLNESS IS ATTENTION.** `idle` is the only state whose clip wanders; every
-other loop is still. This is how animals signal attention and it needs no
-explaining — a creature that goes still is listening. It costs nothing to
+**STILLNESS IS ATTENTION.** `idle` is the only state that wanders; every other
+loop is still. This is how animals signal attention and it needs no
+explaining: a creature that goes still is listening. It costs nothing to
 render, because it is the removal of motion rather than the addition of any.
 
 ⚠️ **`attending` IS THE CLIENT'S, NOT THE SERVER'S.** It belongs to the moment
-the user starts typing, which the server never witnesses — by the time a turn
-arrives the moment has passed. A frontend raises it locally on first keystroke.
-Waiting for `/events` would put attention *after* the thing it is attending to.
+the user starts typing, which the server never witnesses: by the time a turn
+arrives the moment has passed. A frontend raises it locally on first
+keystroke.
 
-⚠️ **NO LEGEND, EVER.** If a user has to be told what a clip means, it failed.
-`meaning` is for developers and the record; it must not be rendered.
+⚠️ **NO LEGEND, EVER.** If a user has to be told what a state means, it
+failed. `meaning` is for developers and the record; it must not be rendered.
 """
 
 # ── the clips ───────────────────────────────────────────────────────────────
@@ -154,24 +141,17 @@ CLIPS = {
 
 DEFAULT = "idle"
 
-# ⚠️ THERE IS NO LONGER A CLIP PER MOMENT — simplified.
+# One `thinking` state covers computing, disagreeing and deferring. From the
+# viewer's side Mati is working on their turn, and separate framings of the
+# same pose would be a distinction nobody reads off a face.
 #
-# `reckoning`, `standing` and `yielding` were separate head loops for
-# computing, disagreeing and deferring. They are all `thinking`: from the
-# viewer's side Mati is working on their turn, and three near-identical
-# framings of the same pose are three assets to draw, light and match for a
-# distinction nobody reads off a face.
+# The meanings are kept as `moments` on every read, and the avatar carries
+# them through FRAME COLOUR rather than animation. Colour can be present at
+# the same time as the pose instead of replacing it, so a turn that is
+# genuinely two things at once does not have to pick one.
 #
-# THE MEANINGS ARE NOT LOST, they moved layers. The flags still arrive on every
-# read as `moments`, and the avatar already carries live state through FRAME
-# COLOUR rather than animation. Colour is the right home for "it disagreed":
-# it can be present at the same time as the pose instead of replacing it, which
-# is what the old PRIORITY list was really working around — it had to pick one
-# clip when a turn was genuinely two things at once.
-#
-# What this costs: 3 loops and 2 transitions — 18 assets down to 13
-# (7 loops + 6 transitions). `shutdown` is not counted either way:
-# it renders `absent`, so there is nothing to draw.
+# 7 loops + 6 transitions. `shutdown` renders `absent`, so there is nothing
+# to draw for it.
 MOMENTS = ("challenging", "deferred", "computed")
 
 # ── transitions ─────────────────────────────────────────────────────────────
@@ -202,9 +182,6 @@ DIRECT = {
     # Both already underwater: a dissolve within the scene, not a round trip
     # to the surface and back.
     ("asleep", "dreaming"), ("dreaming", "asleep"),
-    # ⚠️ "2 — the moment is the point" is gone with the clips it served:
-    # ("thinking","standing") and ("thinking","yielding") were bespoke beats
-    # off the thinking pose, and there is no longer a pose to beat into.
 }
 
 # SHOT CHANGES ROUTE THROUGH `idle`, and only shot changes do.
@@ -218,8 +195,8 @@ DIRECT = {
 # leg already exists, so this costs nothing.
 #
 # Routing is applied ONLY to shot changes. Head-to-head still crossfades
-# directly: making those detour through idle was the 32-clip first draft, and
-# it inserted motion nobody asked for between two similar poses.
+# directly: a detour through idle would insert motion nobody asked for between
+# two similar poses.
 
 
 def missing_transitions():
@@ -300,21 +277,20 @@ def transition(frm, to):
     return done([_step(to, True)])                  # head to head: crossfade
 
 
-# ── basin → head angle: MEASURED, AND NOT USED THIS RELEASE ─────────────────
+# ── basin → head angle: CALIBRATED, NOT RENDERED ────────────────────────────
 #
-# Kept because it is correct and was expensive to get right, and because the
-# animated-avatar version will want it. ⚠️ Nothing renders it today — the live
-# field reaches the user through the frame colour alone.
+# Kept because it is correct, for a future animated head. Nothing renders it:
+# the live field reaches the user through the frame colour alone.
 #
-# Measured over the real episode store:
+# Observed ranges over an episode store:
 #     w0 0.1225-0.4312 (mean 0.1988)   w1 0.2800-0.5613 (0.4504)
 #     w2 0.0972-0.4380 (0.3625)
 # ⚠️ Not 0-1: mapped naively the head would never move. Calibrated on MEAN and
 # spread rather than min/max, because w0's mean sits below its range midpoint
-# and a range mapping left a typical turn rendering the head 6 degrees off to
-# one side permanently.
-# ⚠️ w1 and w2 correlate +0.950 (n=14, one person's history) — three rotations,
-# about two real degrees of freedom, which is why roll's range is small.
+# and a range mapping would leave a typical turn rendering the head 6 degrees
+# off to one side.
+# ⚠️ w1 and w2 correlate strongly (+0.95): three rotations, about two real
+# degrees of freedom, which is why roll's range is small.
 BASIN_CALIBRATION = ((0.1988, 0.2218), (0.4504, 0.1210), (0.3625, 0.1790))
 HEAD_RANGE = {"yaw": 12.0, "pitch": 8.0, "roll": 3.0}
 USED_THIS_RELEASE = False
@@ -389,15 +365,13 @@ def describe():
     return {
         "expressions": sorted(CLIPS),
         "default": DEFAULT,
-        # No longer a clip ranking — these are reported alongside the
-        # clip, all at once, for the frame-colour layer to carry.
+        # Reported alongside the state, all at once, for the frame-colour
+        # layer to carry.
         "moments": list(MOMENTS),
-        # ⚠️ NOT AN ASSET LIST ANY MORE. This was `clip_names()` — 7 loops and
-        # 6 transitions, "13 clips to produce" — which stopped being true when
-        # the app went procedural: the animation has a scene table, so there
-        # is nothing to load per state and no missing-file case. `clip_names()`
-        # is kept below and still tested, because the names are the STATES and
-        # the frontend maps them; what is retired is calling them files.
+        # ⚠️ NOT AN ASSET LIST. The app animates procedurally from a scene
+        # table, so there is nothing to load per state and no missing-file
+        # case. `clip_names()` below still names the STATES, because the
+        # frontend maps them — they are states, not files.
         "states": sorted(CLIPS),
         "transitions_retired": "the animation moves between cues itself",
         "render_modes": {
@@ -410,7 +384,7 @@ def describe():
         "not_this_release": {
             "basin_to_head_angle": "measured and kept, but nothing renders it; "
                                    "belongs to the animated-avatar version",
-            "pre_rendered_clips": "retired  — the app animates "
+            "pre_rendered_clips": "retired — the app animates "
                                   "procedurally from a scene table",
         },
         "rules": [
@@ -430,10 +404,9 @@ if __name__ == "__main__":
     import json
     d = describe()
     print(json.dumps(d, indent=2))
-    # ⚠️ IT USED TO PRINT "13 clips to produce". It does not any more: the app
-    # animates from a scene table, so there is nothing to produce. What a
-    # frontend needs from here is the STATE NAMES and which of them it must
-    # map — the mapping itself lives in the app.
+    # The app animates from a scene table, so there is nothing to produce.
+    # What a frontend needs from here is the STATE NAMES and which of them it
+    # must map; the mapping itself lives in the app.
     names = clip_names()
     print(f"\n  {len(d['states'])} states; the frontend maps each to a scene\n")
     for n in d["states"]:

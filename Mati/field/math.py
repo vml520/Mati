@@ -1,8 +1,7 @@
 # Part of Mati's field — the phase-field substrate its memory is built on.
 #
-# ⚠️ THIS IS THE AUTHORITATIVE COPY. These modules began as a shared study
-# codebase and were split off so the field could change without anything
-# else moving under it. Nothing outside Mati imports them.
+# ⚠️ THIS IS THE AUTHORITATIVE COPY. Nothing outside Mati imports these
+# modules, so the field can change without anything else moving under it.
 #
 # ⚠️ KEEP THIS A COMMENT, NOT A DOCSTRING. A docstring here would sit
 # before `from __future__`, which is a SyntaxError that `ast.parse`
@@ -1587,13 +1586,10 @@ class VirtualQC:
                     })
 
             elif tokens and tokens[0] == "evaluate":
-                # Plain arithmetic. It was never routed here — `reckon`'s
-                # "arithmetic" suite tests gcd/lcm/choose/factorial against
-                # stdlib, which is the ENGINE, not expression evaluation — so
-                # "3 + 4 * 2" fell through to the language model. Measured
-                # : llama3.2 answered 10 (precedence), 347*29 as
-                # 10073, and 1234+5678 as 3902. Exactly what a deterministic
-                # engine is for.
+                # Plain arithmetic, evaluated here rather than by the
+                # language model: llama3.2 answers "3 + 4 * 2" as 10
+                # (precedence), 347*29 as 10073, and 1234+5678 as 3902.
+                # Exactly what a deterministic engine is for.
                 expr = problem.split(None, 1)[1] if len(tokens) > 1 else ""
                 val = _safe_arith(expr)
                 if val is None:

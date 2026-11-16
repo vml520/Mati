@@ -1,53 +1,51 @@
 """
 The cuttlefish channel — a handshake in colour, not a language.
 
-`STUDY_cuttlefish.md` has the measurements. The short version, because it
-decides everything in this file:
+The measurements, in short, because they decide everything in this file:
 
     4 colours, ~10 symbols/s, ~20 bits/s.
 
 A 100-character sentence would take forty seconds, so ⚠️ THIS CHANNEL CANNOT
 CARRY LANGUAGE AND MUST NEVER BE ASKED TO. It carries a HANDSHAKE: who I am,
 what I speak, where to reach me — and then the real conversation moves
-somewhere with room in it. That is the user's fax/modem analogy taken at its
-word: the screech was never the conversation, it was two machines agreeing
-how to have one.
+somewhere with room in it. That is the fax/modem analogy taken at its word:
+the screech was never the conversation, it was two machines agreeing how to
+have one.
 
 ⚠️ THE ALPHABET IS FOUR COLOURS AND THAT IS A CEILING, NOT A STARTING POINT.
-Measured: with realistic auto white balance, 6 colours already errs at 11%.
-Auto white balance is a control loop pulling every frame toward grey, which
-means the camera ACTIVELY ERASES the signal — it is not additive noise, and
-⚠️ differential encoding (the textbook answer for a channel with no absolute
-reference) was TESTED AND MADE IT WORSE: 0.2% -> 0.4% at four colours, 34% ->
-56% at sixteen. DPSK wins when the impairment is shared between neighbouring
+In simulation with realistic auto white balance, 6 colours already errs at
+11%. Auto white balance is a control loop pulling every frame toward grey,
+which means the camera ACTIVELY ERASES the signal — it is not additive noise,
+and ⚠️ differential encoding (the textbook answer for a channel with no
+absolute reference) MAKES IT WORSE: 0.2% -> 0.4% at four colours, 34% -> 56%
+at sixteen. DPSK wins when the impairment is shared between neighbouring
 symbols; this one reacts to each symbol's own content.
 
-⚠️ THE COLOURS ARE COLOURBLIND-SAFE AND THAT WAS FREE AT FOUR. Chosen by
+⚠️ THE COLOURS ARE COLOURBLIND-SAFE AND THAT IS FREE AT FOUR. Chosen by
 maximising the worst pairwise CIELAB separation across normal, deuteranopic,
 protanopic and tritanopic vision at once: the worst case is 49.6 ΔE, where
 2.3 is a just-noticeable difference and 10 reads as obviously different. At
-sixteen colours there would have been no room for this.
+sixteen colours there would be no room for this.
 
-⚠️ THE ALPHABET IS FOUR COLOURS BECAUSE THE MEDIUM IS A SCREEN. The user wants
-the camera FLASH eventually, and that changes the arithmetic by ~100x —
+⚠️ THE ALPHABET IS FOUR COLOURS BECAUSE THE MEDIUM IS A SCREEN. The camera
+FLASH is the eventual medium, and it changes the arithmetic by ~100x —
 rolling shutter makes every sensor ROW a time sample, so the same camera goes
-from 30 samples/s to a measured 21,600. This codec is deliberately independent
-of the medium: it maps bytes to symbols and back, and whether a symbol is
+from 30 samples/s to about 21,600. This codec is deliberately independent of
+the medium: it maps bytes to symbols and back, and whether a symbol is
 painted as a colour or blinked as a pulse is the transmitter's business.
 Moving to the flash means a new ALPHABET (two symbols) and a new renderer, not
-a new protocol. See STUDY_cuttlefish.md §4b.
+a new protocol.
 
 ⚠️ EVERY CAPACITY NUMBER IS SIMULATED. This module's loopback proves the
 encoder and decoder agree through a real pixel round trip; it does NOT prove
-a camera can read a screen. That needs hardware and is preregistered in the
-study.
+a camera can read a screen. That needs hardware.
 """
 
 from __future__ import annotations
 
 # ── the alphabet ─────────────────────────────────────────────────────────────
-# Derived, not chosen by eye. See the module docstring and
-# `Mati/study_cuttlefish.py` for the search that produced them.
+# Derived, not chosen by eye — by the colourblind-safe separation search
+# described in the module docstring.
 ALPHABET = ("#F90B45", "#3488E7", "#257014", "#F0C6CA")
 BITS_PER_SYMBOL = 2
 
@@ -295,10 +293,9 @@ class Frame:
             return None
         self._queue = handshake(node_id, capability)
         self.mode = CALLING
-        # ⚠️ A COPY. Returning `self._queue` handed the caller the live list
-        # that `step()` then drains underneath them — by the time they looked
-        # at "the frame they sent", it was empty. Found by the loopback test
-        # comparing what went out against what was returned.
+        # ⚠️ A COPY. Returning `self._queue` would hand the caller the live
+        # list that `step()` then drains underneath them — by the time they
+        # looked at "the frame they sent", it would be empty.
         return list(self._queue), duration_seconds(self._queue, self.rate)
 
     def step(self):

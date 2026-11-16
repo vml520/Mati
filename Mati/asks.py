@@ -11,11 +11,10 @@ these is ONE question, asked the first time it would change an answer, and
 remembered afterwards.
 
 ⚠️ EMITTED, NEVER PROMPTED. The question is composed here and streamed as
-Mati's reply; it is never handed to the model to re-say. That rule is written
-in blood in this project: 4/4 headlines once invented from a prompt block, and
-a denial of having memory while four memories were held. A 3B asked to
-"ask the user where they
-are" will invent a place and ask about it.
+Mati's reply; it is never handed to the model to re-say. Composed text placed
+in a prompt gets invented around — headlines handed over that way came back
+invented 4 times in 4 — and a 3B asked to "ask the user where they are" will
+invent a place and ask about it.
 
 ⚠️ AND IT MUST NOT BECOME A FORM. Exactly one ask may be outstanding; raising
 a second while one is pending is dropped on purpose. Two questions in a row is
@@ -97,12 +96,12 @@ def answer(text_in):
     if fn is None:
         clear()
         return None
-    # ⚠️ THE HANDLER SEES A "NO" BEFORE THE GENERIC ONE DOES, and getting this
-    # backwards was a real bug: the generic decline cleared the ask and
-    # returned "All right", so `_idle("no")` never ran and `idle_work` was
-    # never set to False. The person said no, Mati said "all right", and the
-    # idle work carried on exactly as before — a refusal that changes nothing
-    # is worse than not asking, because they believe it took effect.
+    # ⚠️ THE HANDLER SEES A "NO" BEFORE THE GENERIC ONE DOES. The other way
+    # round, the generic decline clears the ask and returns "All right", so
+    # `_idle("no")` never runs and `idle_work` is never set to False. The
+    # person says no, Mati says "all right", and the idle work carries on
+    # exactly as before — a refusal that changes nothing is worse than not
+    # asking, because they believe it took effect.
     try:
         said = fn(text)
     except Exception:

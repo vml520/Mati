@@ -1,12 +1,12 @@
 """
 A memory of having read something.
 
-⚠️ THE GAP THIS FILLS. Mati absorbed 844 passages of Aztec Thought and Culture
-and held **no memory of the reading**. `provenance_of('studied:…')` returns
-`studied` — the content is stored and labelled, so it can say "I read that"
-when a passage is handed to it. But nothing recorded the ACT. Asked what it had
-been reading, it had nothing to answer from, because studying produced text and
-no experience.
+⚠️ THE GAP THIS FILLS. Studying stores content and labels it —
+`provenance_of('studied:…')` returns `studied`, so Mati can say "I read that"
+when a passage is handed to it. But nothing in that records the ACT. Asked what
+it has been reading, Mati would have nothing to answer from, because studying
+produces text and no experience — hundreds of passages of a book absorbed, and
+no memory of the reading.
 
 That is not how anyone studies. You read to put something in reach, and you
 also remember having read it — which book, roughly how far in, and the parts
@@ -18,9 +18,9 @@ told. It names the passages it has actually returned to — `recall_hits`, not a
 guess — because those are what "stayed with me" means for a thing whose
 returning is recorded.
 
-Written at each quarter of a document rather than only at the end: a 1,759
-chunk book is weeks of reading, and Mati should be able to speak about it
-while it is still going.
+Written once, when the document is finished. A long book is weeks of reading,
+and while it is still going its progress is shown live (see below) rather than
+remembered.
 """
 
 from __future__ import annotations
@@ -29,16 +29,17 @@ import sqlite3
 
 from . import bridge, vault
 
-# ⚠️ ONE MEMORY PER DOCUMENT. It was four — a quarter, a half, three quarters
-# and the end — described to the user as "one per document", and it was not.
-# Eleven documents produced FORTY-FOUR near-identical memories: "I have been
-# reading asked about genetics. I have taken in 16 passages of 18." four times
-# over, for documents of eighteen chunks that never needed quarter-marks.
+# ⚠️ ONE MEMORY PER DOCUMENT, NOT ONE PER MILESTONE. Quarter-marks would write
+# four near-identical memories per document — "I have been reading asked about
+# genetics. I have taken in 16 passages of 18." four times over, for documents
+# of eighteen chunks that never needed quarter-marks. Eleven documents would
+# leave forty-four.
 #
-# They are all archived and all compete in the same lexical search someone uses
-# to ask what Mati has been reading, so the book became one voice in a crowd
-# I had made. In a store whose episodes already sit at 98.4% mutual similarity,
-# manufacturing forty-four variations on one sentence is the worst thing to add.
+# They would all be archived and all compete in the same lexical search someone
+# uses to ask what Mati has been reading, so the book would become one voice in
+# a crowd of its own copies. In a store whose episodes already sit near 98%
+# mutual similarity, manufacturing variations on one sentence is the worst
+# thing to add.
 #
 # Written once, when the document is FINISHED. Progress while it is still going
 # is visible in the terminal's TRAINING panel and in the waking block, which is
@@ -107,15 +108,15 @@ def stayed_with_me(origin, k=KEEP_PASSAGES, db_path=None):
 def already_recorded(origin, share, db_path=None):
     """Has this document been written already? Idempotent by design.
 
-    ⚠️ Matches on the ORIGIN, not on origin-plus-milestone. The old marker
-    included the percentage, so each quarter looked like a different memory and
-    four were written per document.
+    ⚠️ Matches on the ORIGIN, not on origin-plus-milestone. A marker that
+    included the percentage would make each quarter look like a different
+    memory.
 
     ⚠️ AND THE ORIGIN MAY CONTAIN COLONS — "charter:MATI_MISSION_AND_
     PRINCIPLES.txt" does. A parse that splits on the first colon reads the
-    document as "charter" and silently fails to match, which is exactly how the
-    charter kept four copies through a cleanup that removed thirty. Substring
-    match on the whole origin, so the separator never has to be found.
+    document as "charter" and silently fails to match, so duplicates survive
+    any cleanup that relies on it. Substring match on the whole origin, so the
+    separator never has to be found.
     """
     conn = _conn(db_path)
     try:

@@ -1,18 +1,18 @@
 """
 Mati's library: what it has read, what was suggested, what it wants to read.
 
-⚠️ THE GAP THIS FILLS IS A CATEGORY, NOT A TABLE. `provenance_of` knew five
-kinds — lived, charter, studied, self-asked, and `about-you`. There was a
-category for THE PERSON and none for MATI. Anything Mati held about itself
-that was not an episode had nowhere to go, so it went nowhere: the reading list
-existed only as a `source` string on 1,744 scattered passages, and "what have
-you read" had to be answered by pattern-matching note sources at query time.
+⚠️ THE GAP THIS FILLS IS A CATEGORY, NOT A TABLE. `provenance_of` knows the
+kinds — lived, charter, studied, self-asked, and `about-you`. There is a
+category for THE PERSON; this is the one for MATI. Without it, anything Mati
+holds about itself that is not an episode has nowhere to go: the reading list
+would exist only as a `source` string on scattered passages, and "what have
+you read" would be answered by pattern-matching note sources at query time.
 
-That absence had a measured cost. 1 of 400 book notes contains the words "Aztec
-Thought and Culture" — the title lived in `source` and nothing resolved it — so
-"what does the book say about X" could not match the book BY CONSTRUCTION, and
-Mati filled the silence by inventing a passage and attributing it to a book it
-could not name. The missing catalogue is what made the confabulation possible.
+That absence has a cost. Almost no passage of a book contains the book's title
+— it lives in `source` — so "what does the book say about X" cannot match the
+book BY CONSTRUCTION, and Mati fills the silence by inventing a passage and
+attributing it to a book it cannot name. A missing catalogue is what makes that
+confabulation possible.
 
 So two things, and the first is the point:
 
@@ -56,7 +56,7 @@ WANTED = "wanted"
 
 # Sources that are documents Mati read. `studied:asked about X` is excluded:
 # those are Mati's own questions to itself, not works — filing them as books
-# would put 1,000 invented titles in a library meant to be checkable.
+# would put a thousand invented titles in a library meant to be checkable.
 # ⚠️ The CHARTER is excluded too. It is a document and it was studied, but it
 # is Mati's principles, not something it read and might disagree with — it
 # already has its own provenance kind, and listing it as a book invites "what
@@ -91,15 +91,13 @@ def ensure(db_path=None):
 def ensure_metadata(db_path=None):
     """`author` and `published`, added after the table existed.
 
-    ⚠️ WHY A WORK NEEDS ITS PROVENANCE. Asked who wrote Aztec Thought and
-    Culture, Mati named three authors, none of them the real one. It was not
-    being careless: the text itself carries NO author line — checked, none in
-    the first 400 passages — so there was nothing to recall and it composed
-    something plausible.
+    ⚠️ WHY A WORK NEEDS ITS PROVENANCE. A text often carries NO author line,
+    so asked who wrote it, Mati has nothing to recall and composes something
+    plausible — three authors, none of them the real one.
 
-    And the user's second reason is the better one: a publication YEAR tells
-    Mati how far to trust what it read. A 1963 study of Nahuatl thought is a
-    fine source and is also sixty years old, and those are both true at once.
+    And a publication YEAR tells Mati how far to trust what it read. A 1963
+    study of Nahuatl thought is a fine source and is also sixty years old, and
+    those are both true at once.
     """
     conn = sqlite3.connect(db_path or bridge.NOTES_DB_PATH, timeout=10)
     try:
@@ -155,11 +153,11 @@ def _read_works(db_path=None):
                            uri=True)
     try:
         rows = conn.execute(
-            # ⚠️ ARCHIVED PASSAGES ARE COUNTED APART, or shelving a work
-            # changes nothing a person can see. This counted every
-            # `studied:%` row with no regard to `archived`, so a book you had
-            # just taken off the shelf looked exactly like one you had not —
-            # and with no way to tell, there was no way to put it back.
+            # ⚠️ SHELVED PASSAGES ARE COUNTED APART, or shelving a work
+            # changes nothing a person can see. Counting every `studied:%` row
+            # regardless would make a book just taken off the shelf look
+            # exactly like one that was not — and with no way to tell, there
+            # would be no way to put it back.
             "SELECT source, COUNT(*), "
             "       SUM(CASE WHEN shelved IS NULL THEN 1 ELSE 0 END) "
             "FROM notes WHERE source LIKE 'studied:%' "
@@ -242,10 +240,10 @@ def catalogue(db_path=None):
     cannot claim a book Mati has not absorbed a single passage of.
     """
     # ⚠️ THE PRIORITY COLUMN MUST EXIST BEFORE THE SELECT THAT READS IT.
-    # Without this the query raised, `except sqlite3.Error` swallowed it, and
-    # `catalogue()` returned an EMPTY LIST — every suggestion and every wanted
-    # book silently gone. ⚠️ Only `test_terminal` catches this; nothing in
-    # the normal path notices an empty catalogue.
+    # Otherwise the query raises, `except sqlite3.Error` swallows it, and
+    # `catalogue()` returns an EMPTY LIST — every suggestion and every wanted
+    # book silently gone. Nothing in the normal path notices an empty
+    # catalogue.
     ensure(db_path); ensure_metadata(db_path)
     from .intake import ensure_priority
     ensure_priority(db_path)
@@ -282,9 +280,9 @@ def catalogue(db_path=None):
                         "priority": pri}
 
     # ⚠️ WANTED IS ORDERED BY PRIORITY, WHICH IS WHAT MAKES IT A QUEUE. Without
-    # this the number was decorative: a 40,000-word book at priority 833 listed
-    # above a paper at 4, so "given appropriate priority" changed nothing about
-    # what Mati would reach for next. Lower is sooner, and `intake.shelve`
+    # it the number is decorative: a 40,000-word book at priority 833 would list
+    # above a paper at 4, and "given appropriate priority" would change nothing
+    # about what Mati reaches for next. Lower is sooner, and `intake.shelve`
     # sets it to the passage count — shortest first, because a short paper
     # finishing this week beats a long book finishing next month.
     order = {READING: 0, READ: 1, SUGGESTED: 2, WANTED: 3}
@@ -302,10 +300,10 @@ def catalogue(db_path=None):
 def describe(db_path=None, limit=8, voice="i"):
     """The library in Mati's own words, for the waking block.
 
-    ⚠️ NO COUNTS OF PASSAGES OR CHUNKS. That is instrumentation, and this
-    project has measured twice what happens when instrumentation reaches a 3B
-    model: it recites it. What a person knows about their own reading is which
-    books, and roughly how far in — so that is what this says.
+    ⚠️ NO COUNTS OF PASSAGES OR CHUNKS. That is instrumentation, and a 3B model
+    that receives instrumentation recites it. What a person knows about their
+    own reading is which books, and roughly how far in — so that is what this
+    says.
     """
     items = catalogue(db_path)
     if not items:
@@ -372,9 +370,9 @@ def _join(items):
 def find(query, db_path=None):
     """The work a question is about, if it names one.
 
-    ⚠️ This is what "the book" had no way to resolve to. A title match here is
-    what lets `search_sources` be scoped to one work instead of the whole
-    store — the memory acting as the key to the verbatim lookup.
+    ⚠️ This is what lets "the book" resolve. A title match here is what lets
+    `search_sources` be scoped to one work instead of the whole store — the
+    memory acting as the key to the verbatim lookup.
     """
     q = (query or "").lower()
     best = None
@@ -408,11 +406,9 @@ def find(query, db_path=None):
 # Reaching the turn
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ⚠️ THE CATALOGUE WAS BUILT, CORRECT, AND NEVER SHOWN. Checked :
-# `library.` appeared nowhere in `ollin.py`, so "what have you read" was
-# answered from whatever lexical search happened to return — usually passages
-# OF the book rather than the fact of having read it. Same shape as `activity`
-# and the telemetry: the data existed and had no reader.
+# ⚠️ THE CATALOGUE HAS TO BE SHOWN, or "what have you read" is answered from
+# whatever lexical search happens to return — usually passages OF the book
+# rather than the fact of having read it.
 _ASKS_ABOUT_BOOKS = (
     "what have you read", "what did you read", "have you read",
     "your library", "what books", "which books", "any books",

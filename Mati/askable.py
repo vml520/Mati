@@ -4,20 +4,11 @@ May Mati ask this? The gate on its own questions, outside the model.
     python3 -m Mati.askable --audit     # score the queue, change nothing
     python3 -m Mati.askable --purge     # retire everything that fails
 
-⚠️ WHY THIS EXISTS. The user, reading what Mati had queued up to ask them:
-*"Some of the questions asked are nonsense. They're supposed to be sincere
-inquiries but they sound forced."* Measured on the 863 waiting:
-
-    no second-person reference at all        692   80%
-    top three openings ("what is/was/were the")   49.6%
-    top ten openings                              62%
-    sincere inquiries, read by hand                ~6%
-
-The queue's own design rule is recorded as "log only questions Llama cannot
-answer", and there was NO CODE ENFORCING IT. Four fifths of the queue is
-general knowledge the 3B could answer itself.
-
-And the worst are not merely answerable, they are impossible:
+⚠️ WHY THIS EXISTS. A question for the person is meant to be a sincere inquiry
+— something only they can answer — and a generator writing from passages
+produces mostly general knowledge the 3B could answer itself, with no
+second-person reference at all. The worst are not merely answerable, they are
+impossible:
 
     "Did you live with Hernán Cortés?"
     "Did you live with the Aztec priests on the day of the summer solstice?"
@@ -25,9 +16,9 @@ And the worst are not merely answerable, they are impossible:
      Sareptra?"
 
 ⚠️ THOSE TWO FAILURES HAVE ONE CAUSE, which is what makes a single check
-possible. The generator writes with a passage in front of it and applies a
-"did you / were you present" template to whatever that passage is about — so
-material Mati READ becomes a question about the user's life. Cortés is in the
+possible. A generator that writes with a passage in front of it and applies a
+"did you / were you present" template to whatever the passage is about turns
+material Mati READ into a question about the person's life. Cortés is in the
 store, in a book. `vitraximab` is in the store nowhere at all; it was invented
 mid-sentence.
 
@@ -38,27 +29,25 @@ So the test is GROUNDING, not phrasing:
   3. if it asks what the person WITNESSED, what it names has to come from a
      conversation they were in — not from something Mati read.
 
-⚠️ AND IT IS NOT ANOTHER BLOCKLIST. Two have already failed here by being
-closed lists against open sets: `inquiry._DANGLING` enumerates nouns, so "that
-change" and "that project" walk through; `voice._denies_memory` enumerated
-phrasings, and the model found a new one by changing a pronoun. Rules 2 and 3
-are lookups against what Mati actually holds, which cannot be out-phrased.
+⚠️ AND IT IS NOT ANOTHER BLOCKLIST. Closed lists against open sets fail:
+`inquiry._DANGLING` enumerates nouns, so "that change" and "that project" walk
+through, and a list of phrasings for denying memory is beaten by changing a
+pronoun. Rules 2 and 3 are lookups against what Mati actually holds, which
+cannot be out-phrased.
 
-⚠️ THIS IS THE BACKSTOP, NOT THE FIX. The cause was upstream: the source pool
-for a question was 64.9% `studied:asked about …` — Mati's own 3B answering
-its own questions — and the prompt asked for "a question a person who was
-there could answer" about whatever passage that happened to be. A 3B writing a
-question about a 3B's hallucination. That is corrected in
-`bridge._ASK_PRIORITY` (lived episodes only) and `inquiry.ASK_USER_SYSTEM`.
+⚠️ THIS IS THE BACKSTOP, NOT THE FIX. The cause is upstream: a question
+sourced from `studied:asked about …` — Mati's own 3B answering its own
+questions — is a 3B writing a question about a 3B's hallucination. The source
+pool is lived episodes only (`bridge._ASK_PRIORITY`), and the prompt asks for
+what the other person knew (`inquiry.ASK_USER_SYSTEM`).
 
-⚠️ AND IT LEAKS, KNOWINGLY. Measured on 12 hand-picked cases: 11 right, and
-the miss is instructive. A probe asking whether Mati was PRESENT at a moment
-in a word's doctrinal history PASSED, because that word genuinely is a topic
+⚠️ AND IT LEAKS, KNOWINGLY. A probe asking whether Mati was PRESENT at a
+moment in a word's doctrinal history passes when that word genuinely is a topic
 the person has discussed. Grounding cannot tell a subject somebody talks about
 from a historical event nobody witnessed, when the same word names both; that
-needs meaning, not membership. The generator
-fix is what stops that question being written at all. Do not try to close this
-by adding terms — that is the failure this file's third paragraph describes.
+needs meaning, not membership. The generator is what stops that question being
+written at all. Do not try to close this by adding terms — that is the failure
+described above.
 """
 
 from __future__ import annotations
@@ -104,12 +93,11 @@ _EMPTY = {
     "person", "people", "someone", "anyone", "something", "anything",
 }
 
-# ⚠️ MY OWN PATTERN'S VOCABULARY, EXCLUDED FROM GROUNDING. Measured: "Did you
-# live with Hernan Cortes?" PASSED this gate, because `live` is itself in the
-# store (idf 4.29 — it occurs in ninety-odd notes) and so grounded the question
-# all by itself. The subject was never tested. These words come from
-# `_WITNESSED` above, so this excludes what Mati wrote rather than guessing at
-# what the model might write.
+# ⚠️ THIS FILE'S OWN PATTERN VOCABULARY, EXCLUDED FROM GROUNDING. `live` is
+# itself in the store — it occurs in many notes — so without this "Did you live
+# with Hernan Cortes?" would be grounded by its own template word and the
+# subject never tested. These words come from `_WITNESSED` above, so this
+# excludes what Mati wrote rather than guessing at what the model might write.
 _TEMPLATE = {
     "live", "lived", "living", "present", "presence", "witness", "witnessed",
     "see", "saw", "seen", "observe", "observed", "experience", "experienced",
@@ -149,9 +137,8 @@ def terms(question, db_path=None):
     absurd part was never tested. The same way, `medical` and `trial` grounded
     "a medical trial with vitraximab".
 
-    `notes._idf` is the store's own rarity table, and this module is the third
-    place in the project to arrive at the same rule: a question is about its
-    rarest words. See `notes.search`, which was fixed this way in August.
+    `notes._idf` is the store's own rarity table, and the rule is the one
+    `notes.search` follows too: a question is about its rarest words.
     """
     from . import schedule
     # ⚠️ ACCENTS INCLUDED. `[A-Za-z]` split "Hernán" into "Hern" + "n", so the
@@ -179,16 +166,15 @@ def terms(question, db_path=None):
 def build_index(db_path=None):
     """{stem: set of source kinds it appears in}. One pass over the store.
 
-    ⚠️ NOT `notes.search`, AND THAT WAS A MEASURED MISTAKE. The first version
-    asked "did a search for this term return anything" — and lexical search
-    returns the best k rows whether or not anything matched, so it answered
-    yes for `vitraximab` (1 hit, score 1.0000) and for `Cortés` (3 hits). An
-    invented drug and a name that is nowhere in the store both read as
-    grounded, which let every question this gate exists to stop walk through.
+    ⚠️ NOT `notes.search`. Lexical search returns the best k rows whether or
+    not anything matched, so "did a search for this term return anything"
+    says yes for `vitraximab` (one hit, score 1.0000) and for `Cortés` — an
+    invented drug and a name that is nowhere in the store would both read as
+    grounded, and every question this gate exists to stop would walk through.
 
     ⚠️ Search is RANKING, not membership. It has no empty answer to give
     except when a term tokenises to nothing at all ("zzzqqqwww" -> 0 hits),
-    which is why the error looked plausible. Membership needs a membership
+    which is why the error looks plausible. Membership needs a membership
     test.
 
     Decryption rides the warm body cache, so this is a few seconds on a store
@@ -324,25 +310,18 @@ def audit(db_path=None, limit=None):
 def purge(db_path=None, dry_run=False, limit=None, everything=False):
     """Retire every queued question that fails the gate — or all of them.
 
-    ⚠️ `everything=True` IS THE RIGHT CALL FOR THE  BACKLOG, and the
-    audit is why. The gate retires 708 of 863 and keeps 155 — but read by
-    hand, those 155 are still mostly unanswerable:
+    ⚠️ `everything=True` IS FOR A BACKLOG WRITTEN FROM THE WRONG SOURCE.
+    Questions written from `studied:asked about` passages — Mati's own model's
+    output — can pass the gate, because they contain "you" and name something
+    on record, and still be unanswerable:
 
         "Can you tell me what is the nature of the 'specific, identifiable
          genetic disorders' that CRISPR can..."
-        "What was the specific experimental confirmation that you were
-         referring to when discussing..."
 
-    They pass because they contain "you" and name something on record. What
-    the gate cannot see is that they were WRITTEN FROM a `studied:asked about`
-    passage — Mati's own model's output — and asking the person to vouch for
-    that is the laundering this whole change exists to stop. Attribution would
-    have told us which ones; `detail` was NULL on all 862 because `note_id`
-    was never passed, so it cannot be recovered per-question.
-
-    ~6% of 863 is ~50 questions worth keeping and no way to identify them.
-    The corrected generator refills from lived episodes, so the backlog is
-    cheaper to drop than to sift.
+    Asking the person to vouch for those is the laundering this exists to
+    stop, and without a recorded source note per question there is no way to
+    tell which ones they are. The generator refills from lived episodes, so
+    such a backlog is cheaper to drop than to sift.
     """
 
     from . import schedule

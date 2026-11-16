@@ -199,5 +199,5 @@ def make_llm(system_prompt, provider=None):
     raise ValueError(f"unknown provider {provider!r} (use 'local' or 'anthropic')")
 
 
-# Back-compat alias — `LLM` used to mean the Anthropic client.
+# Alias: `LLM` names the Anthropic client.
 LLM = AnthropicLLM

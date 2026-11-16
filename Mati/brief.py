@@ -6,46 +6,41 @@ The standing brief: what is in hand, what it is aimed at, how far along.
     python3 -m Mati.brief --revise 3 --to "5000 words"
     python3 -m Mati.brief --withdraw 3 --why "changed subject"
 
-⚠️ WHY THIS EXISTS. The user: *"Mati is awake but not aware. The
-point of the wake routine was so that Mati already knows what it's supposed to
-do before being asked. Instead I have to walk Mati through its own memories to
-get it to a point where it can help me."*
+⚠️ WHY THIS EXISTS. Being awake is not being aware. The wake routine exists so
+that Mati already knows what it is supposed to be doing before it is asked —
+not so that the person has to walk it through its own memories to get it to a
+point where it can help.
 
-`drafts.py` was built for the first half of that — somewhere for "the thing we
-are working on" to live — and it was never connected to anything. `block()`
-and `current()` had no caller in the package, no test, and no mention in the
-app. The table was written, sealed, and never read back into a conversation.
-That is the eighth writer-with-no-reader in this project; the fix is not more
-storage, it is a reader.
+`drafts.py` holds "the thing we are working on". This is what reads it back
+into a conversation, together with what the work is aimed at.
 
-⭐ THE PRINCIPLE IS ALREADY IN `orient.py`, APPLIED TO ONE THING:
+⭐ THE PRINCIPLE IS THE ONE `orient.py` APPLIES TO READING:
 
     "A person does not search their memory for what book is open on the
      table. What is FINISHED is a memory; what is OPEN is something you
      simply know. So it is stated here, and the retrieval problem stops
      applying."
 
-Reading got that treatment. Intent never did — which is exactly why the
-person had to narrate the project back every session. A target is the same
-kind of thing as an open book: state, not memory.
+Intent is the same kind of thing. A target is like an open book: state, not
+memory — and without it the person narrates the project back every session.
 
-⚠️ TARGETS ARE NEVER UPDATED IN PLACE, AND NEVER DELETED. This project's
-standing rule is that corrections ANNOTATE (`correction.py`), and the
-calendar already spells out the consequence: *"the row is marked `withdrawn`
-and leaves the view, and 'the meeting you had on Tuesday was cancelled' stays
-answerable"* (`agenda.py`). A revised target is a NEW row that supersedes the
-old one, so "we moved it from 3,000 to 5,000 on Tuesday" is answerable too.
+⚠️ TARGETS ARE NEVER UPDATED IN PLACE, AND NEVER DELETED. Corrections ANNOTATE
+(`correction.py`), and the calendar spells out the consequence: *"the row is
+marked `withdrawn` and leaves the view, and 'the meeting you had on Tuesday
+was cancelled' stays answerable"* (`agenda.py`). A revised target is a NEW row
+that supersedes the old one, so "we moved it from 3,000 to 5,000 on Tuesday"
+is answerable too.
 
-⚠️⚠️ AND MATI DOES NOT WITHDRAW A TARGET BY ITSELF. The user asked that Mati
-"know whether to modify or delete the original target", and the honest answer
-is that it often cannot know. Raising the number for the same work is a
-revision and is safe to infer. Deciding that a piece of work is ABANDONED is
-not: the evidence for "they changed topic" and "they took a week off" is the
-same evidence. So withdrawal is something the person says, or something that
-follows from a draft being closed — never a judgement call made on silence.
-This is the same line `agenda.py` draws with *"MATI NEVER DECIDES A TIME"*.
+⚠️⚠️ AND MATI DOES NOT WITHDRAW A TARGET BY ITSELF. Knowing whether to modify
+or delete the original target is often not possible. Raising the number for
+the same work is a revision and is safe to infer. Deciding that a piece of
+work is ABANDONED is not: the evidence for "they changed topic" and "they took
+a week off" is the same evidence. So withdrawal is something the person says,
+or something that follows from a draft being closed — never a judgement call
+made on silence. This is the same line `agenda.py` draws with *"MATI NEVER
+DECIDES A TIME"*.
 
-⚠️ AN INFERRED TARGET SAYS SO. `source` is `user` or `inferred`, and a
+⚠️ AN INFERRED TARGET SAYS SO. `source` is `user` or `inferred`, and an
 inferred one carries its `basis`. The provenance scheme exists because Mati
 must never present something it worked out as something it was told.
 """

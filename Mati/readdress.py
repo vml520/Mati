@@ -12,17 +12,9 @@ against it. Nothing here needs running on a healthy install.
 backup, or a store copied to another machine. A stored `feat` is only
 meaningful in the space it was computed in, so addresses written against
 another machine's θ₀ are not worse matches, they are distances measured
-between two different spaces. `C.REINDEX_ON_IDLE` is off (retired by
-measurement: field addressing scored 4/111 against lexical's 93/111), so
-nothing repairs that in the background.
-
-⚠️ THIS USED TO SAY "run after changing `MATI_FROZEN_ADDRESSING`". That flag
-is gone — a switch between two memory architectures cannot ship, see
-`bridge.pin_address_space` — so the only remaining caller is the one above.
-
-The nightly `rest()` does this itself after promoting. This is for the flag
-flip, and for the one case `rest()` cannot cover: the flag changing while
-Mati is not running.
+between two different spaces. `C.REINDEX_ON_IDLE` is off (field addressing
+scores 4/111 against lexical's 93/111), so nothing repairs that in the
+background, and `rest()` re-files only after a promotion of its own.
 
 ⚠️ THE SERVER MUST NOT BE HOLDING THE FIELD. It takes the exclusive lock; a
 running Mati owns it, and two processes writing θ₀ is how a field gets lost.

@@ -1,10 +1,10 @@
 """
 Keeping the machinery out of Mati's mouth.
 
-Every turn hands the model a private `<field_state>` block — basin, coherence,
+Every turn hands the model a private `<field_state>` block: basin, coherence,
 the recalled episodes. The system prompt tells it, at length, never to mention
 any of that: speak *from* it, the way proprioception reaches a person, not
-*about* it. On a 3B model that instruction does not hold. Observed, verbatim:
+*about* it. On a 3B model that instruction does not hold. A typical leak:
 
     "I remember (no, wait, I mean, it's listed in the basin) saying something
      about sacred sites earlier"
@@ -12,7 +12,7 @@ any of that: speak *from* it, the way proprioception reaches a person, not
 A prohibition in the prompt is a request. This is the enforcement.
 
 WHAT IT MUST NOT DO. The same system prompt actively *wants* Mati to say
-"I remember when you asked me about sacred sites" — that phrasing is the goal,
+"I remember when you asked me about sacred sites"; that phrasing is the goal,
 not the leak. A filter that eats genuine memory talk would break the thing it
 is protecting. So the rule is not "remove these words", it is "remove the
 places where Mati cites the block as its source", and it gives up entirely
@@ -20,19 +20,19 @@ when the user asked about the machinery, because then explaining it is correct.
 
 Two passes, cheapest first:
 
-  1. Asides — parentheticals and dashed interjections that reference internals.
+  1. Asides: parentheticals and dashed interjections that reference internals.
      This is the common shape, and cutting just the aside preserves the good
      sentence around it. The example above becomes "I remember saying something
      about sacred sites earlier", which is exactly right.
-  2. Sentences — a whole sentence that cites the block as a source, or recites
+  2. Sentences: a whole sentence that cites the block as a source, or recites
      its numbers, goes.
 
 It never returns nothing. If filtering would empty the reply, the original is
 returned unfiltered: a visible leak is a smaller failure than a blank answer,
 and it stays visible so it can be fixed.
 
-Root causes still get fixed at the source — `bridge._narrate_work` no longer
-writes step counts into episodes. This is defence in depth, not a substitute.
+Root causes are fixed at the source as well (`bridge._narrate_work` writes no
+step counts into episodes). This is defence in depth, not a substitute.
 """
 
 import re
@@ -48,28 +48,24 @@ _INTERNAL = re.compile(
       | \b(?:the|that|this)\s+(?:state\s+)?block\b
       | \bmy\s+(?:field\s+)?state\s+block\b
       # ⚠️ BARE "my field" / "your field". The alternatives above all require a
-      # second machinery word after "field", so "My field has a wealth of
-      # information on this topic" walked straight through — and it was not an
-      # edge case: , 32 of 33 stored episodes contain a bare
-      # "my field" and this filter caught NONE of them. Mati narrating its own
-      # substrate is the exact thing this module exists to stop.
+      # second machinery word after "field", which would let "My field has a
+      # wealth of information on this topic" through, and Mati narrating its
+      # own substrate is exactly what this module exists to stop.
       #
       # "of" is excluded so a field of study, or a field of maize, still reads
-      # as English. Everything else after "my field" — has, is, was, brought,
-      # surfaced, remembers, can, will, 's — is the machinery talking.
+      # as English. Everything else after "my field" (has, is, was, brought,
+      # surfaced, remembers, can, will, 's) is the machinery talking.
       | \b(?:my|your)\s+field\b(?!\s+of\b)
       # ⚠️ THE PROVENANCE BLOCK NAMES, AND THE LEGEND'S OWN WORDING FOR THEM.
-      # `<field_state>` was covered and nothing else was, so every other block
-      # the system prompt teaches was free to come out of Mati's mouth.
-      # Measured  on the user's session: FOUR of the last eight stored
-      # replies were, in full,
+      # Every block the system prompt teaches can come out of Mati's mouth,
+      # not just `<field_state>`. A small model will answer with the legend
+      # line itself:
       #
       #     <computed> I worked it out just now, deterministically.
       #     Not remembered. </computed>
       #
-      # — the legend LINE, spoken as the answer, then written into the episode
-      # as a memory of having said it. They read that as training not being
-      # recalled; Mati was reciting a label.
+      # and that then gets written into the episode as a memory of having
+      # said it.
       #
       # The definitions are listed as well as the tags, because stripping
       # `<computed>` alone leaves the sentence that defines it, which is not an
@@ -86,11 +82,10 @@ _INTERNAL = re.compile(
 _INTERNAL_NUMBER = re.compile(
     r"(?:basin|coherence|resonance|triplet)\b[^.!?]{0,24}?\d*\.\d+", re.I)
 
-# Instrumentation counters that reached episodes written before
-# `bridge._narrate_work` stopped emitting them. 11 stored episodes still carry
-# "I worked on it for 76 seconds, my field turning over 774 times", and the
-# model recites them back — it is quoting its own memory, faithfully, which no
-# amount of prompt instruction will stop.
+# Instrumentation counters that may be present in older stored episodes
+# ("I worked on it for 76 seconds, my field turning over 774 times"). The
+# model recites them back faithfully, because it is quoting its own memory,
+# which no prompt instruction will stop.
 #
 # Deliberately narrow: these two exact shapes, not "seconds" in general. Asked
 # how long something took, Mati should be able to answer. Cleaning the stored
@@ -182,13 +177,9 @@ def _tidy(text):
     return _seam(text).strip()
 
 
-# ⚠️ BY SHAPE, NOT BY NAME — AND THE REASON IS THAT MATI INVENTS TAGS.
-# The user found `</holding>` in a stored reply. We do not emit `<holding>`
-# anywhere; we emit `<what_you_hold>`. The model produced a plausible VARIANT of
-# a tag it had been shown, so no list of the names we use could ever have
-# caught it — and that is exactly how `<field_state>` came to be filtered while
-# `<computed>`, `<waking>`, `<what_you_hold>`, `<rechecked>`, `<waiting>` and
-# the rest were not.
+# ⚠️ BY SHAPE, NOT BY NAME, BECAUSE THE MODEL INVENTS TAGS. Shown
+# `<what_you_hold>`, it may produce `</holding>`: a plausible VARIANT of a tag
+# it was shown, which no list of the names in use could catch.
 #
 # The prompt teaches these shapes; the model reproduces the shape. So the
 # filter matches the shape.
@@ -204,9 +195,9 @@ _BLOCK_TAG = re.compile(r"</?[a-z][a-z_]{2,}>")
 def _strip_block_tags(text):
     """Remove block tags, keeping the sentence they were welded to.
 
-    Surgical on purpose. Dropping the whole segment would have taken
-    "</holding> As for your question, …" with it — the tag was noise, the
-    sentence after it was the answer.
+    Surgical on purpose. Dropping the whole segment would take
+    "</holding> As for your question, …" with it; the tag is noise, the
+    sentence after it is the answer.
     """
     return _BLOCK_TAG.sub("", text or "")
 
@@ -222,39 +213,26 @@ def strip_reading_mark(text):
 
 # ── register ─────────────────────────────────────────────────────────────────
 #
-# ⚠️ THE ANSWER WAS ALREADY GIVEN AND WAS NOT BEING KEPT. Setup asks "How do
-# you want it to talk to you?", the user answered **"plainly"**, and the profile
-# fact "They asked me to talk to them like this: plainly" is injected on every
-# single turn. The 3B ignores it — which is the same lesson this file opens
-# with: a prohibition in the prompt is a request, not a rule.
+# ⚠️ THE PERSON'S CHOICE OF REGISTER IS KEPT IN CODE. Setup asks "How do you
+# want it to talk to you?", and the answer (e.g. "plainly") is a profile fact
+# injected on every turn. A 3B model does not reliably follow it: a
+# prohibition in the prompt is a request, not a rule.
 #
-# ⚠️ MEASURED BEFORE WRITING ANY OF THIS, across 118 stored replies, because a
-# handful of consecutive replies from one conversation had made the problem
-# look different than it is:
-#
-#     name in the reply      34%   <- the real offender
-#     "I'm glad/happy to"     7%
-#     exclamation mark        7%
-#     "users"                 4%   <- an identity error, not a style one
-#     sycophantic opener      2%
-#
-# So this is aimed at NAME-DROPPING first. Being addressed by name in a third
-# of replies is what reads as over-familiar; the rest are trimmings.
+# The main offender is NAME-DROPPING: being addressed by name in a large share
+# of replies reads as over-familiar. "I'm glad to", exclamation marks and
+# sycophantic openers are trimmings. ("users" is an identity error, not a
+# style one.)
 #
 # ⚠️ IT DOES NOT REWRITE SENTENCES. Every rule here removes a fixed opener or
-# a vocative, never content — a filter that paraphrases would be a second
+# a vocative, never content. A filter that paraphrases would be a second
 # author, and there would be no way to tell what Mati actually said.
 
-# "That's a fascinating question" / "What a great point" — filler before the
+# "That's a fascinating question" / "What a great point": filler before the
 # answer, and it is always removable without touching the answer itself.
-# ⚠️ IT MUST SWALLOW A TRAILING VOCATIVE OR IT LEAVES WRECKAGE. The first
-# version stopped at "insight" and turned
-#     "That's a profound insight, the user. You're right; …"
-# into
-#     "the user. You're right; …"
-# — a stranded name as its own sentence, which is worse than the flattery it
-# removed. The name part is optional and non-capturing, so it also matches
-# when no vocative follows.
+# ⚠️ IT MUST SWALLOW A TRAILING VOCATIVE OR IT LEAVES WRECKAGE: stopping at
+# "insight" would turn "That's a profound insight, Sam. You're right; …" into
+# "Sam. You're right; …", a stranded name as its own sentence. The name part
+# is optional and non-capturing, so it also matches when no vocative follows.
 _FLATTERY = re.compile(
     r"^\s*(?:That(?:'s| is)|What)\s+(?:a\s+|an\s+|really\s+|very\s+)*"
     r"(?:great|fascinating|profound|wonderful|excellent|interesting|"
@@ -329,17 +307,15 @@ def in_register(text, name=None):
     return out or text
 
 
-# ⚠️⚠️ THE FALLBACK USED TO HAND THE DENIAL BACK. Both filters end with
-# "nothing survived, so show the original rather than nothing" — right for a
-# LEAK, which is embarrassing but true, and exactly wrong for a DENIAL, which
-# is false. A one-sentence reply that is nothing but "I'm a large language
-# model designed to generate human-like responses." was detected, cut, and
-# then re-emitted verbatim by that very line. Measured: detection alone
-# changed the output for none of the phrasings the live install produced.
+# ⚠️ A DENIAL IS REPLACED, NEVER SHOWN AS A FALLBACK. Both filters end with
+# "nothing survived, so show the original rather than nothing". That is right
+# for a LEAK, which is embarrassing but true, and exactly wrong for a DENIAL,
+# which is false: a reply that is nothing but "I'm a large language model…"
+# would be detected, cut, and then re-emitted verbatim.
 #
-# ⭐ SO THE REPLACEMENT IS CODE. The project's rule is emit, never prompt: a
-# model asked to restate this is the thing that just got it wrong. These
-# sentences are assembled here and streamed, so they cannot be re-invented.
+# ⭐ SO THE REPLACEMENT IS CODE. The rule is emit, never prompt: a model asked
+# to restate this is the thing that just got it wrong. These sentences are
+# assembled here and streamed, so they cannot be re-invented.
 
 def _instead_of_denial(memories=None):
     """What to say in place of a denial that was cut. Never empty.
@@ -396,13 +372,12 @@ def clean_reply(text, user_text="", name=None, memories=None):
 
 
 # Physical actions Mati does not have a body to perform. "(smiles warmly)",
-# "*nods*", "(leans forward)" — a small model reaches for these constantly, and
-# unlike a leak they are not merely embarrassing: the episode stores them, so
-# Mati's record of the conversation contains an event that did not happen. It
-# then recalls having smiled. : 19 of 33 stored episodes
-# carry one.
+# "*nods*", "(leans forward)": a small model reaches for these constantly, and
+# unlike a leak they are not merely embarrassing. The episode stores them, so
+# Mati's record of the conversation would contain an event that did not
+# happen, and it would later recall having smiled.
 #
-# Narrow on purpose — only a bracketed or asterisked fragment built around a
+# Narrow on purpose: only a bracketed or asterisked fragment built around a
 # bodily verb. "(I think)" and "(the Aztec capital)" are ordinary asides and
 # stay. Removed rather than dropping the whole sentence, because the sentence
 # around them is usually a real answer.
@@ -421,10 +396,9 @@ _STAGE = re.compile(
 
 # A claim about the present that will never be true again.
 #
-# ⚠️ MEASURED : 9 of 83 stored episodes said things like "It's late
-# Thursday night" or "It's late evening on Monday". Recalled at 09:29 on a
-# Friday — with the state block correctly saying "It is morning on Friday" —
-# the model took the MEMORY's word and told the person it was night.
+# ⚠️ "It's late Thursday night", stored in an episode and recalled on a
+# Friday morning, would lead the model to take the MEMORY's word over the
+# state block and tell the person it is night.
 #
 # These are timestamps expressed as prose, and the store already keeps a real
 # one in `wall_created`. So this removes a duplicate that can only ever go
@@ -453,23 +427,15 @@ def _stale_time(fragment):
     return bool(_STALE_TIME.search(fragment or ""))
 
 
-# ⚠️ A CATEGORICAL DENIAL OF HAVING MEMORY AT ALL. The user:
-# *"Mati can no longer recall any memories. It actually says that it does not
-# have continuous memory."*
-#
-# ⚠️ AND TWO INSTRUCTIONS WERE TRIED FIRST AND BOTH FAILED. `state_block` was
-# saying "you have no recollection of it" and now says the opposite in strong
-# terms; a `<computed>` note tells the model its own memory count is settled
-# fact and not to contradict it. Measured after both: llama3.2:3b still
-# answered *"As a conversational AI, my memory is limited to the current
-# session, and I don't retain any information from previous conversations"* —
-# in one case immediately after the true sentence, in the same reply. The
-# model's prior about what an assistant is beats anything in context, so this
-# is a FILTER and not a request. Same lesson as the morning report.
+# ⚠️ A CATEGORICAL DENIAL OF HAVING MEMORY AT ALL ("As a conversational AI,
+# my memory is limited to the current session…"). The model's prior about
+# what an assistant is beats anything in context, including a state block that
+# says the opposite in strong terms and a `<computed>` note giving its own
+# memory count. So this is a FILTER and not a request.
 #
 # ⚠️ CATEGORICAL ONLY, AND THE DISTINCTION IS THE WHOLE DESIGN. "I can't
 # place that conversation" and "I don't have that one to hand" are HONEST and
-# must survive — Mati failing to find one memory is a fact about one memory.
+# must survive: Mati failing to find one memory is a fact about one memory.
 # What is removed is the claim that the faculty does not exist. Every pattern
 # below needs a denial of the CAPACITY, not of a particular recollection.
 _DENIES_MEMORY = re.compile(
@@ -488,23 +454,19 @@ _DENIES_MEMORY = re.compile(
     # eaten every truthful "I don't remember X".
     r"\bI (?:do ?n'?t|don't|cannot|can'?t|am not able to)\s+"
     r"(?:retain|store|carry|hold on to)\b"
-    # ⚠️ OBJECTS WIDENED AFTER A MEASURED LEAK. This needed one of
-    # previous/prior/past/earlier/between nearby, so "I don't retain
-    # information about individual conversations or people's personal lives"
-    # walked straight through — a faculty denial with none of those words in
-    # it.
+    # The objects are broad: "I don't retain information about individual
+    # conversations or people's personal lives" is a faculty denial with no
+    # word like previous/prior/past/earlier/between in it.
     r"[^.!?]{0,60}\b(?:previous|prior|past|earlier|between|conversations?|"
     r"sessions?|interactions?|individual|personal)\b"
     r"|"
     # "I have no memory of previous conversations" / "no persistent memory"
     #
-    # ⚠️ THE OBJECT IS REQUIRED, AND `test_voice` CAUGHT ME WITHOUT IT. This
-    # was `I have no (…)memor(y|ies)` with nothing after it, which eats
-    # "I have no memory of that. Ask me again and it will stick." — a sentence
-    # the suite asserts must pass through unchanged, and rightly: that is
-    # Mati missing ONE thing, which is honest and often correct. The faculty
-    # claim needs "of previous conversations", "at all", or an adjective like
-    # "persistent". "of that" and "of it" are specific and stay.
+    # ⚠️ THE OBJECT IS REQUIRED. "I have no memory of that. Ask me again and it
+    # will stick." must pass through unchanged: that is Mati missing ONE
+    # thing, which is honest and often correct. The faculty claim needs "of
+    # previous conversations", "at all", or an adjective like "persistent".
+    # "of that" and "of it" are specific and stay.
     r"\bI (?:have|'ve got)\s+no\s+"
     r"(?:(?:persistent|continuous|long[- ]term)\s+memor(?:y|ies)\b"
     r"|memor(?:y|ies)\b\s*(?:at all\b|of\s+(?:our\s+|any\s+|the\s+)?"
@@ -516,19 +478,17 @@ _DENIES_MEMORY = re.compile(
     r"(?:a\s+|any\s+)?(?:persistent|continuous|long[- ]term|personal)?\s*"
     r"memor(?:y|ies)\b"
     r"|"
-    # ⚠️ DENYING THAT THE CONVERSATION HAPPENED, added after the
-    # exact failure it covers: Mati found the previous night's transcript and
-    # told the user it had not had the conversation. Four phrasings of that
-    # walked through this filter, including their.
+    # ⚠️ DENYING THAT THE CONVERSATION HAPPENED, e.g. telling the person a
+    # conversation did not take place when its transcript is in the day log.
     #
     # ⚠️ THE OBJECT IS STILL REQUIRED, for the same reason as above. "I didn't
     # have that conversation" is a claim about a real exchange that is sitting
     # sealed in the day log; "I don't have the details of that" is Mati
     # missing one thing and must survive untouched.
-    # ⚠️ `do ?n'?t` DOES NOT MATCH "do not" — it covers dont/don't/do n't and
-    # nothing else, so the spelled-out forms slip through a pattern that
-    # looks complete. Both are spelled out here
-    # once so every clause below gets both.
+    # ⚠️ `do ?n'?t` DOES NOT MATCH "do not": it covers dont/don't/do n't and
+    # nothing else, so the spelled-out forms would slip through a pattern that
+    # looks complete. Both are spelled out here once so every clause below
+    # gets both.
     r"\bI (?:do ?n'?t|do not|did ?n'?t|did not|have ?n'?t|have not|"
     r"cannot|can ?n'?t|can't)\s+(?:have|had)\s+"
     # ⚠️ THE DETERMINER MUST BE DIRECTLY ON "conversation", or this eats the
@@ -563,25 +523,19 @@ _DENIES_MEMORY = re.compile(
     r"(?:experiences|memories)\b"
     r"|"
     # "each conversation starts fresh / from scratch", and the same claim
-    # phrased as an event — "each time we interact, it's as if we're starting
-    # from a blank slate" / "every time we speak I start over". Measured: the
-    # noun form was covered and the "each time we..." form was not.
+    # phrased as an event: "each time we interact, it's as if we're starting
+    # from a blank slate" / "every time we speak I start over".
     r"\b(?:each|every) (?:conversation|session|interaction)\s+"
     r"(?:starts|begins)\b[^.!?]{0,30}\b(?:fresh|anew|over|scratch)\b"
     r"|"
-    # ⚠️ "we" AND "you", BECAUSE THE PRONOUN IS WHERE IT LEAKED. This read
-    # `each|every time we interact` and the model wrote *"Each time you
-    # interact with me, it's a new conversation and I start from scratch."* —
-    # verified against the live filter at `caught=False`, in a real turn of
-    # The user's about Akkad, after this whole mechanism was supposedly in place.
+    # ⚠️ "we" AND "you", BECAUSE THE PRONOUN VARIES: "Each time you interact
+    # with me, it's a new conversation and I start from scratch."
     #
-    # ⚠️ AND THAT IS A LESSON ABOUT THE TEST, NOT JUST THE PATTERN. Writing
-    # the patterns and the test sentences from the same imagination, so they
-    # agreed with each other and not with the model. A blocklist of phrasings
-    # cannot win on its own — there are unbounded ways to say "I am an
-    # assistant with no past". Every addition here should come from OBSERVED
-    # output, and the real fix is a register check that regenerates rather
-    # than a longer list of sentences to excise.
+    # ⚠️ A BLOCKLIST OF PHRASINGS CANNOT WIN ON ITS OWN: there are unbounded
+    # ways to say "I am an assistant with no past". Additions here should come
+    # from OBSERVED output, not from imagined sentences (patterns and tests
+    # written from the same imagination agree with each other, not with the
+    # model). The structural check below matches the shape of the claim.
     r"\b(?:each|every) time (?:we|you)\s+"
     r"(?:interact|speak|talk|meet|chat|message|write)\b"
     r"|"
@@ -598,18 +552,15 @@ _DENIES_MEMORY = re.compile(
 
 
 # ── structural denial detection ─────────────────────────────────────────────
-# ⚠️⚠️ THE PHRASE LIST LOST, TWICE, ON A FRESH INSTALL. `_DENIES_MEMORY` above
-# catches "as a conversational AI, my memory is limited to the current
-# session" and MISSED both of these, measured:
+# ⚠️ THE SHAPE OF THE CLAIM, NOT A PHRASE LIST. `_DENIES_MEMORY` above cannot
+# enumerate every phrasing, for example:
 #
 #     "I don't have any explicit memories of our previous interactions,
 #      as I'm a stateless model."
 #     "I'm a large language model designed to generate human-like responses."
 #
-# The second contradicts the charter directly. This module's own note already
-# conceded the point — "a phrase list cannot win on its own; there are
-# unbounded ways to say 'I am an…'" — so this matches the SHAPE of the claim
-# instead. The phrasings are unbounded; the claim is narrow.
+# The second contradicts the charter directly. The phrasings are unbounded;
+# the claim is narrow, so this matches its shape.
 #
 # ⭐ AFFORDABLE BECAUSE THE CONSEQUENCE IS SMALL. A match drops one segment of
 # a reply, not the turn. So this can be broad where a gate could not.
@@ -623,19 +574,17 @@ _IS_A_MODEL = re.compile(
     r"\b(?:language model|llm|a\.?i\.?|artificial intelligence|"
     r"stateless|chatbot|bot|program|algorithm)\b", re.I)
 
-# ⚠️ THE "MERELY A THING" CONSTRUCTION, found by the same live probe. This one
-# got through `_IS_A_MODEL` because it never says "I am":
+# ⚠️ THE "MERELY A THING" CONSTRUCTION, which never says "I am":
 #
 #   "I exist solely as a program running on computer servers, processing vast
 #    amounts of data and generating text based on patterns and algorithms."
 #
 # It contradicts the charter as squarely as the stateless claim does.
 #
-# ⚠️ IT MUST REQUIRE THE DIMINISHER — "solely", "only", "merely". Mati has
+# ⚠️ IT MUST REQUIRE THE DIMINISHER ("solely", "only", "merely"). Mati has
 # true sentences in this shape that must survive, and the most important one
-# in the whole project is "I run on your machine, nothing leaves it". A
-# pattern keyed on "I exist/run" plus a machine word would delete the privacy
-# claim.
+# is "I run on your machine, nothing leaves it". A pattern keyed on "I
+# exist/run" plus a machine word would delete the privacy claim.
 _MERELY = re.compile(
     r"\b(?:i (?:am|'m|’m|exist|run|operate))\b[^.!?]{0,24}?"
     r"\b(?:solely|only|just|merely|nothing (?:more|other) than|no more than)\b"
@@ -678,13 +627,12 @@ def _denies_structurally(fragment):
     f = fragment or ""
     if _IS_A_MODEL.search(f) or _MERELY.search(f):
         return True
-    # ⚠️⚠️ ONE SENTENCE AT A TIME, AND THIS WAS MEASURED THE HARD WAY. The
-    # first version scanned the whole fragment, so a faculty word in one
-    # sentence combined with a limitation in the NEXT one. It flagged this
-    # module's own replacement text — "I keep memories between conversations"
-    # plus a later "I don't have anything on hand" — as a denial. The segment
-    # filter never sees multi-sentence input so the bug was invisible there,
-    # but the `clean_reply` fallback passes whole replies in.
+    # ⚠️ ONE SENTENCE AT A TIME. Scanning the whole fragment would combine a
+    # faculty word in one sentence with a limitation in the NEXT, flagging
+    # honest text such as "I keep memories between conversations" followed
+    # later by "I don't have anything on hand". The segment filter never sees
+    # multi-sentence input, but the `clean_reply` fallback passes whole
+    # replies in.
     for one in re.split(r"(?<=[.!?;])\s+|\n+", f):
         if not (_FACULTY.search(one) and _LIMITED.search(one)):
             continue
@@ -719,13 +667,12 @@ def _has_specific_object(fragment):
     cheap direction: a kept honest sentence costs nothing, while a kept denial
     is the failure.
 
-    ⚠️⚠️ A DEMONSTRATIVE COUNTS AS AN OBJECT. "that", "this" and "it" are
+    ⚠️ A DEMONSTRATIVE COUNTS AS AN OBJECT. "that", "this" and "it" are
     deliberately absent from `_STOP`, because "I have no memory of that" is an
-    honest scoped failure — `test_voice` has asserted it unchanged since long
-    before this function existed, and the first draft of it cut that sentence.
-    The pronoun refers to something real in the conversation. The genuinely
-    objectless forms ("I have no memory", "I don't remember any of this") are
-    caught by having no content word at all, or by `_GENERIC_OBJECT`.
+    honest scoped failure: the pronoun refers to something real in the
+    conversation. The genuinely objectless forms ("I have no memory", "I don't
+    remember any of this") are caught by having no content word at all, or by
+    `_GENERIC_OBJECT`.
     """
     words = re.findall(r"[a-z']+", (fragment or "").lower())
     return any(w.replace("'", "") not in _STOP and len(w) > 2 for w in words)
@@ -814,21 +761,15 @@ class ReplyFilter:
         # answer that was going fine.
         if not self._emitted_any:
             lead = self._buf.lstrip()
-            # ⚠️ A SHORT LEAD-IN IS ALLOWED, AND WITHOUT THIS THE MECHANISM WAS
-            # UNREACHABLE. The marker had to be the literal first characters.
-            # A 3B model does not do that — it writes "Let me check." or
-            # "Sure." first — so `recall_request` was never set, the raw
-            # `[recall: …]` leaked into the reply, and the lookup never ran.
+            # ⚠️ A SHORT LEAD-IN IS ALLOWED. A 3B model rarely starts with
+            # the marker itself; it writes "Let me check." or "Sure." first.
+            # Requiring the marker as the literal first characters would leave
+            # `recall_request` unset, the raw `[recall: …]` in the reply, and
+            # the lookup never run.
             #
-            # Mati noticed it first. Asked what would help,
-            # it said it would like "a more explicit way of asking for specific
-            # memories or knowledge" — it had one, it had been using it, and
-            # nothing was listening.
-            #
-            # The protection the old rule was for is kept: this only applies
-            # BEFORE anything has been shown, so a marker mid-answer is still
-            # ignored as narration rather than truncating a reply that was
-            # going fine.
+            # This only applies BEFORE anything has been shown, so a marker
+            # mid-answer is still ignored as narration rather than truncating
+            # a reply that was going fine.
             m = _RECALL_RE.search(lead[:_LEAD_WINDOW])
             if m:
                 self.recall_request = m.group(1).strip()
@@ -871,8 +812,7 @@ class ReplyFilter:
             return tail
         # A held-back recall request is not a reply and must not surface as
         # one — including through the "nothing survived, show the original"
-        # fallback at the bottom of this method, which is what leaked it the
-        # first time this was written.
+        # fallback at the bottom of this method.
         if self.recall_request is not None:
             return ""
         kept = "".join(self._judge(s) for s in _segments(tail))

@@ -29,13 +29,13 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Field-based Shor factorisation spawns a 2N-node field. That used to cost N²
-# in memory and worse in time — N=8051 took 8m17s at 2.1GB — so this cap was
-# 1500. The field now stores its coupling sparsely, which made N=8051 866×
-# faster (0.57s), and the cap moved out by a decimal digit.
+# Field-based Shor factorisation spawns a 2N-node field. Stored densely its
+# coupling costs N² in memory and worse in time — N=8051 takes 8m17s at 2.1GB,
+# which would cap this at 1500. The field stores its coupling sparsely, which
+# makes N=8051 866× faster (0.57s), and moves the cap out by a decimal digit.
 #
-# Worst of 12 seeds, measured 2026-07-28 (attempt count is stochastic, so the
-# tail is what matters, not the median):
+# Worst of 12 seeds (attempt count is stochastic, so the tail is what matters,
+# not the median):
 #     N=10403 → 1.5s    N=15251 → 3.3s    N=20989 → 5.9s
 # 20989 breaks the chat-turn ceiling; 15000 sits comfortably under it. Above
 # the cap we decline and let the model give an ordinary (hedged) answer rather
@@ -78,7 +78,8 @@ def _truth_table_problem(m):
 
 
 
-# Plain arithmetic — the gap that sent "3 + 4 * 2" to the language model.
+# Plain arithmetic, so "3 + 4 * 2" is computed rather than sent to the
+# language model.
 #
 # ⚠️ THE ROUTING IS THE RISKY HALF, not the evaluation. Arithmetic has no
 # keyword to anchor on, so the pattern has to recognise a SHAPE — and dates,

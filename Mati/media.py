@@ -1,23 +1,16 @@
 """
 One door for anything that plays. ⚠️ "play" DOES NOT MEAN MUSIC.
 
-The user: *"I think we need to move the media to one module that handles it all.
-The command 'play' should not assume music, but it should wake the media
-module."* They are right, and the measurement was worse than the complaint:
+"play" should wake the media module, not assume music. A front door that
+assumes music sends everything else to a library search for a song by that
+name:
 
-    "play a podcast about history"  -> {'kind': 'track'}   the MUSIC LIBRARY
-    "play radio from Mexico"        -> {'kind': 'track'}   the MUSIC LIBRARY
-    "play something"                -> {'kind': 'track', 'what': 'something'}
-    "I want to listen to something" -> None, unrecognised entirely
+    "play a podcast about history"  -> a track called "a podcast about history"
+    "play radio from Mexico"        -> a track called "radio from Mexico"
+    "I want to listen to something" -> not recognised at all
 
-`dj.hears_request` was the front door for ALL media and it assumed music,
-declining only when it spotted a video word. Everything else — podcasts,
-radio by country, an unqualified "play" — fell through to a library search for
-a song by that name.
-
-And structurally: only `dj` had a recogniser at all. `radio` and `podcast`
-had none, so nothing a person SAID could ever reach them — they existed only
-behind terminal commands.
+and leaves the other backends with no recogniser, so nothing a person SAYS can
+reach them.
 
 WHAT THIS DOES. It classifies first and routes second:
 
@@ -27,23 +20,18 @@ WHAT THIS DOES. It classifies first and routes second:
     film     moving pictures     -> archive_org.py (plays in the app)
     preset   a button, 1–10      -> presets.py
 
-⚠️ APPLE MUSIC IS GONE. The user: *"I dont want use Apple Music in
-any way"*, and *"restructure the music service so that it is more like a car
-radio with station presets rather than a music streaming app with a music
-library."* So `track` is still a RECOGNISER — "play some jazz music" has to
-keep working — but it routes to a station. Playlists, ratings and reviews are
-recognised and declined rather than silently dropped, because a request that
-used to work deserves a sentence saying it does not.
+⚠️ NO APPLE MUSIC. Music works like a car radio with station presets, not a
+streaming app with a library. So `track` is still a RECOGNISER — "play some
+jazz music" has to keep working — but it routes to a station. Playlists,
+ratings and reviews are recognised and declined rather than silently dropped,
+because a request deserves a sentence saying it is not something Mati does.
 
-⚠️ ONE LIBRARY READ SURVIVES AND IS NOT REACHABLE FROM HERE:
-`dj.import_taste()`, run once at setup, genres only. The user: *"I only want
-Mati collecting user music data once for setup purposes only."*
+⚠️ ONE LIBRARY READ EXISTS AND IS NOT REACHABLE FROM HERE:
+`dj.import_taste()`, run once at setup, genres only.
 
-⚠️ AND THAT REMOVAL FIXED THE STOP BUTTON. `stop_all` called `dj.stop()`,
-which drives Music.app over AppleScript — so stopping took **16.5s** against
-4.1s to start, every time, whether or not Mati had ever touched Music.app.
-The user: *"the radio is still on and dont know how to shut it off."* Stop is
-the one command where latency is the whole problem.
+⚠️ AND STOP IS IMMEDIATE. Nothing of Mati's lives in another application, so
+stopping waits on nothing: stop is the one command where latency is the whole
+problem.
 
 ⚠️ AN UNCLEAR REQUEST IS ASKED ABOUT, NOT GUESSED. "play something" has no
 kind in it, and picking one means starting audio nobody asked for — the first
@@ -65,15 +53,12 @@ from . import presets
 # ── the verb ─────────────────────────────────────────────────────────────────
 # ⚠️ A VERB IS REQUIRED. "some jazz would be nice" is not an instruction, and
 # treating it as one is how audio starts unbidden.
-# ⚠️ "turn on" IS A PLAY VERB and was missing — "turn on the radio" was not
-# recognised at all. `_STOP` is tested first and owns "turn (it) off", so the
-# two cannot collide.
-# ⚠️ "show me" AND "find me" ARE PLAY VERBS. The user: *"when I asked for an
-# educational physics video it thought about it then went to idle."* A request
-# phrased "show me a video about physics" matched NO verb, so `hears` returned
-# None, the media path never opened and the whole thing went to the model —
-# which thought for a hundred seconds and said nothing useful. From outside
-# that is indistinguishable from a hang.
+# ⚠️ "turn on" IS A PLAY VERB — "turn on the radio". `_STOP` is tested first
+# and owns "turn (it) off", so the two cannot collide.
+# ⚠️ "show me" AND "find me" ARE PLAY VERBS. "show me a video about physics"
+# matching no verb would send the whole thing to the model, which thinks for a
+# minute and says nothing useful — indistinguishable, from outside, from a
+# hang.
 # Verbs that START something. ⚠️ Kept separate from `_PLAY` because "show me"
 # is a request to SEE a list as much as to begin playing one.
 _STARTS = re.compile(
@@ -85,19 +70,16 @@ _PLAY = re.compile(
 
 # ⚠️ THE ONE-TIME LIBRARY READ, and it must be ASKED FOR. It is the only thing
 # here that touches Music.app, and it reads genres so a cold radio has
-# somewhere to start — the user: "It is the point of grabbing data from Apple
-# Music, so Mati has a starting point."
+# somewhere to start.
 _SETUP_MUSIC = re.compile(
     r"\b(?:set ?up|setup|import|read|scan)\b[^.?!]{0,24}?"
     r"\b(?:music|library|itunes|genres?|taste)\b"
     r"|\b(?:music|library)\b[^.?!]{0,12}?\bset ?up\b", re.I)
 _STOP = re.compile(
     r"\b(stop|pause|silence|turn (it )?off)\b"
-    # ⚠️ "enough" AND "quiet" ONLY AS A COMMAND, NOT AS ORDINARY WORDS, and
-    # this cost the user a whole turn. They wrote a sixty-word budget breakdown
-    # containing *"I would like to spend ENOUGH to buy a coffee and a baked
-    # item"* — and Mati answered "Stopped Bristol Sound Webradio." The
-    # request was never read. `\benough\b` anywhere in the text was a stop.
+    # ⚠️ "enough" AND "quiet" ONLY AS A COMMAND, NOT AS ORDINARY WORDS. A
+    # budget paragraph saying "I would like to spend ENOUGH to buy a coffee"
+    # must not be answered with "Stopped Bristol Sound Webradio".
     #
     # In the media sense these words END an utterance: "enough", "that's
     # enough", "enough already", "quiet please". As quantifier and adjective
@@ -115,9 +97,9 @@ _STOP = re.compile(
 # to use the word. A play request NAMES something, so it is legitimately
 # longer ("play something by Alicia Keys from her early albums").
 #
-# ⚠️ AND THE PROJECT HAS LEARNED THIS TWICE ALREADY: `report.is_only_request`
-# and `continuity.is_only_question` exist for exactly this failure — a keyword
-# match inside prose that was about something else. Media had no such guard.
+# ⚠️ THE SAME GUARD AS `report.is_only_request` and
+# `continuity.is_only_question`: a keyword match inside prose that was about
+# something else is not a command.
 _CONTROL_MAX_WORDS = 7
 _LOUDER = re.compile(r"\b(louder|turn (it )?up|volume up)\b", re.I)
 _SOFTER = re.compile(r"\b(quieter|softer|turn (it )?down|volume down)\b", re.I)
@@ -214,16 +196,16 @@ def _best_match(wanted, shows, key="title"):
 def _trim_filler(text):
     """Strip filler from the EDGES of a request, never from inside it.
 
-    ⚠️ `_FILLER` RAN OVER THE WHOLE STRING AND ATE TITLES. It removes `of`,
+    ⚠️ `_FILLER` OVER THE WHOLE STRING WOULD EAT TITLES. It removes `of`,
     `the`, `a`, `in`, `about`, `from`, `by` and `to` — every one of which is a
     legitimate word INSIDE a name:
 
         "play the Theories of Everything podcast" -> "Theories Everything"
         "play Lord of the Rings"                  -> "Lord Rings"
 
-    : searching gpodder for "Theories Everything" returned
-    a show called *Originz*, and Mati reported on that instead — a wrong
-    answer that looked like a confident one, from one missing preposition.
+    and a search for "Theories Everything" finds a different show, which Mati
+    would then report on — a wrong answer that looks like a confident one,
+    from one missing preposition.
 
     ⚠️ The stripping is still RIGHT at the edges: "play some jazz" must
     become "jazz", and "I would like to listen to a podcast about physics"
@@ -247,17 +229,13 @@ _PLAY_PRESET = re.compile(
     r"(?:preset|button|station|number|#)?\s*"
     r"(?P<n>10|[1-9])\s*$", re.I)
 
-# ⚠️ THE NUMBER IS OPTIONAL, AND REQUIRING IT COST THE USER THREE PRESETS.
-# This read `…(?:preset|button|slot)\s*(?P<n>10|[1-9])\b` — a slot number was
-# MANDATORY — so only "save as preset 3" ever reached the save. Everything a
-# person actually says ("add this to my presets", "save it as a preset",
-# "make this a preset") fell through to `_LIST_PRESETS` and Mati READ THE
-# LIST BACK, ending "8 buttons still free". They saved three stations, was told
-# "8 presets left" three times, and read that as confirmation. Nothing was
-# ever written: the two presets in the store are .
+# ⚠️ THE NUMBER IS OPTIONAL. What a person actually says — "add this to my
+# presets", "save it as a preset", "make this a preset" — has no slot in it,
+# and requiring one would send all of them to `_LIST_PRESETS`: Mati would read
+# the list back ending "8 buttons still free", and that reads as confirmation
+# while nothing was written.
 #
-# ⚠️ AND A LIST THAT LOOKS LIKE A CONFIRMATION IS WORSE THAN AN ERROR. The
-# real answer was on screen and said the opposite of what happened.
+# ⚠️ A LIST THAT LOOKS LIKE A CONFIRMATION IS WORSE THAN AN ERROR.
 #
 # Without a number the next free button is used — `_save_preset` resolves it,
 # and says which one it took.
@@ -283,9 +261,9 @@ _LIST_PRESETS = re.compile(
     r"|\bwhat(?:'s| is)? on (?:my )?(?:presets|buttons)\b", re.I)
 
 # ── Moving through what a search found ───────────────────────────────────────
-# ⚠️ the user: *"Some people are going to say 'station' instead of 'preset'"* —
-# `_PLAY_PRESET` already accepts "station 3", and this is the other half: a
-# person who does not want a NUMBER, they want the NEXT one.
+# ⚠️ Some people say "station" instead of "preset". `_PLAY_PRESET` already
+# accepts "station 3", and this is the other half: a person who does not want
+# a NUMBER, they want the NEXT one.
 _NEXT = re.compile(
     r"\b(?:next|another|different|other|one more|skip|try another)\b"
     r"[^.?!]{0,20}?\b(?:station|one|stream)\b"
@@ -293,24 +271,22 @@ _NEXT = re.compile(
     r"|\bsomething else\b", re.I)
 
 # ── Referring back to what was offered ───────────────────────────────────────
-# ⚠️ THE USER'S OWN SESSION IS THE SPEC. They said, in four minutes:
+# ⚠️ A HELD LIST MUST BE WALKABLE IN EVERY DIRECTION, not only forward:
 #   "Let me hear the first station again"
 #   "I mean the first of the hip hop stations that you presented"
 #   "That's not hip hop"
-# The list was held and only walked FORWARD, so none of these could be
-# answered and Mati replied conversationally while the radio ignored them.
+# Otherwise Mati replies conversationally while the radio ignores the request.
 _BACK = re.compile(
     r"\b(?:go back|previous|last one|the one before|back to the (?:last|previous))\b"
     r"|\bprevious station\b", re.I)
 
-# ⚠️ ORDINALS ONLY — A NUMBER MEANS A PRESET BUTTON. The user: *"Some people
-# are going to say 'station' instead of 'preset'"*, so "play station 3" is
-# button 3. A bare "station 3" meaning "the third you offered" would make the
-# same words mean two things depending on whether a verb was present.
+# ⚠️ ORDINALS ONLY — A NUMBER MEANS A PRESET BUTTON. "play station 3" is button
+# 3. A bare "station 3" meaning "the third you offered" would make the same
+# words mean two things depending on whether a verb was present.
 #
 # ⚠️ `stations?`, NOT `station`. "the first of the hip hop STATIONS that you
-# presented" — the user's own words — failed because `\bstation\b` will not
-# match inside "stations".
+# presented" would fail, because `\bstation\b` will not match inside
+# "stations".
 _NTH = re.compile(
     r"\b(?:the\s+)?(?P<ord>first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th)"
     r"\b[^.?!]{0,40}?\b(?:stations?|ones?)\b", re.I)
@@ -339,12 +315,11 @@ _LIST_FOUND = re.compile(
     r"|\bwhat did you (?:find|present|offer)\b", re.I)
 
 # ⚠️ "that station from yesterday". `dj.what_played` resolves it against the
-# RECORD, and had no caller until now.
+# RECORD.
 #
-# ⚠️ EVERY PHRASE HERE MUST BE ONE `what_played` CAN ACT ON. The first draft
-# recognised fewer words than the resolver understood, so "earlier" and "this
-# afternoon" were resolvable and unreachable — a split brain where one half
-# can answer and the other never asks. `test_media` checks the two agree.
+# ⚠️ EVERY PHRASE HERE MUST BE ONE `what_played` CAN ACT ON, and every phrase
+# it can act on must be here — otherwise one half can answer and the other
+# never asks. The tests check the two agree.
 _WHENS = (r"yesterday|last night|last evening|"
           r"this morning|this afternoon|this evening|tonight|today|earlier|"
           r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
@@ -389,6 +364,26 @@ _PLAY_AS_NOUN = re.compile(
     r"|\bpart\b[^.?!]{0,30}\bplay\b", re.I)
 
 
+# Verbs that mean "play" in any sentence, and verbs that only mean it when a
+# media word follows. See the "START" note in `hears`. ⚠️ Together these must
+# cover every verb `_PLAY` lists.
+_STRONG_PLAY = re.compile(
+    r"\b(play|put on|turn on|listen to|watch|stream)\b", re.I)
+_WEAK_PLAY = re.compile(
+    r"\b(start|show me|find me|pull up|bring up)\b", re.I)
+_WEAK_WINDOW = 4          # words after the verb that may name the media
+
+
+def _weak_verb_names_media(t):
+    """Does a weak play verb have a media word right after it?"""
+    for m in _WEAK_PLAY.finditer(t):
+        window = " ".join(t[m.end():].split()[:_WEAK_WINDOW])
+        if (_GENRE.search(window) or _RADIO_NOUN.search(window)
+                or any(p.search(window) for _, p in KINDS)):
+            return True
+    return False
+
+
 def _asking_about(t):
     """True when this is a question ABOUT something, not an instruction.
 
@@ -404,10 +399,10 @@ def _asking_about(t):
 def _subject(text):
     """What was named. ⚠️ Kind words are only removed if something remains.
 
-    The first version stripped the kind pattern unconditionally, so
-    "listen to the daily" knew it was a PODCAST and lost WHICH podcast — the
-    words that named it were the same words that classified it. It also let
-    "I want to listen to something" through as the subject "I want to".
+    Stripped unconditionally, "listen to the daily" would know it was a
+    PODCAST and lose WHICH podcast — the words that named it are the same words
+    that classified it — and "I want to listen to something" would come through
+    as the subject "I want to".
     """
     m = _AFTER_VERB.search(text or "")
     t = m.group(1) if m else (text or "")
@@ -499,8 +494,8 @@ def hears(text):
         # ⚠️ "" means "all of them", a name means "just this one".
         return {"verb": "reviews", "what": _named_thing(t)}
     # ⚠️ `_STARTS`, NOT `_PLAY`. This guard exists so "play my playlists" is a
-    # play rather than a read — but once "show me" became a play verb, "show
-    # me my playlists" was caught by it too. "show me" DISPLAYS; it does not
+    # play rather than a read — but "show me" is a play verb, and "show me my
+    # playlists" must not be caught by it. "show me" DISPLAYS; it does not
     # start audio, and the distinction is the whole point of the guard.
     if _PLAYLISTS.search(t) and not _STARTS.search(t):
         return {"verb": "playlists"}
@@ -537,20 +532,18 @@ def hears(text):
     if m:
         when = m.group("when") or m.group("when2")
         return {"verb": "played_when", "when": when.lower()}
-    # ⚠️⚠️ A MEMORY QUESTION IS NOT A RADIO COMMAND, AND TWO OF THEM WERE.
-    # Measured on a live install , while probing something else:
+    # ⚠️⚠️ A MEMORY QUESTION IS NOT A RADIO COMMAND.
     #
     #   "What do you recall from our previous conversations?"
-    #       -> {verb: back} -> "I do not have a list of stations to move
-    #          through."      (0s — code-emitted, the model never ran)
+    #       must not be {verb: back} — "I do not have a list of stations to
+    #       move through"
     #   "Can you remember things between sessions, or do you start over?"
-    #       -> {verb: play, what: "over..."} -> started Hard Rock Heaven
+    #       must not be {verb: play, what: "over..."} — a station starting
     #
     # `_BACK` matches a BARE "previous", and `previous` is a far commoner word
-    # about conversations than about stations. This module's own header has the
-    # rule — *"a false negative costs one sentence, a false positive costs a
-    # room"* — and `_asking_about` is the guard that enforces it, but it sits
-    # BELOW this branch, so `_BACK`/`_NEXT`/`_NTH` never reach it.
+    # about conversations than about stations. A false negative costs one
+    # sentence, a false positive costs a room — and `_asking_about` sits BELOW
+    # this branch, so `_BACK`/`_NEXT`/`_NTH` would never reach it.
     #
     # ⚠️ THE GUARD CANNOT JUST BE "DOES IT MENTION A CONVERSATION". "next talk
     # station" and "play another station and remember it" are real radio
@@ -577,31 +570,43 @@ def hears(text):
     if _LIST_PRESETS.search(t):
         return {"verb": "presets"}
 
-    # ⚠️ "play" IS ALSO AN ORDINARY ENGLISH VERB, and `_PLAY` matched it
-    # ANYWHERE. The user: *"there was a glitch when I asked a question that
-    # included the word 'play', 'What role did [such and such] play…'"*
-    # Measured:
+    # ⚠️ "play" IS ALSO AN ORDINARY ENGLISH VERB, and matching it ANYWHERE turns
+    # questions into commands:
     #
     #   "What role did the calmecac play in Aztec education?"
     #       -> a PLAY command for "Aztec education"
     #   "What part did Chaplin play in the film?"
-    #       -> kind=film — a history question would have started a VIDEO
+    #       -> kind=film — a history question would start a VIDEO
     #
-    # This module's own header says it: a false negative costs one sentence, a
-    # false positive costs a room. Same shape as `_DOING.search` answering
-    # "What have you read recently?" as an instruction.
+    # A false negative costs one sentence, a false positive costs a room. Same
+    # shape as `_DOING.search` answering "What have you read recently?" as an
+    # instruction.
     if _asking_about(t):
         return None
 
     if not _PLAY.search(t):
         return None
 
-    # ⚠️ EARLIEST MATCH WINS, NOT TABLE ORDER. This was
-    # `next(name for name, pat in KINDS if pat.search(t))`, which picks the
-    # first kind in the TABLE — and the table starts with `film`. So "play a
-    # podcast about current movies" classified as a FILM and searched for a
-    # movie called "current", because `movies` appears in the table before
-    # `podcast` does, never mind that it appears later in the sentence.
+    # ⚠️⚠️ "START" IS NOT A PLAY VERB ON ITS OWN. Someone working on a story
+    # says
+    #
+    #   "I think I want to start the story with the Akkadian version of …"
+    #   "Actually I want to start with Genesis 5."
+    #
+    # and each must not come back as "I do not know “…” as a station" in no
+    # time at all, by code. `start`, `show me`, `find me`, `pull up` and `bring
+    # up` are ordinary English; `play`, `listen to` and `watch` are not. So a
+    # WEAK verb counts only when the thing right after it is a media word —
+    # "start the radio", "start some jazz", "find me a podcast". A false
+    # negative costs one sentence, a false positive costs the conversation.
+    if not _STRONG_PLAY.search(t) and not _weak_verb_names_media(t):
+        return None
+
+    # ⚠️ EARLIEST MATCH WINS, NOT TABLE ORDER. The first kind in the TABLE
+    # would be `film`, so "play a podcast about current movies" would classify
+    # as a FILM and search for a movie called "current" — `movies` appears in
+    # the table before `podcast` does, never mind that it comes later in the
+    # sentence.
     #
     # ⚠️ THE HEAD NOUN COMES FIRST IN ENGLISH for this construction: "a
     # podcast about films" is a podcast, "a film about podcasts" is a film,
@@ -661,8 +666,7 @@ def _play_preset(slot, db_path=None):
         return f"Preset {slot} is {p['name']}, but it would not play — {msg}"
     # ⚠️ THE URL GOES IN TOO. Without `detail` the history records that a
     # station played and not WHICH stream, so "play that station from earlier"
-    # could name it and not replay it — measured live: "I played senshiphop
-    # then, but I did not keep the station address."
+    # could name it and not replay it.
     _remember(kind="preset", name=p["name"], detail=p["url"], db_path=db_path)
     return f"Preset {slot}: {msg}"
 
@@ -734,16 +738,13 @@ def answer(req, db_path=None):
     if verb == "what":
         return now_playing_line(db_path=db_path) or "Nothing is playing."
 
-    # ⚠️ PLAYLISTS, REVIEWS AND RATINGS ARE GONE FROM THE DOOR. The user,
-    # The user: *"I dont want use Apple Music in any way"*, and *"drop Apple
-    # Music for playing media."* All three read Music.app, and all three
-    # belonged to the streaming-library shape this is being restructured away
-    # from. A car radio has buttons, not a star rating.
+    # ⚠️ PLAYLISTS, REVIEWS AND RATINGS ARE DECLINED AT THE DOOR. All three
+    # would read Music.app, and all three belong to the streaming-library shape
+    # Mati does not have. A car radio has buttons, not a star rating.
     #
-    # ⚠️ The ONE permitted reading survives elsewhere and is not reachable from
+    # ⚠️ The ONE permitted reading lives elsewhere and is not reachable from
     # here: `dj.import_taste()`, run once at setup, which records genres so a
-    # first set of presets can be suggested. The user: *"I only want Mati
-    # collecting user music data once for setup purposes only."*
+    # first set of presets can be suggested.
     if verb in ("playlists", "reviews", "rate"):
         return ("I do not read your music library any more — the radio is "
                 "stations and presets now. Ask me for a station, or save one "
@@ -816,10 +817,8 @@ def answer(req, db_path=None):
 
     kind = req.get("kind")
     if kind is None:
-        # ⚠️ NO LIBRARY LOOK-UP ANY MORE. This used to search Music.app for a
-        # named thing and play it if found — "that is evidence, not a guess",
-        # which was true and is now out of scope. A named thing is a station
-        # name to look for in the directory.
+        # ⚠️ NO LIBRARY LOOK-UP. A named thing is a station name to look for in
+        # the directory.
         named = req.get("what")
         if named:
             return _play_radio(dict(req, genre=None), db_path=db_path)
@@ -852,9 +851,9 @@ def _play_radio(req, db_path=None):
 
     ⚠️ NEAREST FIRST, WHEN WE KNOW WHERE YOU ARE. `radio.near` narrows to the
     saved country and orders by distance, so a local station comes before one
-    across an ocean. It returns [] when no location is set, and the old
-    search is the fallback rather than an error — a person who has not told
-    Mati where they are should still get music.
+    across an ocean. It returns [] when no location is set, and a plain search
+    is the fallback rather than an error — a person who has not told Mati
+    where they are should still get music.
     """
     from . import radio, dj
     want = req.get("genre") or req.get("what") or ""
@@ -888,27 +887,25 @@ def _play_radio(req, db_path=None):
 def _ask_instead(want, what_of="station"):
     """Nothing matched — so ASK, rather than report a dead end.
 
-    ⚠️ the user: *"Ask instead of trying to play random text, and telling
-    someone that their request is not found."* Both halves are one rule. A
-    request that found nothing is usually not a request for something that
-    does not exist — it is a request Mati READ WRONG, and "I could not find a
-    station for X" hands that back as the person's problem.
+    Ask instead of trying to play random text, and instead of telling someone
+    their request was not found: both are one rule. A request that found
+    nothing is usually not a request for something that does not exist — it is
+    a request Mati READ WRONG, and "I could not find a station for X" hands
+    that back as the person's problem.
 
-    This matters more now that the 3B classifies intent (`Mati/intent.py`):
-    a message can be labelled `play` on good evidence while the words after
-    the verb are not the name of anything. The old answer told them their
-    request failed; the right answer asks the one thing that would make the
-    search work.
+    This matters more because the 3B classifies intent (`Mati/intent.py`): a
+    message can be labelled `play` on good evidence while the words after the
+    verb are not the name of anything. The right answer asks the one thing that
+    would make the search work.
 
     ⚠️ IT NAMES WHAT IT DID NOT UNDERSTAND. "I do not know it" is no more use
     than "not found" — quoting the words back is what lets the person see that
     Mati heard "a documentary about teotihuacan" as a station name and say
     so.
 
-    ⚠️ AND IT IS NOT `_switch_on`. That is the other case and it is already
-    right: "play some music" names NOTHING, and the answer there is to PLAY —
-    asking "a station of what?" was measured as the wrong move. Nothing named
-    means pick something; something named that missed means ask.
+    ⚠️ AND IT IS NOT `_switch_on`. That is the other case: "play some music"
+    names NOTHING, and the answer there is to PLAY. Nothing named means pick
+    something; something named that missed means ask.
     """
     w = " ".join((want or "").split())
     if not w:
@@ -921,26 +918,22 @@ def _ask_instead(want, what_of="station"):
 def _switch_on(db_path=None):
     """"Play some music" with nothing named. ⚠️ PLAYS, it does not interrogate.
 
-    the user, having asked for a car radio: *"So now if I say 'play some music'
-    it will play some music, instead of saying 'Could not find some music in
-    your library'?"* It did not. The library error was gone and in its place
-    was *"A station of what? Name a genre, a country or a station."* — better,
-    and still not music.
+    "play some music" means music, not "A station of what? Name a genre, a
+    country or a station."
 
-    ⚠️ ASKING WAS THE RIGHT RULE IN THE WRONG PLACE. "an unclear request is
-    asked about, not guessed" exists so audio never starts unbidden, and it
-    earns its keep on "play something" where the KIND is unknown — a film, a
-    podcast and a station are different rooms. But "play some music" is not
-    unclear. The kind is known. A car radio's power button plays what was on
-    last; it does not ask which genre.
+    ⚠️ "AN UNCLEAR REQUEST IS ASKED ABOUT" BELONGS ELSEWHERE. That rule exists
+    so audio never starts unbidden, and it earns its keep on "play something",
+    where the KIND is unknown — a film, a podcast and a station are different
+    rooms. But "play some music" is not unclear. The kind is known. A car
+    radio's power button plays what was on last; it does not ask which genre.
 
     The order is a radio's own: what was last on, then the lowest button, then
     — only with no history and no presets at all — a question.
     """
     from . import radio, dj
     # 1. What was on last. ⚠️ Needs the URL, not just the name: the history
-    #    records both, and `_play_preset` once recorded only the name, which
-    #    is the bug that made "that station from earlier" unplayable.
+    #    records both, and a name alone leaves "that station from earlier"
+    #    unplayable.
     try:
         for row in dj.history(limit=20, db_path=db_path):
             if row.get("kind") in ("station", "preset") and row.get("detail"):
@@ -959,13 +952,10 @@ def _switch_on(db_path=None):
     if rows:
         return _play_preset(rows[0]["slot"], db_path=db_path)
 
-    # 3. ⚠️ THE IMPORTED GENRES — AND THIS IS WHAT THE IMPORT IS FOR. The user:
-    #    *"It is the point of grabbing data from Apple Music, so Mati has a
-    #    starting point."* A cold radio with no history and no presets is
-    #    exactly the moment that one-time read exists to answer. Without this
-    #    branch `import_taste` would have been written, run, stored and never
-    #    read — the tenth "built with no reader" here, and this time I would
-    #    have built the reader's absence into the same change.
+    # 3. ⚠️ THE IMPORTED GENRES — AND THIS IS WHAT THE IMPORT IS FOR, so Mati
+    #    has a starting point. A cold radio with no history and no presets is
+    #    exactly the moment that one-time read exists to answer; without this
+    #    branch it would be stored and never read.
     liked = dj.taste()
     if liked:
         for genre in liked[:3]:
@@ -1024,19 +1014,13 @@ def _play_one(st, db_path=None):
 def _next_station(db_path=None):
     """Walk the last search. ⚠️ KEEPS WALKING past one that will not play.
 
-    ⚠️ IT GAVE UP ON THE FIRST DEAD STREAM. Measured in the user's own session,
-    three times in four minutes:
+    One station from the list handed to `_start_from`, and failure reported if
+    it did not start, would let a single dead stream end the walk with the
+    cursor sitting still — a list of six unusable after the first bad entry,
+    and every "next station" answered "none would start".
 
-        I was asked: next station
-        I did it: I found 1 stations for "None" and none would start.
-
-    It took exactly one station from the list, handed it to `_start_from`, and
-    reported failure if that one did not start — so a single dead stream ended
-    the walk and the cursor sat still. A list of six was unusable after the
-    first bad entry.
-
-    ⚠️ AND THE MESSAGE SAID "None" because `_start_from` was called with
-    `want=None` and interpolated it. A person reading that learns nothing.
+    ⚠️ AND NO "None" IN THE MESSAGE. `_start_from` called with `want=None`
+    would interpolate it, and a person reading that learns nothing.
     """
     from . import radio
     tried = []
@@ -1069,11 +1053,8 @@ def _next_station(db_path=None):
 
 
 def _played_when(when_words, db_path=None):
-    """"that station from yesterday". ⚠️ From the RECORD, never a guess.
-
-    ⚠️ `dj.what_played` was written for exactly this and had NO CALLER — the
-    ninth "built with no reader" in this codebase. The history was being
-    recorded faithfully and never once read.
+    """"that station from yesterday". ⚠️ From the RECORD, never a guess —
+    `dj.what_played` reads the history that is recorded as things play.
     """
     from . import radio, dj
     row = dj.what_played(when_words, db_path=db_path)
@@ -1097,18 +1078,16 @@ def _find_podcast(what):
     shows = podcast.search(what, limit=3)
     if not shows:
         return _ask_instead(what, "podcast")
-    # ⚠️ THE TOP HIT IS NOT AUTOMATICALLY THE ANSWER, and taking it was a real
-    # wrong answer that looked confident. : asked for
-    # "Theories of Everything", gpodder ranked a show called *Originz* first,
-    # and Mati reported on that — a show sharing not one word with the
-    # request. The person asked for one thing and was told about another, with
-    # no sign anything had gone wrong.
+    # ⚠️ THE TOP HIT IS NOT AUTOMATICALLY THE ANSWER. Asked for "Theories of
+    # Everything", gpodder can rank a show sharing not one word with the request
+    # first, and taking it would report on something else with no sign anything
+    # had gone wrong.
     #
     # ⚠️ A SEARCH RANKING IS NOT A MATCH. gpodder returns its best guess
     # whatever is asked; it never says "nothing like this exists". So the
     # resemblance has to be checked here, by the caller that knows what was
-    # wanted. Same rule the radio already follows: ask rather than play
-    # something random and call it an answer.
+    # wanted. Same rule the radio follows: ask rather than play something
+    # random and call it an answer.
     s = _best_match(what, shows)
     if s is None:
         return _ask_instead(what, "podcast")
@@ -1132,16 +1111,15 @@ def _find_podcast(what):
 def _find_film(what, feature=None, documentary=None):
     """⚠️ Openly-licensed only, and the app plays it — see archive_org.
 
-    ⚠️ THE REQUEST MAY NAME A SHELF RATHER THAN A TITLE. "play nasa videos"
-    was searching the FEATURE FILMS shelf for the word "nasa" and returning
-    *Voyage to the Planet of Prehistoric Women*. `shelf_for` spots the shelf,
-    so that request browses the 13,771-item NASA collection instead.
+    ⚠️ THE REQUEST MAY NAME A SHELF RATHER THAN A TITLE. "play nasa videos" is
+    a request to browse the NASA collection, not to search the feature-film
+    shelf for the word "nasa" — which finds *Voyage to the Planet of
+    Prehistoric Women*. `shelf_for` spots the shelf.
 
-    ⚠️ AND A BARE REQUEST SPLITS TWO WAYS. The user: *"Unless someone is looking
-    for something different, 'film' and 'movie' must be something from major
-    film studios."* So "play a movie" gets a studio picture and "play some
-    videos" gets the looping reel — same kind, different intent, and
-    `feature` is which word was used.
+    ⚠️ AND A BARE REQUEST SPLITS TWO WAYS. Unless someone is looking for
+    something different, "film" and "movie" mean a studio picture, so "play a
+    movie" gets one and "play some videos" gets the looping reel — same kind,
+    different intent, and `feature` is which word was used.
     """
     from . import archive_org as A
 
@@ -1162,12 +1140,10 @@ def _find_film(what, feature=None, documentary=None):
             return {"say": f"{p['title']} — {p['studio']}, {p['licence']}.",
                     "play_video": p}
 
-    # ⚠️ NOTHING NAMED MEANS THE REEL. The user: *"playing chaplin is a perfect
-    # default, but there should be a short playlist of shorts and cartoons
-    # from the era that play in a loop. This way it can play at the same time
-    # as listening to music."* A bare "play some videos" used to take the
-    # single most-downloaded feature film, which was both arbitrary and —
-    # measured — an item with no playable file.
+    # ⚠️ NOTHING NAMED MEANS THE REEL: a short playlist of shorts and cartoons
+    # from the era, looping, so it can play at the same time as music. The
+    # single most-downloaded feature film would be arbitrary, and often has no
+    # playable file.
     if not (what or "").strip():
         reel = A.reel(limit=6)
         if reel:
@@ -1178,14 +1154,12 @@ def _find_film(what, feature=None, documentary=None):
         # Fall through to the ordinary search if the reel came back empty.
 
     # ⚠️ WHO CHOSE DECIDES WHETHER IT IS SCREENED, and that is the whole rule.
-    # The user: *"I just don't want to accidentally play something
-    # inappropriate. The user should be able to watch any available film by
-    # name, or subject matter, or genre etc."*
+    # Nothing inappropriate should play by accident, and any available film
+    # should play when asked for by name, subject or genre.
     #
-    # A shelf browsed with NOTHING NAMED is Mati choosing — "play some
-    # shorts" took *These Girls Are Fools (1950), exploitation short with nude
-    # scenes*, and "play some films" took *Sex Madness*. A shelf plus a search
-    # term, or a bare title, is the PERSON choosing, and is never screened.
+    # A shelf browsed with NOTHING NAMED is Mati choosing, and Mati choosing
+    # can land on an exploitation short. A shelf plus a search term, or a bare
+    # title, is the PERSON choosing, and is never screened.
     shelf, rest = A.shelf_for(what)
     if shelf:
         # A wider pull, because screening removes rows and a list of five
@@ -1224,31 +1198,58 @@ def _find_film(what, feature=None, documentary=None):
 def stop_all(db_path=None):
     """Silence everything Mati started. ⚠️ Immediate, and that is the point.
 
-    ⚠️ THIS TOOK 16.5 SECONDS AND THE CAUSE WAS APPLE MUSIC. It also called
-    `dj.stop()`, which drives Music.app over AppleScript — so "stop" went out
-    to another application and waited for it, every time, whether or not
-    Mati had ever started anything there. The user had the radio on and no way
-    to silence it: *"the radio is still on and dont know how to shut it off."*
-
-    Starting a station took 4.1s and stopping took 16.5s. Stop is the one
-    command where latency IS the problem, and it was the slowest thing here.
-
-    ⚠️ Nothing of Mati's lives in Music.app any more, so there is nothing
-    there to stop. The player is in this process; `radio.stop()` is a pause
-    and a dropped reference.
+    Stop is the one command where latency IS the problem. Nothing of Mati's
+    lives in another application, so stopping waits on nothing: the player is
+    in this process, and `radio.stop()` is a pause and a dropped reference.
     """
     from . import radio
     was = radio.stop()
     return f"Stopped {was['name']}." if was else "Nothing was playing."
 
 
+def pause_all():
+    from . import radio
+    was = radio.pause()
+    return f"Paused {was['name']}." if was else "Nothing was playing."
+
+
+def resume_all():
+    from . import radio
+    ok, msg = radio.resume()
+    return f"Playing {msg}." if ok else f"Could not resume: {msg}."
+
+
+def paused_now(db_path=None):
+    """The paused station, shaped like `playing_now`, or None.
+
+    ⚠️ KEPT APART FROM `playing_now`, whose truth is "sound is coming out".
+    Folding a paused station into it would make every caller that reads it as
+    "the radio is on" wrong.
+    """
+    from . import radio
+    p = radio.paused()
+    if not p:
+        return None
+    slot = None
+    try:
+        for x in presets.all_presets(db_path=db_path):
+            if x["url"] == p.get("url"):
+                slot = x["slot"]
+                break
+    except Exception:                                        # noqa: BLE001
+        pass
+    return {"name": p.get("name"), "country": p.get("country"),
+            "bitrate": p.get("bitrate"), "preset": slot,
+            "tuning": bool(p.get("tuning"))}
+
+
 def now_playing_line(db_path=None):
     """One sentence about what is on, or None. ⚠️ Asks, never remembers.
 
-    ⚠️ NO LONGER ASKS MUSIC.APP. It used to fall through to `dj.now_playing()`,
-    which would report a track the PERSON had started in Music.app as though
-    Mati were playing it — and cost an AppleScript round trip on every status
-    check, including the ones the indicator makes.
+    ⚠️ ONLY WHAT MATI IS PLAYING. Asking Music.app would report a track the
+    PERSON started there as though Mati were playing it, and cost an
+    AppleScript round trip on every status check, including the ones the
+    indicator makes.
     """
     from . import radio
     now = radio.playing()

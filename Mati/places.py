@@ -11,19 +11,18 @@ that is exactly why an app shipped to many people must not hammer it. So:
     when it fails, Mati says so and everything else carries on.
 
 ⚠️ WHY NOT MKLocalSearch, WHICH IS RIGHT THERE AND NEEDS NO NETWORK LIBRARY.
-Because it is BROKEN for this purpose and it fails SILENTLY. Measured
-: `setRegion_` is accepted, reads back exactly as set, and is then
-ignored — searching Austin (30.2672,-97.7431) and New York (40.7128,-74.0060)
-returned byte-identical results, both in the device's OWN metro area. 25
-plausible museums came
-back and everything looked like success. Only running two distant regions and
-comparing revealed it. MapKit is still used for ROUTING, where coordinates are
-honoured (see `directions.py`); it is not used for search.
+Because it is BROKEN for this purpose and it fails SILENTLY. `setRegion_` is
+accepted, reads back exactly as set, and is then ignored — searching Austin
+(30.2672,-97.7431) and New York (40.7128,-74.0060) returns byte-identical
+results, both in the device's OWN metro area. 25 plausible museums come back
+and everything looks like success; only two distant regions, compared, reveal
+it. MapKit is still used for ROUTING, where coordinates are honoured (see
+`directions.py`); it is not used for search.
 
 ⚠️ OSM HAS NO RATINGS, AND THAT IS NOT A GAP TO FILL WITH A GUESS. There is no
 "top-rated" here because the data holds no reviews. Yelp Fusion would supply
-them and now costs $299/month minimum, which is disqualified. So Mati lists
-what is NEAR, never what is BEST, and the wording has to keep that honest.
+them and costs $299/month minimum, which is disqualified. So Mati lists what
+is NEAR, never what is BEST, and the wording has to keep that honest.
 """
 
 from __future__ import annotations

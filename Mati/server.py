@@ -10,33 +10,21 @@ would write over each other, so exactly one may own it — and Mati is two apps
 (a chat app for people, a monitoring/training terminal for pro users) that both
 need it at once. That makes the owner a server and both apps its clients.
 
-WHAT IT ACTUALLY BUYS. Not the reload: loading the field is 1.45s, about 2% of
-a turn. Measured profile of one turn, no LLM call :
-
-    import + load_field       1.45s    2.0%     <- all a persistent process saves
-    address + recall          0.51s    0.7%
-    imprint_text              9.50s   13.3%
-    field_state               3.34s    4.7%
-    consolidate_reply         0.49s    0.7%
-    remember (episode)       27.48s   38.4%     <- after the reply
-    reindex (15 notes)       28.86s   40.3%     <- after the reply, and growing
-                             ------
-                             71.64s
-
-78.7% of a turn is consolidation the user has no reason to wait for. A
-persistent process can move it off the critical path; a per-invocation script
-cannot. That is the point of this file.
+WHAT IT ACTUALLY BUYS. Not the reload: loading the field takes a second or two,
+a small part of a turn. Most of a turn's work is consolidation — writing the
+episode — which the person has no reason to wait for. A persistent process can
+move it off the critical path; a per-invocation script cannot. That is the
+point of this file.
 
 So a turn here streams its reply and hands the episode write to a worker.
-Reindex does not run per turn at all — it re-addresses stored notes after θ₀
-moves, costs ~1.9s per note and grows with the corpus, so the worker batches it
-into idle time instead.
+Re-addressing stored notes happens once a night, after `rest()` promotes the
+day's field into the address space — never per turn.
 
 CONCURRENCY. One lock guards the field; every mutation serialises through it.
 Monitoring does NOT take the lock — the turn publishes telemetry as it goes and
-readers get the last snapshot, so watching Mati think never blocks it. The
-worker releases the lock between reindex batches, so a message arriving during
-a reindex waits for one batch (~8s) rather than the whole pass (~60s).
+readers get the last snapshot, so watching Mati think never blocks it. Long
+background work checks between steps whether a turn is waiting and yields, so
+an arriving message waits for one step rather than a whole pass.
 
 BINDING. 127.0.0.1 only, and not configurable to a public interface: "nothing
 leaves your machine" is a property of the binding, not a promise in a README.
@@ -95,26 +83,14 @@ def _takes_should_stop(fn):
 # Telemetry — what the pro terminal watches
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ⚠️ THE SERVER HAD BEEN RUNNING THE SAME CODE FOR ELEVEN AND A HALF DAYS.
-# Found while tracing why episodes stopped recording what Mati said.
-# Every filter, writer and gate on that path passed a direct offline test —
-# because the code on disk was correct. It had simply never been loaded:
-# `Mati.server` was started on Aug 16 and 12 commits had landed since,
-# including the temperature change, the reading rewrite and the search fix.
+# ⚠️ IS THE CODE ANSWERING THE CODE ON DISK? A long-lived process that silently
+# serves old behaviour turns every later measurement into a measurement of the
+# past, and nothing else in `/health` would say so: every filter, writer and
+# gate passes an offline test, because the code on disk is correct — it simply
+# has not been loaded. So `/health` reports `code_stale`.
 #
-# Two symptoms pointed at it and neither was legible on its own. Episodes
-# lost their `I said:` line; and `gate_log.reply_words` was NULL on rows
-# written days after that column was added — a value the running code could
-# only have written as an integer, so the running code was not this code.
-#
-# The cost was not the stale process. It was ELEVEN DAYS OF CONCLUSIONS drawn
-# against it: "I've let the terminal run all day, its recall never improved"
-# was a true report about code from before the fixes. A long-lived process
-# that silently serves old behaviour turns every subsequent measurement into
-# a measurement of the past, and nothing in `/health` said so.
-#
-# Module mtimes rather than the git hash on purpose: it catches an
-# uncommitted edit too, which is the state most of this work is in.
+# Module mtimes rather than the git hash on purpose: it catches an uncommitted
+# edit too.
 
 def _vault_state():
     """True / False / None — unlocked, locked, or no vault at all.
@@ -136,13 +112,10 @@ def _code_stamp():
     import glob
     here = os.path.dirname(os.path.abspath(__file__))
     newest = 0.0
-    # ⚠️ MATI'S OWN MODULES ONLY. This used to reach into the parent
-    # directory for a sibling project's terminal script, which a running
-    # Mati server never imports — so editing that project marked MATI's
-    # code stale, in the one field
-    # people check before trusting a behaviour report.
-    # ⚠️ AND `field/` WAS MISSING while that was included: it IS imported.
-    # The stamp under-covered Mati and over-covered a neighbour.
+    # ⚠️ MATI'S OWN MODULES ONLY, `field/` included. A file Mati never imports
+    # must not mark its code stale — this is the one field people check before
+    # trusting a behaviour report — and a module it does import must not be
+    # missed.
     for pat in (os.path.join(here, "*.py"),
                 os.path.join(here, "field", "*.py")):
         for f in glob.glob(pat):
@@ -173,7 +146,7 @@ class FieldBusy(RuntimeError):
     ⚠️ NOT a failure to save — it means somebody ELSE holds it, and the honest
     answer is to say so rather than wait forever. `exclusive.release()` frees
     the SERVER's claim; it does not take the field back from an admin terminal
-    that has loaded it. That distinction cost a 900-second hang .
+    that has loaded it.
     """
 
 
@@ -255,12 +228,11 @@ class FieldService:
         # talks to a person.
         #
         # They are separate because the whole saving depends on the chat prefix
-        # never changing: Ollama re-prefills only what changed, at ~35 ms per
-        # new token against ~0.1 ms per cached one. Giving the worker the same
-        # client would not corrupt anything, it would just carry ~600 tokens it
-        # has no use for on every chunk it reads. (The caches do not evict each
-        # other — measured: a worker call between two chat turns left the chat
-        # prefix still warm at 0.19 s.)
+        # never changing: Ollama re-prefills only what changed, and a cached
+        # token costs a tiny fraction of a new one. Giving the worker the same
+        # client would not corrupt anything, it would just carry several hundred
+        # tokens it has no use for on every chunk it reads. (The two caches do
+        # not evict each other.)
         # `chat_llm` is a PROPERTY, not an attribute — see below. Tests
         # reassign `service.llm` after construction, and an attribute captured
         # at init would silently keep talking to the client they replaced.
@@ -272,24 +244,20 @@ class FieldService:
         self._llm_injected = llm is not None
         self.orientation = None
         self.slept_at = None
-        # ⚠️ RESTING IS NOT LEAVING. The user: "/sleep should go into slow field
-        # mode, not disconnect from terminal." Sleeping used to mean handing
-        # the field over and letting go — which is what /quit is for. Resting
-        # keeps the field, keeps answering, and simply does less: the idle loop
-        # stops starting new work and only finishes what it owes.
+        # ⚠️ RESTING IS NOT LEAVING. Resting keeps the field, keeps answering,
+        # and simply does less: the idle loop stops starting new work and only
+        # finishes what it owes. Handing the field over is `release()`.
         self.slow = False
         # Exchanges cut off mid-reply, per session. See interruption.py.
         self._pending = {}
         self.was_shutdown = False
 
-        # Unlock BEFORE loading the field. If the memories are encrypted and
-        # the key cannot be had, there is nothing useful to start — better to
-        # say so than to come up and answer every question with "I don't
-        # remember", which is what a locked vault looks like from outside.
-        # ⚠️ CLAIM θ₀ BEFORE OPENING IT. The old check only asked whether a
-        # SERVER was running, so a terminal holding the field with `/load` was
-        # invisible here and both would have written it back. Refusing to start
-        # is the right failure: the person can see the terminal they left open.
+        # Try to unlock BEFORE loading the field, so what the field reads first
+        # is readable.
+        # ⚠️ CLAIM θ₀ BEFORE OPENING IT, against ANY holder — a terminal holding
+        # the field with `/load` as much as another server — or both would
+        # write it back. Refusing to start is the right failure: the person can
+        # see the terminal they left open.
         if not exclusive.take("Mati server"):
             cur = exclusive.held_by() or {}
             raise SystemExit(
@@ -298,24 +266,19 @@ class FieldService:
                 f"  Close it first — two processes writing θ₀ overwrite each "
                 f"other.\n")
 
-        # ⚠️⚠️ A LOCKED VAULT MUST NOT STOP THE SERVER FROM STARTING, and this
-        # used to. `vault.unlock()` RAISES on a passphrase-only vault — there
-        # is no keychain key by design, so there is nothing to unlock
-        # unprompted — and the exception came straight out of `__init__`. The
-        # effect: on a Mac without Touch ID, setup offered "passphrase only",
-        # completed successfully, and then the server crashed with a traceback
-        # on every launch. A completed setup and a product that cannot run.
+        # ⚠️⚠️ A LOCKED VAULT MUST NOT STOP THE SERVER FROM STARTING.
+        # `vault.unlock()` RAISES on a passphrase-only vault — there is no
+        # keychain key by design, so nothing can open it unprompted — and when
+        # a fingerprint goes unanswered. Raised out of `__init__`, that would be
+        # a completed setup and a product that cannot run.
         #
         # ⭐ IT DEGRADES INSTEAD, which is what every other reader of sealed
         # data already does: `daylog.rows()` returns [], `presets._open()`
         # returns None, `charter_chunks()` returns []. Mati comes up, answers,
-        # and cannot read its sealed memories until someone unlocks it — which
-        # is a true thing it can say, and far better than refusing to boot.
-        #
-        # ⚠️ Found by actually running the install rather than by reading it.
-        # `test_setup_run` covers the passphrase-only SETUP branch and passes;
-        # nothing had ever started a SERVER against the vault it produces.
+        # and reads none of its sealed memories until it is unlocked — which
+        # `POST /unlock` does without a restart.
         self.locked_at_start = False
+        self._unlock_failures = []        # when wrong passphrases arrived
         if vault.is_set_up() and not vault.unlocked():
             self.telemetry.publish(stage="locked")
             try:
@@ -369,9 +332,8 @@ class FieldService:
         self.stats = {"turns": 0, "episodes": 0, "reindexed": 0,
                       "last_reindex": None}
         self._stop = threading.Event()
-        # Worker liveness, reported by /health. It went unreported through two
-        # separate thread deaths, and both were found only by
-        # noticing a number that would not move.
+        # Worker liveness, reported by /health. A thread that dies leaves
+        # nothing behind but a number that stops moving.
         self.worker_beat = time.time()
         self.last_worker_error = None
         # Start ready to dream rather than an hour out: a fresh process that
@@ -380,11 +342,9 @@ class FieldService:
         # When the person has asked for reading to be the priority. Bounded:
         # full speed starves dreaming and deepening, which is the whole reason
         # the budget exists — so this is a request, not a new default.
-        # ⚠️ PERSISTED, because it used to be memory-only and a restart threw
-        # it away in silence. Ask for eight hours of reading, restart Mati for
-        # any reason, and the window is gone with nothing said — which is
-        # exactly what happened. An overnight window is the case
-        # most likely to span a restart and least likely to be watched.
+        # ⚠️ PERSISTED, because a window kept only in memory is lost in silence
+        # at a restart — and an overnight window is the case most likely to
+        # span a restart and least likely to be watched.
         self.study_priority_until = self._load_focus()
         # Starts "already silent", so a fresh server does not wait 6h before
         # self-talk is allowed to resume behind a long queue.
@@ -407,35 +367,45 @@ class FieldService:
         # exactly as long as the interesting part lasted.
         self._pulse = threading.Thread(target=self._pulse_loop, daemon=True,
                                        name="mati-pulse")
-        # ⚠️ DO NOT ADD A SIGUSR1 faulthandler HERE. Tried to find a
-        # stalled worker without sudo: it dumped two frames and then KILLED the
-        # server mid-write. Dumping all threads from a signal handler while
-        # numpy holds the GIL in C is not safe in this process. If a stack is
-        # needed, use `sudo py-spy dump --pid`, which is out-of-process.
+        # ⚠️ DO NOT ADD A SIGUSR1 faulthandler HERE. Dumping all threads from a
+        # signal handler while numpy holds the GIL in C is not safe in this
+        # process: it can dump a frame or two and then kill the server
+        # mid-write. If a stack is needed, use `sudo py-spy dump --pid`, which
+        # is out-of-process.
         self._worker.start()
         self._pulse.start()
         self.check_addresses("startup")
-        # ⚠️ THE FIRST SEARCH OF A PROCESS COSTS ~15s AND EVERY ONE AFTER IT
-        # COSTS 0.06s. `bridge.search` spawns openssl per body, so the first
-        # call decrypts the whole store; the cache makes the rest free.
-        # : 14.94s cold, 0.06s warm. Paying it here means
-        # the person never does — and after a restart they were paying it in
-        # their first sentence.
+        # ⚠️ ITS OWN DOCUMENTATION, KEPT CURRENT. Re-indexed only when the
+        # documents have changed, and never while locked — `selfdoc.refresh`.
+        # A locked start does it in `_after_unlock` instead.
+        try:
+            from . import selfdoc as _selfdoc
+            _n = _selfdoc.refresh()
+            if _n and self.verbose:
+                print(f"  [mati] self-knowledge re-indexed ({_n} passages)",
+                      file=sys.stderr)
+        except Exception as e:                               # noqa: BLE001
+            if self.verbose:
+                print(f"  [mati] self-knowledge skipped: {e}", file=sys.stderr)
+        # ⚠️ THE FIRST SEARCH OF A PROCESS IS SLOW AND EVERY ONE AFTER IT IS
+        # FAST. `bridge.search` spawns openssl per body, so the first call
+        # decrypts the whole store; the cache makes the rest free. Paying it
+        # here means the person never does — otherwise they would pay it in
+        # their first sentence after a restart.
         try:
             t_warm = time.time()
             bridge.search("warm the body cache", k=1)
             # ⚠️ ONE SEGMENT, NOT THE YEAR. The newest
             # `notes.VERBATIM_SEGMENT_DAYS` of exact words, bounded by
-            # `warm_verbatim`'s budget to ~3s, so Mati can be asked about
-            # what was literally said this month from its first sentence. The
-            # rest of the year arrives a segment per idle pass.
+            # `warm_verbatim`'s budget to a few seconds, so Mati can be asked
+            # about what was literally said this month from its first
+            # sentence. The rest of the year arrives a segment per idle pass.
             #
-            # ⚠️ AND NOT THE WHOLE YEAR HERE, DELIBERATELY. An earlier cut had
-            # `search` decrypt every verbatim inside the year on demand; a
-            # cold search measured 73.0s against 0.36s warm, because in a
-            # ten-week-old store "inside the year" is the entire store. The
-            # year bounds the archive; it does not make this year cheap. That
-            # is what the user's "don't decrypt everything at once" rules out.
+            # ⚠️ AND NOT THE WHOLE YEAR HERE, DELIBERATELY. Decrypting every
+            # verbatim inside the year at once makes a cold search take over a
+            # minute, because in a young store "inside the year" is the entire
+            # store. The year bounds the archive; it does not make this year
+            # cheap.
             from . import notes as _nwarm
             _nwarm.warm_verbatim(segment=0)
             if self.verbose:
@@ -444,13 +414,11 @@ class FieldService:
         except Exception as e:
             if self.verbose:
                 print(f"  [mati] cache warm skipped: {e}", file=sys.stderr)
-        # ⚠️ STARTING IS A KIND OF WAKING, and it did not used to be. The
-        # server comes up with `asleep = False`, so it never passed through
-        # `wake()` — the one place that builds the orientation. A freshly
-        # started Mati therefore had `orientation = None`, `turn(oriented=
-        # False)`, and every turn paid the full ~70s of prefill this change
-        # exists to remove. It looked healthy from outside; it was simply slow
-        # again, which is the hardest kind of regression to notice.
+        # ⚠️ STARTING IS A KIND OF WAKING. The server comes up with
+        # `asleep = False`, so it never passes through `wake()` — the one place
+        # that builds the orientation. Without this, a freshly started Mati
+        # would have `orientation = None` and every turn would pay the full
+        # prefill this exists to remove: healthy from outside, simply slow.
         #
         # `slept_at` is None here on purpose: a cold start genuinely does not
         # know how long it was down, and the block says so rather than
@@ -469,11 +437,11 @@ class FieldService:
 
         def __enter__(self):
             # `_waiting` counts threads BLOCKED on the field, never the one
-            # holding it. Decrementing on exit instead of on acquire made a
-            # holder count itself, so `contended` was True exactly while the
-            # worker was working — and every `should_stop=lambda: self.contended`
-            # fired on its first check. Study silently did nothing for hours;
-            # reindex did the same once it was given the same predicate.
+            # holding it. Decrementing on exit instead of on acquire would make
+            # a holder count itself, so `contended` would be True exactly while
+            # the worker was working — and every
+            # `should_stop=lambda: self.contended` would fire on its first
+            # check, silently stopping all background work.
             with self.svc._waiting_lock:
                 self.svc._waiting += 1
             got = (self.svc._lock.acquire() if self.timeout is None
@@ -483,13 +451,10 @@ class FieldService:
             if not got:
                 # ⚠️ RAISED, NOT RETURNED. A caller that got no field must not
                 # run its body against `self.lm` and then claim it succeeded.
-                # ⚠️ REPORTS WHAT IT OBSERVED, AND GUESSES NOTHING. The
-                # first version said "most likely an admin terminal with the
-                # field loaded". There was once no terminal — the
-                # log showed `POST /study_now`, so Mati's OWN study task was
-                # holding it. A guessed cause stated confidently in an error
-                # message sends the reader after the wrong thing, which is
-                # exactly what it did here.
+                # ⚠️ REPORTS WHAT IT OBSERVED, AND GUESSES NOTHING. The holder
+                # can be an admin terminal or Mati's own study task; a guessed
+                # cause stated confidently in an error message sends the reader
+                # after the wrong thing.
                 raise FieldBusy(
                     f"could not take the field within {self.timeout}s — "
                     f"another holder has it. Check the log for the last "
@@ -565,44 +530,33 @@ class FieldService:
     def consolidate(self):
         """The day-boundary work: tomorrow's prediction, and the day's rapport.
 
-        ⚠️ THIS USED TO LIVE INSIDE THE HANDOFF, WHICH IS WHY IT COST THE FIELD.
-        the user: *"It is supposed to go to sleep again tonight, and I don't want
-        it to disconnect — I want it to create the prediction and then dream."*
-        Consolidating and letting go were the same function, so the only way to
-        get a prediction was to give up the field. They are separate now:
-        `release()` still consolidates on its way out, and `rest()` consolidates
-        and stays.
+        ⚠️ NOT PART OF THE HANDOFF. Consolidating and letting go are separate
+        so that a prediction does not cost the field: `release()` consolidates
+        on its way out, and `rest()` consolidates and stays.
         """
-        # ⚠️ RAPPORT IS BUILT HERE, NOT DECIDED IN THE MOMENT.
-        # The user: "the rapport isn't something that happens in the moment, it
-        # should be part of the prediction." The day's settled exchanges are
-        # learned from the record while nobody is waiting, and the turn path
-        # only ever looks them up.
+        # ⚠️ RAPPORT IS BUILT HERE, NOT DECIDED IN THE MOMENT. Rapport belongs
+        # to the prediction: the day's settled exchanges are learned from the
+        # record while nobody is waiting, and the turn path only ever looks
+        # them up.
         #
         # Idempotent and day-stamped: called again on the same day it does
-        # nothing, because "if something happens against the prediction, the
-        # prediction is held until the end of the day — it may just be
-        # delayed."
-        # ⚠️ CONSOLIDATION HAPPENS HERE, AND ONLY HERE. The user: the prediction
-        # "is produced while humans sleep". Moving this to the dream meant they
-        # put it back — sleep is the boundary of a day, and a prediction OF THE
-        # DAY has to be made at one.
-        #
-        # ⚠️ `_maybe_predict` had NO CALLER anywhere until now, which is the
-        # real reason the record held zero predictions after 26 days. I had
-        # blamed the evidence gates.
+        # nothing, because a prediction something contradicts is held until the
+        # end of the day — it may just be delayed.
+        # ⚠️ CONSOLIDATION HAPPENS HERE, AND ONLY HERE. The prediction is made
+        # while the person sleeps: sleep is the boundary of a day, and a
+        # prediction OF THE DAY has to be made at one — not in a dream, which
+        # can happen in any quiet hour.
         #
         # Nothing here runs on a turn or on idle. Noticing happens through the
         # day; deciding what tomorrow is about happens at the end of one.
         try:
-            # ⚠️ THINKING ABOUT THE DAY COMES BEFORE PREDICTING IT. The user:
-            # "Mati should talk to itself about its day, and let the field
-            # bring up memories based on what occurred… humans spend half
-            # their waking day recomputing everything they experienced in
-            # relation to themselves and everyone around them, to make
-            # predictions faster and more likely." The reflection is the
-            # recomputing; the prediction reads what it turned up. Ordered,
-            # not merely both present.
+            # ⚠️ THINKING ABOUT THE DAY COMES BEFORE PREDICTING IT. People spend
+            # much of a day recomputing what they experienced in relation to
+            # themselves and everyone around them, and that is what makes their
+            # predictions faster and more likely. The reflection is that
+            # recomputing, and it runs first so the day's thinking exists
+            # before the prediction is made. ⚠️ `predict` does not read it
+            # yet; the morning report is its reader.
             self._maybe_reflect()
             self._maybe_predict()
             from . import rapport
@@ -618,16 +572,15 @@ class FieldService:
     def rest(self):
         """Sleep for the night: consolidate, then dream, KEEPING THE FIELD.
 
-        ⚠️ THIS IS WHAT A QUIET NIGHT DOES NOW, AND IT IS NOT `release()`.
-        Nothing here hands the field over, drops `self.lm` or touches the
-        exclusive lock, so the terminal stays connected through the night and
-        Mati can still be spoken to — it simply stops starting new work.
+        ⚠️ THIS IS WHAT A QUIET NIGHT DOES, AND IT IS NOT `release()`. Nothing
+        here hands the field over, drops `self.lm` or touches the exclusive
+        lock, so the terminal stays connected through the night and Mati can
+        still be spoken to — it simply stops starting new work.
 
         Dreaming continues on purpose: `_maybe_dream` is not gated on `slow`,
-        so the idle loop goes on turning over what is held once an hour. That
-        is the "and then dream" half of the request, and it is the half that
-        the old auto-sleep made impossible — a released field cannot dream,
-        because there is no field in memory to dream with.
+        so the idle loop goes on turning over what is held once an hour. A
+        released field could not dream, because there would be no field in
+        memory to dream with.
 
         `self.slow` is its own idempotence guard: the idle pass only calls this
         when not already slow.
@@ -638,44 +591,42 @@ class FieldService:
         # ELSE. Through the day Mati addresses against a frozen θ₀ and
         # imprints into the live one, so what it has learned today is not yet
         # in the space it recalls through. Promoting at night is what lets the
-        # day in; it is deliberately once-a-night because promotion is the only
-        # thing that makes an address stale, and the reindex that repairs them
-        # costs ~3.8s a note.
+        # day in; it is deliberately once a night because promotion is the
+        # only thing that makes an address stale, and the repair costs seconds
+        # a note.
         #
         # ⚠️ AFTER `consolidate()`, NEVER BEFORE — the queue still holds
         # episodes to imprint, and promoting first would publish a space that
         # is missing the last of the day and then mark nothing stale for it.
         #
-        # ⚠️ AND THE REINDEX GOES WITH IT, IN THE SAME BREATH. The first cut of
-        # this promoted and left the repair to the idle worker, which is
-        # SWITCHED OFF (`C.REINDEX_ON_IDLE` defaults to 0, retired by
-        # measurement). Promotion is the one thing that stales every address,
-        # so promoting with nothing to repair it would have invalidated the
-        # whole working set every night and never fixed it — strictly worse
-        # than not promoting at all, and silent. `promote()`'s own docstring
-        # says "⚠️ REINDEX AFTER THIS"; it has to be the code that says it too.
+        # ⚠️ AND THE REINDEX GOES WITH IT, IN THE SAME BREATH. Nothing else
+        # repairs addresses (`C.REINDEX_ON_IDLE` is off), so promoting with
+        # nothing to repair it would invalidate the whole working set every
+        # night and never fix it — strictly worse than not promoting at all,
+        # and silent.
         #
-        # ⚠️ THIS IS NOT THE LOOP THAT WAS RETIRED. That one queued a batch of
-        # 4 whenever anything was stale, re-checked against a live fingerprint
-        # that had moved again, and burned 10.5 hours. This is ONE bounded pass
-        # after ONE deliberate invalidation, against a fingerprint that holds
-        # still until the next `rest()` — so it converges by construction.
-        # It runs on the worker and yields to an arriving turn.
-        # ⚠️ UNCONDITIONAL. This used to be skipped under
-        # `MATI_FROZEN_ADDRESSING=0`, which pinned no space and so had
-        # nothing to publish. That flag is gone — see `bridge.pin_address_space`
-        # for why a two-mode memory architecture cannot ship.
-        try:
-            with self.field():
-                bridge.promote(self.lm)
-                promoted = {"promoted": True,
-                            "address_gs": bridge.address_gs(self.lm)}
-            self.work.put(("reindex after promote",
-                           self._reindex_after_promote))
-        except Exception as e:                # never let this block the night
-            promoted = {"promoted": False, "error": repr(e)}
-            if self.verbose:
-                print(f"  [mati] promote failed: {e!r}", file=sys.stderr)
+        # ⚠️ IT CONVERGES. This is ONE bounded pass after ONE deliberate
+        # invalidation, against a fingerprint that holds still until the next
+        # `rest()`. It runs on the worker and yields to an arriving turn.
+        #
+        # ⚠️ AND NOT WHILE LOCKED. The repair needs each note's text; without
+        # the key it cannot run, and promoting anyway leaves the whole working
+        # set filed in a space that no longer exists. The day stays in the
+        # live field and is promoted by the next rest that can finish the job.
+        if _vault_state() is False:
+            promoted = {"promoted": False, "reason": "memories are locked"}
+        else:
+            try:
+                with self.field():
+                    bridge.promote(self.lm)
+                    promoted = {"promoted": True,
+                                "address_gs": bridge.address_gs(self.lm)}
+                self.work.put(("reindex after promote",
+                               self._reindex_after_promote))
+            except Exception as e:            # never let this block the night
+                promoted = {"promoted": False, "error": repr(e)}
+                if self.verbose:
+                    print(f"  [mati] promote failed: {e!r}", file=sys.stderr)
         activity.log(activity.SLEEP, "night — field kept")
         self.telemetry.publish(stage="resting", slow=True, **promoted)
         if self.verbose:
@@ -695,11 +646,11 @@ class FieldService:
             from . import notes as _n
             warm, total = _n.verbatim_warmth()
             out = f"{warm}/{total}"
-            # ⚠️ SAY WHEN THE FLOOR COULD NOT BE HELD. The user's rule is that a
-            # year is the floor and capacity the ceiling; if a year of exact
-            # words does not fit in this machine's budget, that is a fact
-            # about the machine and the owner should see it rather than
-            # wonder why old conversations only come back as summaries.
+            # ⚠️ SAY WHEN THE FLOOR COULD NOT BE HELD. A year is the floor and
+            # capacity the ceiling; if a year of exact words does not fit in
+            # this machine's budget, that is a fact about the machine and the
+            # owner should see it rather than wonder why old conversations
+            # only come back as summaries.
             if _n.year_overflowed:
                 out += " ⚠️ year does not fit in budget"
             return out
@@ -803,15 +754,107 @@ class FieldService:
                   f"space in {passes} pass(es)", file=sys.stderr)
         return {"reindexed": total, "passes": passes}
 
+    # Wrong passphrases tolerated per window before `unlock` asks for a pause.
+    # A guess costs the guesser nothing and costs Mati a key derivation.
+    UNLOCK_TRIES, UNLOCK_WINDOW = 5, 60.0
+
+    def unlock(self, passphrase=None):
+        """Open the vault in THIS process, without restarting it.
+
+        With a passphrase, that is what opens it. With none, the vault's own
+        way is retried — the keychain, after a fingerprint where the vault
+        calls for one — which is what recovers a start whose Touch ID prompt
+        nobody was there to answer.
+
+        ⚠️ THE KEY HAS TO ARRIVE IN THE PROCESS THAT ANSWERS. Unlocking
+        anywhere else opens nothing here: a Mati that started locked reads
+        none of its memories and stores none of what it is told, and would
+        stay that way until it was restarted.
+
+        Returns at once. What a locked start skipped is caught up on a thread
+        of its own (`_after_unlock`), because warming the caches takes minutes
+        and whoever asked is waiting on this reply.
+        """
+        if not vault.is_set_up():
+            return {"unlocked": None, "reason": "there is no vault"}
+        if vault.unlocked():
+            return {"unlocked": True, "already": True}
+        now = time.time()
+        self._unlock_failures = [t for t in self._unlock_failures
+                                 if now - t < self.UNLOCK_WINDOW]
+        if passphrase and len(self._unlock_failures) >= self.UNLOCK_TRIES:
+            wait = self.UNLOCK_WINDOW - (now - self._unlock_failures[0])
+            return {"unlocked": False, "retry_after": round(max(1.0, wait)),
+                    "error": "too many wrong passphrases — wait a minute "
+                             "and try again"}
+        try:
+            vault.unlock(passphrase=passphrase or None,
+                         reason="unlock Mati's memories", quiet=True)
+        except Exception as e:                               # noqa: BLE001
+            if passphrase:
+                self._unlock_failures.append(now)
+            return {"unlocked": False,
+                    "error": " ".join(str(e).split()) or e.__class__.__name__}
+        self.locked_at_start = False
+        self._unlock_failures = []
+        self.telemetry.publish(stage="unlocked", memories_locked=False)
+        if self.verbose:
+            print("  [vault] unlocked — catching up", file=sys.stderr)
+        threading.Thread(target=self._after_unlock, daemon=True,
+                         name="mati-unlock").start()
+        return {"unlocked": True}
+
+    def _after_unlock(self):
+        """What a start does with the key, done late because the key came late.
+
+        Each step stands alone: a failure in one must not cost the others,
+        and none of them is worth leaving Mati locked for.
+        """
+        out = {}
+        # Anything stored while locked went in unsealed rather than dropped.
+        try:
+            out["sealed"] = vault.migrate_tables(verbose=False)
+        except Exception as e:                               # noqa: BLE001
+            out["seal_error"] = repr(e)
+        # Re-addressing needs each note's text, so nothing could be repaired
+        # while locked. Check now, and repair what is owed.
+        try:
+            if (self.check_addresses("unlock") or {}).get("stale"):
+                out["reindexed"] = (self._reindex_after_promote()
+                                    or {}).get("reindexed")
+        except Exception as e:                               # noqa: BLE001
+            out["address_error"] = repr(e)
+        try:
+            bridge.search("warm the body cache", k=1)
+            from . import notes as _nwarm
+            _nwarm.warm_verbatim(segment=0)
+        except Exception as e:                               # noqa: BLE001
+            out["warm_error"] = repr(e)
+        # Its own documentation is sealed, so a locked start could not
+        # re-index it.
+        try:
+            from . import selfdoc as _selfdoc
+            out["self_docs"] = _selfdoc.refresh()
+        except Exception as e:                               # noqa: BLE001
+            out["self_docs_error"] = repr(e)
+        # The waking block was built without a single readable memory.
+        try:
+            self.build_orientation()
+        except Exception as e:                               # noqa: BLE001
+            out["orientation_error"] = repr(e)
+        self.telemetry.publish(stage="idle", caught_up=out)
+        if self.verbose:
+            print(f"  [vault] caught up: {out}", file=sys.stderr)
+        return out
+
     def release(self):
         """Finish up, persist, and LET GO OF THE FIELD. Idempotent.
 
-        ⚠️ RENAMED FROM `sleep()` AT THE USER'S INSTRUCTION, because the old name
-        was the whole misunderstanding. "Sleep" is what a person does nightly
-        and expects to keep their mind through; this drops `self.lm` and hands
-        θ₀ to whoever takes the exclusive lock next. Nightly rest is `rest()`.
-        This is for an explicit handoff — the pro terminal taking the field —
-        and for process exit. Nothing calls it on a timer any more.
+        ⚠️ NOT THE NIGHT. "Sleep" is what a person does nightly and expects to
+        keep their mind through; this drops `self.lm` and hands θ₀ to whoever
+        takes the exclusive lock next. Nightly rest is `rest()`. This is for an
+        explicit handoff — the pro terminal taking the field — and for process
+        exit. Nothing calls it on a timer.
         """
         if self.asleep:
             return {"asleep": True, "already": True}
@@ -830,44 +873,33 @@ class FieldService:
             print("  [mati] released — the field is free", file=sys.stderr)
         return {"asleep": True}
 
-    # ⚠️ The old name, kept ONLY so a terminal running an older build does not
-    # break mid-session. It is the handoff, which is no longer what "sleep"
-    # means anywhere else in this file.
+    # ⚠️ SLEEP IS THE NIGHT: `rest()`, which keeps the field. It is never the
+    # handoff — that is `release()`, and only that.
     def sleep(self):
-        return self.release()
+        return self.rest()
 
     def pack(self):
         """Make this install carryable. ⚠️ DOES NOT STOP THE PROCESS.
 
-        ⚠️ RENAMED FROM `shut_down` , because the old name was a
-        lie and the lie cost a 900-second hang. The user: *"I always thought
-        shutdown meant the field, because quit is for the terminal."* That is
-        a fair reading of the word, and the terminal's own help text said
-        "/shutdown STOPS Mati for real" — which it never did. It packs.
-
-        The four verbs, now each meaning one thing:
+        The four verbs, each meaning one thing:
 
             rest()      nightly. KEEPS the field, still dreams, still answers.
             release()   hands the field over. Process keeps running.
             pack()      makes the directory copyable. Process keeps running.
             stop()      packs, then actually STOPS the process.
 
-        Stop for real, and leave something that can be carried away.
+        ⚠️ **THIS IS NOT `release()`, AND THE DIFFERENCE MATTERS.** Release
+        drains, snapshots and lets go of the field so the pro terminal can take
+        it — the process stays up and is expected to wake. Packing leaves a
+        **portable install**, because Mati is a few megabytes that can move to
+        another machine on a drive.
 
-        ⚠️ **THIS IS NOT `sleep()`, AND THE DIFFERENCE MATTERS.** Sleep drains,
-        snapshots and lets go of the field so the pro terminal can take it —
-        the process stays up and is expected to wake. Historically `sleep` was
-        the only stop there was, which is why this reads as a new command: what
-        was needed was a stop that leaves a **portable install**, because Mati
-        is a few megabytes that can move to another machine on a drive.
-
-        Two things sleep does not do, both of which produce a copy that looks
+        Two things release does not do, both of which produce a copy that looks
         fine and is not:
 
-          - **A full reindex.** Addresses go stale faster than the idle worker
-            repairs them (measured: 22 of 23 after ~9 turns), so an install
-            handed over mid-session carries recall that has quietly collapsed
-            toward recency. Unbounded here; a transfer is worth the seconds.
+          - **A full reindex.** An install handed over with stale addresses
+            carries recall that has quietly collapsed toward recency.
+            Unbounded here; a transfer is worth the seconds.
           - **A WAL checkpoint.** Committed rows can sit in
             `mati_notes.db-wal`. Dragging the `.db` alone to a drive loses
             them silently at both ends.
@@ -927,11 +959,10 @@ class FieldService:
         return out
 
     def stop(self):
-        """Pack, then STOP THE PROCESS. The verb that was missing.
+        """Pack, then STOP THE PROCESS.
 
-        ⚠️ Nothing stopped the server before this existed. `/shutdown` packed
-        and kept serving, so every restart needed a manual `kill` — twice in
-        one day , and the second time only after a 900s hang.
+        ⚠️ `/pack` and its older name `/shutdown` keep serving; this is the
+        one that ends the process, so a restart needs no manual `kill`.
 
         ⚠️ THE STOP IS DEFERRED TO ANOTHER THREAD ON PURPOSE. `httpd.shutdown()`
         blocks until `serve_forever` returns, and calling it from inside a
@@ -975,29 +1006,22 @@ class FieldService:
         only stops.
         """
         import subprocess as _sp
-        # ⚠️ NEITHER THE PORT NOR THE PID IS A RELIABLE SIGNAL, and both were tried
-        # both. Waiting on the PORT launches too early: the socket closes at
-        # `httpd.shutdown()` while the FIELD is released later, in the cleanup
-        # after it, so the successor is refused with "Mati server is holding
-        # the field" and exits — leaving nothing running. Waiting on the PID
-        # is worse: a dead process stays visible to `os.kill(pid, 0)` as a
-        # zombie until it is reaped, so the poll can hang on a process that
-        # has already exited.
+        # ⚠️ NEITHER THE PORT NOR THE PID IS A RELIABLE SIGNAL. Waiting on the
+        # PORT launches too early: the socket closes at `httpd.shutdown()`
+        # while the FIELD is released later, in the cleanup after it, so the
+        # successor would be refused with "Mati server is holding the field"
+        # and exit — leaving nothing running. Waiting on the PID is worse: a
+        # dead process stays visible to `os.kill(pid, 0)` as a zombie until it
+        # is reaped, so the poll can hang on a process that has already exited.
         #
         # ⚠️ SO IT RETRIES INSTEAD OF PREDICTING. The successor tries to
         # start, checks whether it is answering, and tries again if not. That
-        # needs no model of the shutdown's timing — which is the part I kept
-        # getting wrong — and it recovers from a slow release rather than
-        # dying on one.
-        # ⚠️ `SERVER_PORT`, NOT `PORT`. `C.PORT` DOES NOT EXIST, so this read
-        # the 8756 fallback on every machine and the successor-waiter polled
-        # the wrong socket whenever MATI_PORT was set. On the default port it
-        # worked by coincidence — the fallback happened to be the right
-        # number. On any other port the waiter never waited for the old server
-        # to release the field, so the first successor died on the exclusive
-        # lock, and it never saw a healthy successor come up either.
-        # Found while testing restart on a SPARE port, which is the one
-        # configuration the bug was invisible in before.
+        # needs no model of the shutdown's timing, and it recovers from a slow
+        # release rather than dying on one.
+        # ⚠️ `SERVER_PORT`, NOT `PORT`. `C.PORT` does not exist; reading it
+        # would fall back to 8756 on every machine, which is right only by
+        # coincidence — on any other port the waiter would poll the wrong
+        # socket and the successor would die on the exclusive lock.
         port = C.SERVER_PORT
         waiter = (
             "import socket,subprocess,sys,time\n"
@@ -1036,9 +1060,8 @@ class FieldService:
         # Bodies are sealed and the successor starts with nobody present, so
         # it cannot answer a Touch ID prompt. If the keychain does not release
         # the key unprompted it will run, look healthy on every other
-        # measure, and hold no memories — and the person asked for a restart,
-        # not for amnesia. : a background start died with
-        # "Touch ID declined or unavailable".
+        # measure, and hold no memories until it is unlocked — and the person
+        # asked for a restart, not for amnesia.
         try:
             from . import vault
             if vault.is_set_up() and not vault.adopted():
@@ -1073,38 +1096,27 @@ class FieldService:
     def check_addresses(self, why=""):
         """Are the stored addresses still in step with the field just loaded?
 
-        THE ASYMMETRY THIS CLOSES. `sleep()` snapshots θ₀ on the way out, so
-        something has to check it on the way back in — and waking is precisely
-        when θ₀ is most likely to have moved. Sleep exists to hand the field to
-        the pro terminal, and the pro terminal exists to TRAIN it. So the
-        field that comes back is routinely not the field that left. (Measured
-        historically: a terminal load/save pair once pointed at fields 1.87 rad
-        apart.)
+        Waking is precisely when θ₀ is most likely to have moved: the field is
+        handed over so that the pro terminal can TRAIN it, so the field that
+        comes back is routinely not the field that left.
 
         Addresses filed against the old θ₀ are then stale, and stale addresses
         do not fail loudly — retrieval quietly collapses toward recency. Mati
         would come up looking healthy and remembering the wrong things.
 
-        This DOES NOT reindex inline. Reindexing costs ~29s and grows with the
-        corpus; blocking a wake on it would trade a silent fault for a startup
-        that looks hung. It measures, reports, and lets the idle worker — which
-        already selects most-stale-first — do the repair.
+        This DOES NOT reindex inline. Reindexing takes a while and grows with
+        the corpus; blocking a wake on it would trade a silent fault for a
+        startup that looks hung. It measures and reports.
         """
         try:
             gs_now = bridge.address_gs(self.lm)   # the frozen space's figure
             conn = sqlite3.connect(bridge.NOTES_DB_PATH)
             try:
                 bridge._ensure_schema(conn)
-                # ⚠️ WORKING SET ONLY. This counted every note, including the
-                # archived ones that `bridge.reindex` never touches by design —
-                # so with 537 of 608 filed it could never report fewer than 537
-                # stale, and it queues a reindex whenever stale > 0. Every
-                # reindex finished, re-checked, still saw 537, and queued
-                # another: 26 in 6.3 hours, a loop that cannot terminate.
-                #
-                # That loop is the startup delay, and the reason Mati looked
-                # like it was re-learning itself on every load. It was chasing
-                # a number it could not move.
+                # ⚠️ WORKING SET ONLY. `bridge.reindex` never touches archived
+                # notes by design, so counting them would report a number of
+                # stale addresses that no amount of re-addressing could bring
+                # down — and anything acting on it would loop forever.
                 rows = conn.execute(
                     "SELECT feat_gs FROM notes WHERE archived IS NULL"
                 ).fetchall()
@@ -1125,16 +1137,15 @@ class FieldService:
                "stale": stale, "never_indexed": never, "worst_drift": worst,
                "gs_std": gs_now}
         if stale:
-            # Ask for repair rather than performing it. The worker rotates by
-            # staleness, so the worst rows go first without being told.
-            # Batched and yielding: this fires right after startup/wake, which
-            # is exactly when someone is likely to type. Without should_stop it
-            # held the field for ~122s (32 notes x 3.8s) and every arriving turn
-            # queued behind it — .
-            # ⚠️ MEASURED, NOT ACTED ON — see C.REINDEX_ON_IDLE. Queueing here
-            # fed a loop that could not converge and pegged the process for
-            # 10.5 hours. The number is still reported so `/addresses` tells
-            # the truth about the index; it just no longer starts work.
+            # Ask for repair rather than performing it: the worker rotates by
+            # staleness, so the worst rows go first, and it yields to a turn —
+            # this fires right after startup or wake, which is exactly when
+            # someone is likely to type.
+            # ⚠️ MEASURED, NOT ACTED ON — see C.REINDEX_ON_IDLE. Re-addressing
+            # whenever anything is stale is a loop that cannot converge while
+            # the target keeps moving. The number is still reported so
+            # `/addresses` tells the truth about the index; repair happens once
+            # a night, after promotion.
             if C.REINDEX_ON_IDLE:
                 self.work.put(("reindex", lambda: {"reindexed": bridge.reindex(
                     self.lm, self.tok, limit=C.REINDEX_BATCH,
@@ -1146,10 +1157,8 @@ class FieldService:
                                "primary index (ARCHITECTURE.md)")
         self.telemetry.publish(stage="idle", address_check=out)
         if self.verbose and stale:
-            # ⚠️ SAY WHAT ACTUALLY HAPPENED. This printed "reindex queued"
-            # unconditionally, and went on printing it after reindexing was
-            # retired — a log line asserting work that was no longer being
-            # started. The same shape as every other fault this week.
+            # ⚠️ SAY WHAT ACTUALLY HAPPENED. A log line asserting work that is
+            # not being started is worse than none.
             tail = ("reindex queued" if out.get("queued")
                     else "not repaired — field reindexing is retired")
             print(f"  [mati] {stale}/{len(rows)} addresses stale after {why} "
@@ -1159,10 +1168,20 @@ class FieldService:
     def wake(self):
         """Take the field back. Costs one load (~1.5s).
 
-        Symmetric with `sleep()`: that one snapshots and lets go, this one
+        Symmetric with `release()`: that one snapshots and lets go, this one
         picks up and then CHECKS what it picked up. See `check_addresses`.
+
+        ⚠️ IT ALSO ENDS A SLEEP. Sleeping keeps the field, so there is nothing
+        to load — waking from it only starts work again. Without this, Wake
+        after Sleep would answer "already awake" and change nothing.
         """
         if not self.asleep:
+            if self.slow:
+                self.slow = False
+                self.last_activity = time.time()
+                activity.log(activity.STIR)
+                self.telemetry.publish(stage="idle", slow=False)
+                return {"asleep": False, "slow": False, "woke": True}
             return {"asleep": False, "already": True}
         # Whatever we handed the field to on sleep may still have it. Waking on
         # top of it would give θ₀ two owners — the exact thing sleeping avoided.
@@ -1203,11 +1222,10 @@ class FieldService:
         """
         Read the field, the record and the clock once, and hold the result.
 
-        This is the work `turn()` used to redo on every single turn: 2,001
-        tokens of field state, self-knowledge and recalled memories, rebuilt
-        fresh each time and therefore re-prefilled each time at ~35 ms/token —
-        ~70 s before the model could say a word. Built once and held constant,
-        the same material is cached after its first send and costs ~0.1 s.
+        Field state, self-knowledge and recalled memories rebuilt on every turn
+        would be re-prefilled on every turn — tens of seconds before the model
+        could say a word. Built once and held constant, the same material is
+        cached after its first send and costs almost nothing.
 
         `prewarm` pays even that first send here, in the background, so the
         person's first turn does not wear it. It is one throwaway generation of
@@ -1298,12 +1316,9 @@ class FieldService:
     def _require_awake(self):
         """Wake if asleep. Refuse only when something else holds the field.
 
-        ⚠️ THIS USED TO REFUSE, AND AUTO-SLEEP WOULD HAVE MADE THAT A TRAP.
-        A sleeping server turned away every turn until someone typed /wake —
-        harmless while nothing ever slept on its own, and a locked door the
-        moment something did. The user's whole reason for a schedule is that
-        Mati should be READY BEFORE THE APP OPENS; being told to knock twice
-        is the opposite of that.
+        ⚠️ A RELEASED SERVER WAKES ITSELF FOR A TURN rather than turning it away
+        until someone types /wake. Mati should be READY BEFORE THE APP OPENS;
+        being told to knock twice is the opposite of that.
         """
         # ⚠️ STIRRING IS NOT WAKING, AND ONLY ONE OF THEM WAS HANDLED. Resting
         # keeps the field, so `asleep` is False and none of the code below
@@ -1385,20 +1400,17 @@ class FieldService:
             if on_chunk:
                 on_chunk(piece)
 
-        # ⚠️ SPOKEN FIRST, BEFORE ANY FIELD WORK. : the
-        # first real token arrives after 77.4s — 61% of the turn is a blank
-        # screen. The user: "that wait-time needs to be filled by the conscious
-        # agent." This is a lookup and an echo, no model call, so it appears
-        # in about a second while the field takes its 77.
+        # ⚠️ SPOKEN FIRST, BEFORE ANY FIELD WORK. Otherwise most of a turn is a
+        # blank screen while the field works. This is a lookup and an echo, no
+        # model call, so it appears in about a second.
         #
         # ⚠️ It is SPEECH and is therefore part of the record. Everything in it
         # is copied from the store or is affect about the act itself, so there
         # is nothing here that can be false.
-        # ⚠️ AN ASKED-FOR ACTION IS ANSWERED IMMEDIATELY, NOT IN 120 SECONDS.
-        # "play some jazz" does not need the field, the memory or the model —
-        # it needs a station and a play command, and both take about two
-        # seconds. Routing it through the ordinary turn would make the person
-        # wait two minutes to hear music.
+        # ⚠️ AN ASKED-FOR ACTION IS ANSWERED IMMEDIATELY. "play some jazz" does
+        # not need the field, the memory or the model — it needs a station and a
+        # play command, and both take about two seconds. Routing it through the
+        # ordinary turn would make the person wait minutes to hear music.
         #
         # ⚠️ ONLY ON A LITERAL MATCH. `dj.hears_request` returns None unless
         # there is an explicit verb; playing is the first irreversible thing
@@ -1423,10 +1435,10 @@ class FieldService:
                     # shorts are meant to run WHILE the radio does.
                     play_reel = said.get("play_reel")
                     said = said.get("say")
-                # ⚠️ A MEDIA ANSWER IS CANNED AND NEVER REACHES `turn()`,
-                # so it was the third silent path. "Playing Blue Note
-                # Radio" is something Mati DID, and it should say that
-                # aloud as readily as anything a model generated.
+                # ⚠️ A MEDIA ANSWER IS CANNED AND NEVER REACHES `turn()`, so it
+                # is spoken here. "Playing Blue Note Radio" is something Mati
+                # DID, and it should say that aloud as readily as anything a
+                # model generated.
                 if said and isinstance(said, str):
                     try:
                         from . import speech as _sp
@@ -1435,6 +1447,14 @@ class FieldService:
                         pass
                 if said:
                     chunk(said)
+                    # ⚠️⚠️ THE PERSON'S WORDS STAY IN THE CONVERSATION. A
+                    # message taken for a media request must still be appended
+                    # to the history, or it vanishes from the thread: the model
+                    # meets it only as a recalled "I was asked … I did it", and
+                    # a misrouted message leaves nothing to go back to. In the
+                    # history, a misroute is one visible exchange the next turn
+                    # can see and recover from.
+                    self.append_history(session_id, text, said)
                     self.last_turn = time.time()
                     self.stats["turns"] = self.stats.get("turns", 0) + 1
                     if remember:
@@ -1461,11 +1481,10 @@ class FieldService:
                 print(f"  [smalltalk] skipped: {e}", file=sys.stderr)
         if opener:
             chunk(opener + "\n\n")
-            # ⚠️ THE OPENER IS SPOKEN TOO, and leaving it out was the gap
-            # reported as "it does not speak the canned responses". This is
-            # the patience line — "Hm.", "Let me sit with that a second." —
-            # and it is the single most MATI thing in a reply: nothing
-            # generated it, Mati says it because a person is waiting.
+            # ⚠️ THE OPENER IS SPOKEN TOO. This is the patience line — "Hm.",
+            # "Let me sit with that a second." — and it is the single most
+            # MATI thing in a reply: nothing generated it, Mati says it because
+            # a person is waiting.
             #
             # ⚠️ ENQUEUED, NOT SAID. `say()` interrupts; the reply's own
             # sentences are queued right behind this one, and interrupting
@@ -1476,24 +1495,20 @@ class FieldService:
             except Exception:
                 pass
 
-        # ⚠️ WHO IS TYPING. An episode used to record nothing about the
-        # speaker, so a third party's words were filed as the owner's —
-        # , when four episodes about "my AI assistant" left
-        # Mati unable to say whether the person in front of it was the user.
+        # ⚠️ WHO IS TYPING. An episode records the speaker, or a third party's
+        # words would be filed as the owner's and Mati could not say whether
+        # the person in front of it was the owner.
         #
-        # ⚠️ MATI NO LONGER ASKS WHO IS THERE. The user: "Mati's assumption
-        # should always be that the peer will be speaking to them. It is up to
-        # Mati to figure out on their own if that is truly the case."
+        # ⚠️ MATI DOES NOT ASK WHO IS THERE. Its assumption is that the peer is
+        # the owner, and it is up to Mati to notice when that is not so.
+        # Opening a session by asking for a name would greet the person who
+        # built it as a stranger, and put the work of identification on them
+        # when it belongs to Mati. An introduction is TAKEN when offered rather
+        # than solicited.
         #
-        # It used to open a new session by asking for a name. That is the wrong
-        # posture twice over: it greets the person who built it as a stranger,
-        # and it puts the work of identification on them when it belongs to
-        # Mati. The default is the owner, and an introduction is TAKEN when
-        # offered rather than solicited.
-        #
-        # ⚠️ Nothing about attribution is weakened. `named_in` still records a
-        # name the moment someone gives one, and `attribute` still marks a
-        # memory as somebody else's. What is gone is the interrogation.
+        # ⚠️ Attribution is not weakened by that. `named_in` records a name the
+        # moment someone gives one, and `attribute` marks a memory as somebody
+        # else's.
         told = speaker.named_in(text)
         if told:
             self._speaker[session_id] = told
@@ -1567,12 +1582,12 @@ class FieldService:
         that the field is running without implying anything is being learned.
 
         ⚠️ WHY THIS IS HONEST TO ANIMATE. The free-running dynamics drift the
-        live phases ~1.22 rad while θ₀ moves exactly 0.00000000 — measured, and
-        recorded in `expression.py`. So this is motion that means "awake", not
-        motion that means "changing". Between turns the panel's basin and
-        coherence are the LAST TURN's numbers, frozen; animating those would be
-        putting movement on stale values, which is the same lie as a progress
-        bar that keeps going after the work stopped.
+        live phases while θ₀ does not move at all (see `expression.py`). So
+        this is motion that means "awake", not motion that means "changing".
+        Between turns the panel's basin and coherence are the LAST TURN's
+        numbers, frozen; animating those would be putting movement on stale
+        values, which is the same lie as a progress bar that keeps going after
+        the work stopped.
 
         ⚠️ IT NEVER WAITS FOR THE FIELD. A visual that queues behind reindex
         would slow the work it depicts, so the lock is taken non-blocking and
@@ -1688,17 +1703,14 @@ class FieldService:
             pass                     # unreadable settings must not stop work
         # Due items are checked on every pass, not only on idle — a reminder
         # set for 15:00 should not wait for a quiet spell.
-        # ⚠️ SCHEDULED, SO MATI IS READY BEFORE THE APP OPENS. The user: sleep
-        # and wake "should be scheduled in the beginning and then allowed to
-        # reschedule at a learned set time every day, this way Mati is ready
-        # before the app is opened."
+        # ⚠️ SCHEDULED, SO MATI IS READY BEFORE THE APP OPENS. Resting and
+        # waking follow a time learned from the person's own days.
         #
-        # ⚠️ INERT UNTIL THE PATTERN IS REAL, and it is not yet. Over 17 days
-        # the first turn has a standard deviation of 8.5 HOURS — median 12:31,
-        # ranging 00:01 to 22:36. `rhythm.daily_schedule` returns None on that
-        # and this does nothing, because waking at a median drawn from noise
-        # would put Mati to sleep mid-conversation. When the days settle, it
-        # starts working with no further change.
+        # ⚠️ INERT UNTIL THE PATTERN IS REAL. `rhythm.daily_schedule` returns
+        # None while the first turn of the day varies by hours, and this then
+        # does nothing, because waking at a median drawn from noise would put
+        # Mati to sleep mid-conversation. When the days settle, it starts
+        # working with no further change.
         self._maybe_keep_schedule()
         self._maybe_announce()
         # ⚠️ HERE, NOT IN THE IDLE BLOCK BELOW, AND NOT GATED ON `slow`.
@@ -1709,12 +1721,11 @@ class FieldService:
         # it must not be starved: the whole point is that the news is already
         # there before anyone asks.
         self._maybe_fetch_world()
-        # ⚠️ THE SHORT TIER, AND IT COMES FIRST. Turns no longer imprint while
-        # the person waits — 11.4s of a 55s turn, for a field reading nothing
-        # in the reply consumed. The debt is settled here instead, within
-        # seconds of the exchange rather than ten minutes later, because the
-        # field being behind the conversation is a different thing from the
-        # field being idle.
+        # ⚠️ THE SHORT TIER, AND IT COMES FIRST: text handed over to be
+        # imprinted later is settled within seconds, because the field being
+        # behind the conversation is a different thing from the field being
+        # idle. A turn's own imprint cannot be deferred (see `mati.turn`), so
+        # nothing is normally waiting here.
         #
         # Everything else — studying, dreaming, questions, inquiry — waits for
         # the long tier below. Catching up beats acquiring.
@@ -1723,60 +1734,42 @@ class FieldService:
             return
         # SLEEP — left alone, not merely paused. The expensive work lives here
         # so a gap in conversation is never spent imprinting a document chunk
-        # (~60s) while the person waits to type again. Ordered: absorb what was
+        # while the person waits to type again. Ordered: absorb what was
         # queued, finish what was written thin, only then acquire anything new.
-        # ⚠️ RESTING STILL PERCOLATES. The user: "the solution came from the
-        # desire to leave Mati running even if the apps are closed, for
-        # continuity — but I want to leave it open for something that needs
-        # percolating."
-        #
-        # My first version returned here and stopped everything, dreaming
-        # included, which is the opposite of percolating. The division that
-        # matters is not cheap-versus-expensive, it is OUTWARD versus INWARD:
+        # ⚠️ RESTING STILL PERCOLATES. Mati is left running when the apps are
+        # closed, for continuity, and so that something can percolate. The
+        # division that matters is not cheap-versus-expensive, it is OUTWARD
+        # versus INWARD:
         #
         #   outward — reading a new document, asking itself new questions.
         #             Acquisition. Stops while resting.
         #   inward  — dreaming. Turning over what is already held. Continues.
-        #
-        # ⚠️ The PREDICTION and RAPPORT are rebuilt in `sleep()`, not here. A
-        # prediction of the day has to be made at the boundary of one, and idle
-        # is a quiet spell in the middle of a day rather than the end of it.
         #
         # A person resting is not learning a new subject and is very much still
         # digesting the day.
         # ⚠️ THE THRESHOLD IS THE PERSON'S, NOT A CONSTANT. `rhythm.idle_after`
         # reads their own p95 gap, floored at 45 minutes. Cached for a minute
         # so this stays a comparison rather than a query.
-        # ⚠️ NOTHING PUT MATI TO SLEEP. `/health` has reported "sleeping":
-        # true after two quiet hours since long before tonight — a claim
-        # nothing acted on. The only callers of `sleep()` were the raw
-        # endpoint, which the terminal stopped using when /sleep became REST,
-        # and process exit.
-        #
-        # That matters more than it sounds: CONSOLIDATION LIVES IN `sleep()`.
-        # The prediction and the day's rapport are rebuilt there and nowhere
-        # else, so on a machine simply left running they would never have been
-        # rebuilt at all.
-        # ⚠️ THIS CALLED `sleep()` — THE FULL HANDOFF — AND SO DISCONNECTED THE
-        # TERMINAL EVERY NIGHT. The user found it the next morning: "the terminal
-        # was disconnected from the field. Sleep is not supposed to disconnect
-        # from the field anymore, only quit." It now rests: consolidates the
-        # day, goes slow, keeps the field and goes on dreaming.
+        # ⚠️ THE NIGHT IS `rest()`, NEVER THE HANDOFF. Resting consolidates the
+        # day — the prediction and the day's rapport are rebuilt there and
+        # nowhere else, so a machine simply left running needs this to rebuild
+        # them at all — goes slow, keeps the field and goes on dreaming; a
+        # quiet night must not disconnect the terminal.
         if (not self.asleep and not self.slow
                 and time.time() - self.last_turn >= C.SLEEP_AFTER_SECONDS):
             self.rest()
             return True
 
         if time.time() - self.last_turn >= self._idle_after():
-            # ⚠️ FIRST, AND THAT IS THE POINT. The user: *"split the verbatim
-            # into time segments, so we don't have to decrypt everything at
-            # once"* and *"the last year should be RAG ready"*. One segment is
-            # ~3s and needs NO FIELD LOCK, so it is the cheapest useful thing
-            # an idle pass can do — and putting it after the debts below would
-            # starve it exactly as dreaming was starved: `_maybe_study` and
-            # `_maybe_deepen` return early to finish their own work, take
-            # minutes doing it, and a job behind them simply never runs while
-            # there is anything to read. See `notes.warm_verbatim`.
+            # ⚠️ FIRST, AND THAT IS THE POINT. The verbatim is split into time
+            # segments so nothing has to decrypt everything at once, and the
+            # last year should be searchable by its exact words. One segment is
+            # a few seconds and needs NO FIELD LOCK, so it is the cheapest
+            # useful thing an idle pass can do — and behind the debts below it
+            # would starve: `_maybe_study` and `_maybe_deepen` return early to
+            # finish their own work, take minutes doing it, and a job behind
+            # them simply never runs while there is anything to read. See
+            # `notes.warm_verbatim`.
             if self._maybe_warm_verbatim():
                 self.last_activity = time.time()
                 return
@@ -1806,17 +1799,16 @@ class FieldService:
             if self._maybe_log_question():
                 self.last_activity = time.time()
                 return                    # ask the person, who actually knows
-            # ⚠️ BEFORE INQUIRY, AFTER THE DEBTS. Dreaming went last at first,
-            # and that reproduced the bug it was meant to fix: `_maybe_inquire`
-            # fires on nearly every sleep pass while topics stay open, so the
-            # pass returned before ever reaching the dream. Starved, not
-            # missing — which looks identical from outside.
+            # ⚠️ BEFORE INQUIRY, AFTER THE DEBTS. `_maybe_inquire` fires on
+            # nearly every pass while topics stay open, so a dream placed after
+            # it would never be reached — starved, not missing, which looks
+            # identical from outside.
             #
             # It is safe here because it rate-limits itself to once an hour
             # (DREAM_EVERY_SECONDS), so it cannot starve inquiry in turn. The
             # order is: repay what is owed, rest, then acquire something new.
             # Dreaming turns over what is held. It does NOT rebuild the
-            # prediction — that happens in `sleep()`, at the end of a day.
+            # prediction — that happens in `rest()`, at the end of a day.
             if self._maybe_dream():
                 activity.log(activity.DREAM)
                 self.last_activity = time.time()
@@ -1835,11 +1827,10 @@ class FieldService:
         if (archived or restored) and self.verbose:
             print(f"  [tiers] archived {archived}, restored {restored}",
                   file=sys.stderr)
-        # IDLE — a gap in conversation. Only what is quick, and what recall
-        # cannot do without: one turn stales every stored address (measured
-        # 100% -> 0% self-retrieval), so reindex cannot wait for sleep or
-        # recall is broken mid-conversation. It is bounded and yields per note,
-        # so it fits in a gap.
+        # IDLE — a gap in conversation. Only what is quick: re-addressing
+        # anything still filed in an older space. Between promotions there is
+        # nothing to do and it returns at once; it is bounded and yields per
+        # note, so it fits in a gap.
         self._maybe_reindex()
 
     def _worker_loop(self):
@@ -1874,11 +1865,11 @@ class FieldService:
                 self.telemetry.publish(stage=f"worker: {kind}",
                                        queue_depth=self.work.qsize())
                 with self.field():
-                    # An episode write imprints for ~55s at TRIPLET_CAP=64 and
-                    # used to hold the field for all of it, so a turn arriving
-                    # mid-write waited the whole time (measured 73s). Tasks that
-                    # accept `should_stop` yield at a safe boundary; those that
-                    # do not are called as before.
+                    # An episode write imprints for most of a minute; holding
+                    # the field for all of it would make a turn arriving
+                    # mid-write wait the whole time. Tasks that accept
+                    # `should_stop` yield at a safe boundary; those that do not
+                    # are simply called.
                     # Ask the signature rather than catching TypeError: a
                     # TypeError raised INSIDE the thunk would otherwise trigger
                     # the fallback and run the whole write a SECOND time —
@@ -1888,10 +1879,9 @@ class FieldService:
                     else:
                         info = thunk() or {}
                 # Tasks are plain callables and not all of them return a dict —
-                # `bridge.remember` hands back (note_id, triplet), which used to
-                # blow up the telemetry publish below with "'tuple' object has
-                # no attribute 'get'" AFTER the work had already succeeded, so
-                # the log claimed a failure that never happened.
+                # `bridge.remember` hands back (note_id, triplet) — so the
+                # telemetry below must not assume one, or the log would claim a
+                # failure after the work had already succeeded.
                 if not isinstance(info, dict):
                     info = {"episode_id": info[0]} if (
                         isinstance(info, tuple) and info) else {}
@@ -1941,18 +1931,11 @@ class FieldService:
         """Mati talks to itself about the day. Never raises, never blocks.
 
         ⚠️ EVERY OUTCOME IS LOGGED, INCLUDING NOTHING-HAPPENED, and that is
-        the whole point of this shape. This logged only SUCCESS and printed
-        failures only under `--verbose`, so on a normally-started server a
-        reflection that raised left no trace anywhere: no activity row, no
-        `mine` note, no complaint. Measured  — the newest `mine`
-        row was FOURTEEN DAYS OLD while `sleep` and `dream` were logging
-        nightly, and nothing in the system could say why.
-
-        ⚠️ `reflect()` ITSELF WAS FINE. Called directly it returned a round
-        on the first try. The defect was never the introspection; it was that
-        its absence was undetectable. An invisible failure in a nightly path
-        nobody watches is the same shape as `world.fetch_all` having no caller
-        for fifteen days and the verbatim search being write-only.
+        the whole point of this shape. A reflection that raised on a
+        normally-started server would otherwise leave no trace anywhere — no
+        activity row, no `mine` note, no complaint — and "it ran and declined"
+        must be distinguishable from "it never ran". An invisible failure in a
+        nightly path nobody watches is the worst kind.
         """
         try:
             from . import reflect
@@ -1986,10 +1969,10 @@ class FieldService:
     def _maybe_record_reading(self):
         """Write a memory of having read, at each quarter of a document.
 
-        ⚠️ 844 passages absorbed and no memory of the reading. The content was
-        stored and labelled `studied`, so Mati could say "I read that" when a
-        passage was handed to it — but asked what it had BEEN reading, it had
-        nothing, because studying produced text and no experience.
+        Studying stores the content and labels it `studied`, so Mati can say
+        "I read that" when a passage is handed to it — but asked what it has
+        BEEN reading, it would have nothing, because studying produces text and
+        no experience. This is the experience.
         """
         if self.asleep or self.lm is None:
             return 0
@@ -2017,18 +2000,20 @@ class FieldService:
         """
         if self.asleep or self.lm is None:
             return 0
+        if _vault_state() is False:
+            return 0                  # the queued text is sealed
         if study.status().get("pending", 0) == 0:
             return 0
         # ⚠️ YIELD THE PASS. Study returns early from `_idle_pass`, so without
-        # this a queued document starves everything below it — measured, a
-        # 1,759-chunk upload stopped self-talk dead and left `dreams` at 0 for
-        # a whole night. Taking only 1 pass in STUDY_EVERY lets deepening,
-        # resolving, question-forming, inquiry and dreaming keep their turns
-        # while the reading still gets most of the wall clock, because a study
-        # pass is ~90s and theirs are seconds.
+        # this a queued document starves everything below it — a large upload
+        # would stop self-talk and dreaming for a whole night. Taking only 1
+        # pass in STUDY_EVERY lets deepening, resolving, question-forming,
+        # inquiry and dreaming keep their turns while the reading still gets
+        # most of the wall clock, because a study pass is long and theirs are
+        # seconds.
         self._study_pass = getattr(self, "_study_pass", 0) + 1
-        # Asked for directly, reading takes every pass again — the old speed,
-        # on purpose and with an end. Outside that window it yields.
+        # Asked for directly, reading takes every pass — on purpose, and with
+        # an end. Outside that window it yields.
         focused = time.time() < self.study_priority_until
         if not focused:
             if self._study_pass % C.STUDY_EVERY:
@@ -2153,15 +2138,9 @@ class FieldService:
     def _maybe_dream(self):
         """Free-dream once, if everything else is settled.
 
-        ⚠️ THIS NEEDS A CALLER OR IT IS DECORATION. `bridge.dream` and the `/dream`
-        endpoint both existed and the worker invoked neither, so an install
-        left running for hours never dreamed. Found by leaving the terminal
-        open and waiting for it.
-
-        LAST in the sleep cycle, deliberately. Study, deepening, resolving and
-        inquiry all repay debts; this one creates them — dreaming deforms θ₀,
-        every stored address is measured against θ₀, and so a dream buys a
-        reindex. Running it before the debts are paid means reindexing twice.
+        AFTER THE DEBTS, deliberately. Study, deepening and resolving all repay
+        debts; a dream deforms θ₀, and once the address space moves that can
+        create one. Running it before the debts are paid means repairing twice.
         """
         if self.asleep or self.lm is None:
             return 0
@@ -2200,12 +2179,11 @@ class FieldService:
         for item in due:
             ok, why = schedule.may_interrupt(item["kind"])
             if not ok:
-                # ⚠️ PHASE 3: THE FIRST TIME SOMETHING IS ACTUALLY DUE is the
-                # only honest moment to ask about interruptions — before that
-                # it is a hypothetical, and `schedule.consent` has shipped
-                # default-off with nothing ever asking to change it, so the
-                # whole feature was unreachable. The item is NOT lost either
-                # way; it waits for the next conversation.
+                # ⚠️ THE FIRST TIME SOMETHING IS ACTUALLY DUE is the only honest
+                # moment to ask about interruptions — before that it is a
+                # hypothetical. Consent is off by default, so without this
+                # question the feature would be unreachable. The item is NOT
+                # lost either way; it waits for the next conversation.
                 try:
                     from . import asks as _asks
                     _asks.ask_interrupt_if_needed()
@@ -2214,17 +2192,15 @@ class FieldService:
                 continue                      # waits for the user to speak
             self.telemetry.publish(stage="idle", announce={
                 "id": item["id"], "kind": item["kind"], "body": item["body"]})
-            # ⚠️ AND ACTUALLY DELIVER IT. Publishing alone reached nobody:
-            # `announce` is consumed by no client, so this loop ran on every
-            # idle pass, respected consent and quiet hours perfectly, and had
-            # no effect. A due reminder arrived only when the person happened
-            # to start a conversation — rent due on the 1st, told on the 3rd.
+            # ⚠️ AND ACTUALLY DELIVER IT. Publishing alone reaches nobody —
+            # `announce` is consumed by no client — so a due reminder would
+            # arrive only when the person happened to start a conversation:
+            # rent due on the 1st, told on the 3rd.
             #
             # ⚠️ MARKED DELIVERED ONLY IF IT WAS. If the notification could
             # not be shown the item stays queued and surfaces at the top of
-            # the next conversation, which is exactly the old behaviour. A
-            # reminder marked delivered but never seen is worse than a late
-            # one.
+            # the next conversation. A reminder marked delivered but never seen
+            # is worse than a late one.
             if notify.send(item["body"], subtitle=item.get("kind")):
                 schedule.mark_delivered([item["id"]])
                 announced += 1
@@ -2243,8 +2219,8 @@ class FieldService:
         if self.asleep or self.lm is None:
             return None
         # Absorbing beats acquiring — but not indefinitely. See
-        # C.INQUIRE_MAX_SILENCE_H: a big enough document used to turn this
-        # subsystem off for months, which is not a priority, it is a mute.
+        # C.INQUIRE_MAX_SILENCE_H: a big enough document would otherwise turn
+        # this subsystem off for months, which is not a priority, it is a mute.
         if study.status().get("pending", 0):
             silent_h = (time.time() - self._last_inquiry) / 3600.0
             if silent_h < C.INQUIRE_MAX_SILENCE_H:
@@ -2265,17 +2241,17 @@ class FieldService:
         """Read the feeds, so the news is already there when it is asked for.
 
         ⚠️ THE ONE THING MATI DOES ON THE NETWORK UNASKED, so it gets its own
-        switch. The README now lists every connection and says this one can be
-        turned off; a promise in the README that has no setting behind it is
-        the overclaiming the release plan warns about, one layer down.
+        switch. The README lists every connection and says this one can be
+        turned off; a promise in the README with no setting behind it would be
+        an overclaim.
         `idle_work=False` already stops it with everything else — this is the
         narrower control for someone who wants the quiet work and not the
         feeds.
 
         ⚠️ ON by default, and that is defensible precisely because it sends
-        NOTHING about the person: a GET to four public feeds with a fixed
-        User-Agent. The thing being defaulted on is a download, not a
-        disclosure.
+        NOTHING about the person: a GET to each feed the person added, with a
+        fixed User-Agent, and nothing at all until they add one. The thing
+        being defaulted on is a download, not a disclosure.
         """
         try:
             if C._settings().get("headlines") is False:
@@ -2287,23 +2263,16 @@ class FieldService:
     def _fetch_world_now(self):
         """The fetch itself. Split out so the gate above reads as a gate.
 
-        the user: *"if I ask 'Have you heard any interesting news?'
-        I shouldn't have to wait for Mati to search for news, it already
-        looked it up overnight, unless there was no interesting news found
-        overnight."*
-
-        ⚠️ `world.fetch_all` HAD NO CALLER ANYWHERE. Its own docstring says
-        "For sleep and idle, never a turn" and nothing ever ran it — so the
-        store held news from ****, fifteen days stale, from a
-        one-off manual fetch. `expire()` runs inside `fetch_all`, so nothing
-        was being aged out either.
+        Asked whether it has heard any interesting news, Mati should not make
+        the person wait while it searches: it has already looked, overnight,
+        unless nothing interesting was found. `expire()` runs inside
+        `fetch_all`, so this is also what ages old items out.
 
         ⚠️ IT RUNS WHILE RESTING, UNLIKE THE OTHER OUTWARD WORK. Studying and
         inquiring stop overnight because they are acquisition that competes
         with the person. Reading a feed is seconds of network and no field
         work at all, and the whole point is that it has happened BEFORE
-        morning. This is the first instance of the rule the user stated:
-        a prediction should cause PREPARATION, not an announcement.
+        morning: a prediction should cause PREPARATION, not an announcement.
         """
         now = time.time()
         if now - getattr(self, "_world_at", 0) < C.WORLD_EVERY_SECONDS:
@@ -2324,14 +2293,13 @@ class FieldService:
     def _maybe_predict(self):
         """Resolve anything due, and record what the record now justifies.
 
-        Cheap — SQL over timestamps, no field and no model. Runs on idle for
-        tidiness rather than cost.
+        Cheap — SQL over timestamps, no field and no model.
 
         ⚠️ NOTHING CONSULTS THE RESULT YET. `predict.may_influence()` gates
         that, and it is False until enough predictions have resolved with a
         good enough hit rate. Until then this only builds the record that will
-        decide whether Mati can predict anything at all. :
-        the store supports zero predictions, and that is the correct output.
+        decide whether Mati can predict anything at all; on a young store it
+        predicts nothing, and that is the correct output.
         """
         try:
             decided = predict.resolve()
@@ -2383,25 +2351,23 @@ class FieldService:
                 break                              # a turn is waiting — go now
         if n_total:
             with self.field():
-                # ⚠️ RE-CHECK AFTER TAKING THE LOCK. `/sleep` sets `self.lm` to
-                # None to hand the field over, and it can land between the
-                # batch loop above and this save — , where
-                # it raised AttributeError on None.mf. The addresses are
-                # already committed by `bridge.reindex`; only persisting θ₀ is
-                # skipped here, and sleep persists it anyway.
+                # ⚠️ RE-CHECK AFTER TAKING THE LOCK. `/release` sets `self.lm`
+                # to None to hand the field over, and it can land between the
+                # batch loop above and this save. The addresses are already
+                # committed by `bridge.reindex`; only persisting θ₀ is skipped
+                # here, and release persists it anyway.
                 if self.asleep or self.lm is None:
                     return
                 bridge.save_notes_field(self.lm)
             self.stats["reindexed"] += n_total
             self.stats["last_reindex"] = time.time()
             self.telemetry.publish(stage="idle", reindexed_total=n_total)
-            # Republish the staleness figures. `check_addresses` used to run
-            # ONLY at startup and wake, so `/addresses` and the terminal's FIELD
-            # panel kept showing the startup snapshot while the worker quietly
-            # repaired hundreds of addresses behind them — a monitor that
-            # disagreed with `/queue` and `/health` and was simply frozen.
-            # It is a plain SELECT over feat_gs, no field forwards, so it is
-            # cheap enough to run after every pass.
+            # Republish the staleness figures, or `/addresses` and the
+            # terminal's FIELD panel would keep showing a startup snapshot while
+            # the worker repaired addresses behind them — a monitor that
+            # disagrees with `/queue` and `/health`. It is a plain SELECT over
+            # feat_gs, no field forwards, so it is cheap enough to run after
+            # every pass.
             self.check_addresses("after reindex")
             if self.verbose:
                 print(f"  [worker] reindexed {n_total} on idle", file=sys.stderr)
@@ -2440,19 +2406,19 @@ class FieldService:
             "asleep": self.asleep,
             "slow": self.slow,
             "holds_field": not self.asleep and self.lm is not None,
-            # ⚠️ REPORTED, BECAUSE A LOCKED VAULT IS NOW A RUNNING STATE
-            # RATHER THAN A CRASH. Mati starts and answers with its sealed
-            # memories unreadable, which looks healthy on every other measure
-            # — exactly the invisible degradation this project keeps paying
-            # for. `memories_locked` is how someone finds out without
-            # guessing why recall is empty.
-            # ⚠️ `_vault_state()` ALREADY EXISTS AND NEVER PROMPTS — it is a
-            # status read on a route that polls, so asking for Touch ID here
-            # would put a fingerprint prompt on a timer. True = unlocked,
-            # False = locked, None = no vault, so `is False` is the only
-            # correct test: `not None` would report an unencrypted install as
-            # locked.
+            # ⚠️ REPORTED, BECAUSE A LOCKED VAULT IS A RUNNING STATE RATHER
+            # THAN A CRASH. Mati starts and answers with its sealed memories
+            # unreadable, which looks healthy on every other measure.
+            # `memories_locked` is how someone finds out without guessing why
+            # recall is empty.
+            # ⚠️ `_vault_state()` NEVER PROMPTS — it is a status read on a
+            # route that polls, so asking for Touch ID here would put a
+            # fingerprint prompt on a timer. True = unlocked, False = locked,
+            # None = no vault, so `is False` is the only correct test: `not
+            # None` would report an unencrypted install as locked.
             "memories_locked": _vault_state() is False,
+            "unlock_method": vault.unlock_method(),
+            "vault_id": vault.vault_id(),
             "provider": self.provider,
             "llm": self._llm_detail,
             "uptime_seconds": round(time.time() - self.started, 1),
@@ -2461,11 +2427,9 @@ class FieldService:
             "code_stale": _code_stamp() > _CODE_AT_START + 1.0,
             # ⚠️ WITHOUT THIS, AN AMNESIAC SERVER LOOKS HEALTHY. Bodies are
             # sealed; a process that cannot unlock reads none of them, and
-            # every other field here would still say it is fine. Found
-            # found when a server started in the background died with
-            # "Touch ID declined or unavailable" — Touch ID needs someone
-            # present, and nothing started without a person can count on it.
-            # That is exactly the condition a restart creates.
+            # every other field here would still say it is fine. Touch ID needs
+            # someone present, and a server started in the background — which
+            # is what a restart does — cannot count on one.
             "vault_unlocked": _vault_state(),
             "code_age_hours": round(
                 max(0.0, time.time() - _CODE_AT_START) / 3600.0, 1),
@@ -2556,12 +2520,10 @@ _APP_SETTINGS = ("terminal_enabled", "notify_on_reply", "voice_on",
                  "assistant_name", "headlines", "voice_rate", "local_model",
                  "voice_name", "avatar", "reply_length")
 
-# ⚠️ `/sleep`, `/wake` and `/rest` LEFT THIS SET.
-# They are things a person does to their own Mati — "go to sleep
-# now", "wake up" — not field mechanics. The gate answers "should
-# a stranger reach this over HTTP"; it had been answering "is this
-# a user action" as well, which put sleeping in the same bucket as
-# packing the store for transfer.
+# `/sleep`, `/wake` and `/rest` are not in this set: they are things a person
+# does to their own Mati — "go to sleep now", "wake up" — not field mechanics.
+# The gate answers "should a stranger reach this over HTTP", not "is this a
+# user action".
 _TERMINAL_ONLY = frozenset({
     # ⚠️ THE LIBRARY LEFT THIS SET. Managing what Mati has read
     # — adding, archiving, reshelving — is a person tending their own
@@ -2703,14 +2665,12 @@ class Handler(BaseHTTPRequestHandler):
         # it through `/chat` would spend a turn, an episode and the field on
         # the question "is sound coming out".
         # ⚠️ THE TERMINAL IS OFF UNTIL IT IS SWITCHED ON, AND THE GATE IS
-        # HERE RATHER THAN IN THE APP. The user: *"the terminal becomes only
-        # available if the user switches on the setting in the Mati app."*
-        #
-        # The app's "Show terminal" toggle only ever hid a BUTTON — every
-        # route stayed reachable with curl. Hiding a door is not locking it,
-        # and these are the routes that reindex the field, imprint text, and
-        # hand the field over. Loopback-only is not an argument: anything
-        # running as this user could reach them.
+        # HERE RATHER THAN IN THE APP. The terminal is available only once the
+        # person switches it on in the app's settings — and a toggle that only
+        # hid a BUTTON would leave every route reachable with curl. Hiding a
+        # door is not locking it, and these are the routes that reindex the
+        # field, imprint text, and hand the field over. Loopback-only is not an
+        # argument: anything running as this user could reach them.
         if path in _TERMINAL_ONLY and not _terminal_on():
             return self._json(
                 {"error": "the terminal is switched off",
@@ -2807,8 +2767,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"connected": False, "error": str(e)})
         if path == "/stations":
             # ⚠️ READ-ONLY, AND IT REPORTS THE HELD SEARCH — not a new one.
-            # The user: *"I would like to see a list of the five stations under
-            # the avatar. That way I can change stations as I see fit."*
             # `radio.remember_found` already keeps the last search so that
             # "next station" and "the third one" work by voice; this exposes
             # the same list to the page, so the buttons and the words are
@@ -2816,18 +2774,18 @@ class Handler(BaseHTTPRequestHandler):
             # from what "next station" means.
             try:
                 from . import media, radio
-                # ⚠️ PRESETS TRAVEL WITH IT. The user: *"The presets can show
-                # up there when the radio is playing."* Which is the car-radio
-                # logic: a found list matters just after a search, and once
-                # something is playing the useful buttons are your own. One
-                # request returns both so the page never has to decide which
-                # to fetch — and never shows a stale half.
+                # ⚠️ PRESETS TRAVEL WITH IT, which is the car-radio logic: a
+                # found list matters just after a search, and once something is
+                # playing the useful buttons are your own. One request returns
+                # both so the page never has to decide which to fetch — and
+                # never shows a stale half.
                 from . import presets as _pre
                 return self._json({
                     "stations": radio.listing(limit=5),
                     "presets": [{"slot": p["slot"], "name": p["name"]}
                                 for p in (_pre.all_presets() or [])],
                     "playing": media.playing_now(),
+                    "paused": media.paused_now(),
                     "remaining": radio.remaining(),
                 })
             except Exception as e:                           # noqa: BLE001
@@ -2835,7 +2793,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/playing":
             try:
                 from . import media
-                return self._json({"playing": media.playing_now()})
+                return self._json({"playing": media.playing_now(),
+                                   "paused": media.paused_now()})
             except Exception as e:                           # noqa: BLE001
                 return self._json({"playing": None, "error": str(e)})
         if path == "/state":
@@ -2881,8 +2840,7 @@ class Handler(BaseHTTPRequestHandler):
             # ⚠️ NEVER CALL `_body()` TWICE. `do_POST` has already read the
             # request body above; a second call blocks on `rfile.read(n)`
             # waiting for bytes that were consumed, and the route simply hangs
-            # until the client gives up. This one did — `/sleep`, which is how
-            # slow mode is reached, would sit there until it timed out.
+            # until the client gives up.
             body = body or {}
             svc.slow = bool(body.get("on", True))
             activity.log(activity.REST if svc.slow else activity.STIR)
@@ -2893,10 +2851,9 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass          # resting must not fail on housekeeping
             return self._json({"slow": svc.slow, "asleep": svc.asleep})
-        # ⚠️ THE STOP BUTTON, AND IT MUST NOT GO THROUGH A TURN. The user had the
-        # radio on with no way to silence it, and the chat route took 16.5s.
-        # A stop that needs a sentence parsed, a field read and an episode
-        # written is not a stop button. This does one thing.
+        # ⚠️ THE STOP BUTTON, AND IT MUST NOT GO THROUGH A TURN. A stop that
+        # needs a sentence parsed, a field read and an episode written is not a
+        # stop button. This does one thing.
         if path == "/settings":
             body = body or {}
             bad = [k for k in body if k not in _APP_SETTINGS]
@@ -2982,12 +2939,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:                           # noqa: BLE001
                 return self._json({"error": str(e)}, 400)
         if path == "/library/reshelf":
-            # ⚠️ SHELVING HAD NO INVERSE, which made "archive instead of
-            # delete" a half-promise. The decision was that an archived work
-            # stays in the house — but with no way back it was off the shelf
-            # permanently, which is a delete that merely keeps the rows.
+            # ⚠️ SHELVING HAS AN INVERSE, or "archive instead of delete" would
+            # be a half-promise: an archived work stays in the house, and with
+            # no way back it would be off the shelf permanently — a delete that
+            # merely keeps the rows.
             #
-            # ⚠️ `archived = NULL` IS THE WHOLE OPERATION, and it is why
+            # ⚠️ `shelved = NULL` IS THE WHOLE OPERATION, and it is why
             # archiving was the right choice over deleting: nothing was lost,
             # so nothing has to be rebuilt. The passages return to the
             # working set and `rebalance_tiers` re-addresses them in its own
@@ -3105,12 +3062,12 @@ class Handler(BaseHTTPRequestHandler):
                     # `_play_preset` — "play 3" is a button, not a search for
                     # a station called 3. A `verb: "preset"` would be ignored
                     # and reads as if it were doing the work.
-                    # ⚠️ `verb: "play"` IS REQUIRED, and omitting it returned
-                    # None silently. `media.answer` has `if verb != "play":
-                    # return None` BEFORE it reads `slot`, so a bare
-                    # {"slot": n} fell straight through — the button reported
-                    # success with an empty `said` and nothing played. A
-                    # preset press IS a play that names a button.
+                    # ⚠️ `verb: "play"` IS REQUIRED. `media.answer` has
+                    # `if verb != "play": return None` BEFORE it reads `slot`,
+                    # so a bare {"slot": n} would fall straight through — the
+                    # button would report success with an empty `said` and
+                    # nothing playing. A preset press IS a play that names a
+                    # button.
                     return self._json(
                         {"said": media.answer({"verb": "play", "slot": n}),
                          "playing": media.playing_now()})
@@ -3118,12 +3075,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": str(e)}, 500)
             try:
                 # ⚠️ `media.act`, NOT `radio.nth_found`. `nth_found` only
-                # RETURNS the station — it does not play it, and a first cut
-                # here called it and reported success while nothing started.
-                # Routing the button through the same `answer({"verb": "nth"})`
-                # the spoken "the third one" uses means one code path, one
-                # set of failure messages, and no way for a tap and a
-                # sentence to disagree.
+                # RETURNS the station — it does not play it. Routing the button
+                # through the same `answer({"verb": "nth"})` the spoken "the
+                # third one" uses means one code path, one set of failure
+                # messages, and no way for a tap and a sentence to disagree.
                 from . import media
                 said = media.answer({"verb": "nth", "n": n})
                 return self._json({"said": said,
@@ -3134,6 +3089,18 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 from . import media
                 return self._json({"said": media.stop_all()})
+            except Exception as e:                           # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
+        # The play/pause buttons under the now-playing label. Like `/silence`,
+        # neither spends a turn.
+        if path in ("/pause", "/resume"):
+            try:
+                from . import media
+                said = (media.pause_all() if path == "/pause"
+                        else media.resume_all())
+                return self._json({"said": said,
+                                   "playing": media.playing_now(),
+                                   "paused": media.paused_now()})
             except Exception as e:                           # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
         if path == "/interrupt":
@@ -3167,9 +3134,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/release":
             return self._json(svc.release())
         if path == "/sleep":
-            # ⚠️ The old name for the handoff, kept so an older terminal build
-            # still works. New callers use /release.
-            return self._json(svc.release())
+            # ⚠️ SLEEP IS THE NIGHT, NEVER THE HANDOFF. It keeps the field and
+            # rests, exactly as /rest does. Handing the field over is
+            # /release, and only that.
+            return self._json(svc.rest())
         if path in ("/pack", "/shutdown"):
             # ⚠️ `/shutdown` is kept as an ALIAS so nothing in flight breaks,
             # but it never stopped anything — it packs. `/quit` is the stop.
@@ -3184,6 +3152,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(svc.restart())
         if path == "/wake":
             return self._json(svc.wake())
+        if path == "/unlock":
+            # ⚠️ THE BODY MAY CARRY THE PASSPHRASE. Only the outcome goes
+            # back, and nothing about the request is written anywhere.
+            out = svc.unlock((body or {}).get("passphrase"))
+            status = 200
+            if out.get("unlocked") is False:
+                status = 429 if out.get("retry_after") else 403
+            return self._json(out, status)
 
         # Everything below touches the field, which Mati does not hold while
         # asleep — the pro terminal may have it.
@@ -3273,9 +3249,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"id": sid, "text": text, "due_at": when})
         if path == "/study_now":
             # Reading at full speed until the queue drains or the window ends,
-            # whichever comes first. Bounded because the budget exists for a
-            # measured reason: a queued book silenced every other background
-            # function for a night.
+            # whichever comes first. Bounded because a queued book at full
+            # speed would silence every other background function.
             minutes = float(body.get("minutes") or C.STUDY_PRIORITY_MINUTES)
             minutes = max(1.0, min(minutes, 24 * 60))
             svc.study_priority_until = time.time() + minutes * 60
@@ -3355,25 +3330,17 @@ class Handler(BaseHTTPRequestHandler):
 class _RunLoopServer(ThreadingHTTPServer):
     """The HTTP server, plus the macOS main run loop.
 
-    ⚠️ THIS IS WHY RADIO HAD NO SOUND. AVFoundation does its asset loading
-    against the **main thread's** run loop, and this process never ran one —
-    `serve_forever` is a selector loop. Measured  on a 320kbps
-    stream:
-
-        no run loop pumped    player.status=0  item.status=0   forever, no error
-        main loop pumped      player.status=1  item.status=1   ready at 5.5s
-
-    Status 0 is `Unknown`. The player accepted `play()`, reported `rate=1.0`,
-    and sat silent indefinitely — and because `radio.playing()` tested `rate`,
-    which is the REQUESTED rate, Mati reported the station as playing. Silence
-    with a confirmation on top.
+    ⚠️ WITHOUT THIS, RADIO HAS NO SOUND. AVFoundation does its asset loading
+    against the **main thread's** run loop, and `serve_forever` is a selector
+    loop that never runs one. Unpumped, the player accepts `play()`, reports
+    `rate=1.0` — the REQUESTED rate — and sits silent indefinitely at status
+    `Unknown`, with no error: silence with a confirmation on top.
 
     ⚠️ `service_actions` IS THE RIGHT HOOK, AND A SEPARATE THREAD IS THE WRONG
-    FIX. My first attempt ran a dedicated audio thread with its own loop,
-    reasoning that run loops are per-thread — true, and not the point. Every
-    station still timed out. `serve_forever` calls `service_actions()` once per
-    `poll_interval` pass, on the main thread, which is exactly the 0.5s cadence
-    the measurement above used.
+    FIX. Run loops are per-thread, but a dedicated audio thread with its own
+    loop does not help: the loading needs the MAIN thread's. `serve_forever`
+    calls `service_actions()` once per `poll_interval` pass, on the main
+    thread.
 
     ⚠️ NON-BLOCKING. `pump(0.0)` drains what is pending and returns, so this
     cannot delay a request. If AVFoundation is absent it reports so once and is
@@ -3424,13 +3391,9 @@ def serve(host=None, port=None, provider=None, verbose=True):
     try:
         # ⚠️ 0.05s, NOT THE DEFAULT 0.5s, AND THE REASON IS AUDIO. `poll_interval`
         # is how often `service_actions` runs, and that is where the macOS run
-        # loop gets serviced — so it is also the audio pipeline's clock.
-        #
-        # : a live radio stream reached ReadyToPlay in ~4s at
-        # the 0.5s cadence, but a podcast EPISODE — a 24MB file behind a
-        # five-hop redirect chain — timed out at 12s. Pumped properly in a tight
-        # loop the same episode was ready in 2.5s, so the URL was never the
-        # problem and neither was the timeout: the loop was being starved.
+        # loop gets serviced — so it is also the audio pipeline's clock. At
+        # 0.5s a live stream gets ready, but a podcast episode behind a long
+        # redirect chain times out: the loop is starved, not the URL.
         #
         # ⚠️ IT DOES NOT BLOCK. `pump(0.0)` drains what is pending and returns;
         # what changes here is how OFTEN it gets the chance. The cost is a
@@ -3439,26 +3402,22 @@ def serve(host=None, port=None, provider=None, verbose=True):
     except KeyboardInterrupt:
         print("\n  [mati] stopping", file=sys.stderr)
     finally:
-        # Sleep BEFORE shutdown, and the order is not cosmetic. `sleep()`
+        # Release BEFORE shutdown, and the order is not cosmetic. `release()`
         # drains the work queue and snapshots θ₀; `shutdown()` sets the flag
         # the worker loop exits on. Reversed, the worker dies with items still
         # queued and `work.join()` waits forever for a `task_done` that will
         # never come — a hang on exit.
         #
-        # Without this, quitting silently dropped any queued-but-unwritten
-        # episode: Mati had answered, the user had seen the reply, and the
-        # memory of it was thrown away. Consolidation is deferred off the turn
-        # to keep replies fast, which means exit is exactly when the debt is
+        # Without this, quitting would drop any queued-but-unwritten episode:
+        # Mati has answered, the person has seen the reply, and the memory of
+        # it would be thrown away. Consolidation is deferred off the turn to
+        # keep replies fast, which means exit is exactly when the debt is
         # outstanding.
-        # ⚠️ BOUNDED, AND THIS IS THE BUG THAT CAUSED THAT HANG. `pack()`
-        # was given timeouts and THIS was left unbounded, so a wedged field
-        # let the process start exiting and never finish: the port closed,
-        # `[mati] finishing up` was the last line, and it sat at 0% CPU
-        # holding three days of unsaved θ₀ until it had to be SIGKILLed.
-        #
-        # A shutdown that cannot finish is worse than one that finishes badly
-        # — at least the latter can be retried. So release gets its own
-        # thread and its own deadline, and the process exits either way.
+        # ⚠️ BOUNDED. A wedged field must not let the process start exiting and
+        # never finish — the port closed, still holding unsaved θ₀ — so release
+        # gets its own thread and its own deadline, and the process exits
+        # either way. A shutdown that cannot finish is worse than one that
+        # finishes badly: the latter can be retried.
         done = threading.Event()
         err = {}
 

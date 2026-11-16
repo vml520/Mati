@@ -5,30 +5,30 @@ Only one thing may hold the field.
 save it will overwrite each other — silently, because neither can see the
 other. There is no merge, and no way to tell afterwards which writes survived.
 
-So the rule (user): **the utility tools open only when Mati is
-asleep or shut down.** They are not clients of the server the way the chat app
-is; they take the field, work on it directly, and give it back.
+So the rule: **the utility tools open only when Mati has handed the field
+over (`/release`) or is shut down.** They are not clients of the server the
+way the chat app is; they take the field, work on it directly, and give it
+back. Sleeping does NOT free the field — a sleeping Mati still holds it.
 
 Three states, and only two of them allow a tool to run:
 
-    Mati not running    → take the field
-    Mati asleep         → take the field (it let go on purpose)
-    Mati awake          → refuse, and say how to put it to sleep
+    Mati not running       → take the field
+    Mati released it       → take the field (it let go on purpose)
+    Mati holds it          → refuse, and say how to hand it over
 
-This is not hypothetical. It happened twice on the day it was written — once
-from a profiling script, once from a test that isolated the notes DB but not
-θ₀ — and a process that TRAINS the field would have done something worse
-than either, overwriting Mati's notes θ₀ with a field 1.87 radians away.
+This is not hypothetical. A profiling script is enough to cause it, or a test
+that isolates the notes DB but not θ₀ — and a process that TRAINS the field
+would do something worse than either, overwriting Mati's notes θ₀ with a field
+1.87 radians away.
 
 Every entry point that calls `bridge.load_field()` goes through `require()`.
 
-⚠️ THE CHECK USED TO BE ONE-DIRECTIONAL, and that was a hole. `holds_field()`
-asked the SERVER's `/health`, so a tool could tell when Mati had the field —
-but a starting server had no way to tell when a TOOL had it. Two owners, no
-warning, in the one direction nobody was watching. Since  whoever
-holds θ₀ writes a lock file naming themselves, and everyone checks it: the
-server takes it on start and on wake, drops it on sleep and on shutdown; the
-terminal takes it on `/load` and drops it on save or quit.
+⚠️ THE CHECK GOES BOTH WAYS. Asking the SERVER's `/health` lets a tool tell
+when Mati has the field — but a starting server cannot tell that way when a
+TOOL has it, which would leave two owners and no warning. So whoever holds θ₀
+writes a lock file naming themselves, and everyone checks it: the server takes
+it on start and on wake, drops it on sleep and on shutdown; the terminal takes
+it on `/load` and drops it on save or quit.
 
 A lock whose owner has died is not a lock. Every read checks the recorded pid
 is still alive and clears the file if it is not — otherwise one crash would
@@ -142,10 +142,14 @@ def holds_field():
 
 
 def put_to_sleep(timeout=180):
-    """Ask Mati to finish up and let go. Returns True if it did."""
+    """Ask Mati to finish up and hand the field over. True if it did.
+
+    ⚠️ `/release`, NEVER `/sleep`. Sleeping keeps the field; only a release
+    lets a tool take it.
+    """
     try:
         req = urllib.request.Request(
-            f"http://{C.SERVER_HOST}:{C.SERVER_PORT}/sleep",
+            f"http://{C.SERVER_HOST}:{C.SERVER_PORT}/release",
             data=b"{}", method="POST",
             headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -177,7 +181,8 @@ def require(tool, force=False, auto_sleep=False):
     raise FieldBusy(
         f"Mati is awake and holding the field, so {tool} cannot open.\n"
         f"  Two processes writing θ₀ would overwrite each other.\n"
-        f"  Put it to sleep:  curl -X POST localhost:{C.SERVER_PORT}/sleep\n"
+        f"  Hand it over:  curl -X POST localhost:{C.SERVER_PORT}/release\n"
+        f"    (with the terminal switched on in the app)\n"
         f"  Or stop it, or re-run with --force if you know it is idle.")
 
 

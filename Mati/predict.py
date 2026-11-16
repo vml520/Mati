@@ -10,11 +10,11 @@ that makes it the only thing it can be *scored* on. That is the point of this
 module. Not to make Mati seem perceptive — to find out, measurably, whether it
 is.
 
-⚠️ **RIGHT NOW IT CAN PREDICT NOTHING, AND THAT IS THE CORRECT OUTPUT.**
-: the store holds 14 episodes spanning **1 hour 41 minutes**,
-one day, one weekday. Any claim about when you work or what you return to would
-be invention dressed as observation. `propose()` returns an empty list, and it
-will keep returning one until the evidence gates below are actually cleared.
+⚠️ **ON A NEW INSTALL IT PREDICTS NOTHING, AND THAT IS THE CORRECT OUTPUT.**
+A store holding an hour or two of episodes from one day supports no claim
+about when you work or what you return to; any such claim would be invention
+dressed as observation. `propose()` returns an empty list until the evidence
+gates below are actually cleared.
 
 FOUR RULES, AND THE FIRST IS THE WHOLE THING.
 
@@ -73,10 +73,8 @@ from . import vault
 
 TIMING = "timing"
 RECURRENCE = "recurrence"
-# ⚠️ `observe()` HAS COMPUTED `weekdays` ALL ALONG AND NOTHING READ IT —
-# measured on the real store: Sunday 252 of 807 episodes across 54 days, a
-# far stronger signal than the busiest hour, sitting unused. Another writer
-# with no reader, smaller than the drafts one and the same shape.
+# `observe()` computes `weekdays` as well as hours; the day of the week is
+# often a stronger signal than the busiest hour.
 WEEKDAY = "weekday"
 KINDS = (TIMING, RECURRENCE)
 
@@ -84,12 +82,10 @@ OPEN, HIT, MISS, CORRECTED = "open", "hit", "miss", "corrected"
 
 # ── the gates ───────────────────────────────────────────────────────────────
 #
-# ⚠️ THESE ARE JUDGEMENT, NOT MEASUREMENT, and unlike most numbers in this
-# codebase they cannot be measured yet — there is no history to calibrate them
-# against. They are set where a reasonable person would stop calling something a
-# coincidence, and they should be revisited once real predictions have resolved.
-#
-# What IS measured is that the current store clears none of them.
+# ⚠️ THESE ARE JUDGEMENT, NOT MEASUREMENT: there is no history to calibrate
+# them against until predictions have resolved. They are set where a
+# reasonable person would stop calling something a coincidence, and should be
+# revisited once real predictions have resolved.
 EVIDENCE_MIN = 5          # observations before a pattern is a pattern
 DAYS_MIN = 3              # spread over at least this many distinct days
 RESOLVED_MIN = 10         # resolved predictions before it may influence anything
@@ -128,29 +124,20 @@ def _connect(db_path=None):
 
 # ── what the record actually supports ───────────────────────────────────────
 
-# ⚠️ EVIDENCE ABOUT THE PERSON — NOT ABOUT MATI'S OWN DAY. This module reads
-# timestamps to answer "when do they usually do this", and it read EVERY note
-# that had one. :
+# ⚠️ EVIDENCE ABOUT THE PERSON, NOT ABOUT MATI'S OWN DAY. This module reads
+# timestamps to answer "when do they usually do this". Studied passages,
+# dreams and other notes Mati writes for itself have timestamps too, and they
+# would turn Mati's own reading schedule into a claimed habit of the person's.
 #
-#     all notes           n=3090   busiest hour 16:00
-#     conversation only   n= 324   busiest hour 22:00
-#
-# Conversation was 10.5% of the evidence. 16:00 is when the reading loop
-# happened to write batches of Aztec Thought and Culture — so the one number
-# prediction produced was Mati's own study schedule, offered as a habit of
-# The user's, and wrong by six hours.
-#
-# ⚠️ IT FAILED ON ONE HALF ONLY, WHICH IS WHY IT SURVIVED. RECURRENCE was
-# accidentally safe: `_asked()` returns "" without an `I was asked:` marker, so
-# a book passage contributed nothing. TIMING has no such guard — it needs only
-# a timestamp, and every note has one. Same table, same query, one half
-# protected by a coincidence.
+# RECURRENCE is protected separately (`_asked()` returns "" without an
+# `I was asked:` marker); TIMING needs only a timestamp, so it is protected
+# here, by source.
 #
 # WHAT BELONGS HERE is anything whose timestamp records something THE PERSON
-# did. A calendar entry and a budget entry will qualify and are the reason this
-# is a list rather than `source = 'episode'`: adding them is one line here, and
-# doing it will silently widen what Mati claims about someone's habits, so it
-# is a deliberate act and not a query edit somewhere else.
+# did. A calendar entry and a budget entry will qualify, which is why this is
+# a list rather than `source = 'episode'`: adding one is a single line here,
+# and it widens what Mati claims about someone's habits, so it should be a
+# deliberate act and not a query edit somewhere else.
 PERSON_SOURCES = ("episode",)
 PERSON_PREFIXES = ()          # future: ("calendar:", "budget:")
 
@@ -190,12 +177,10 @@ def _episodes(db_path=None):
     for nid, body, when in rows:
         try:
             # ⚠️ CONVERT TO LOCAL. `wall_created` is stored UTC, and everything
-            # downstream reads a HUMAN unit off this — `.hour` for "when do
+            # downstream reads a HUMAN unit off this: `.hour` for "when do
             # they usually talk", `.date()` for how many days the record spans,
             # `.strftime("%a")` for which weekday. Left in UTC, a 17:00 local
-            # conversation is bucketed at hour 0 the NEXT DAY: measured
-            # , the busiest hour read 0 with 247 episodes, which is
-            # 17:00 local and not a habit anyone has.
+            # conversation would be bucketed at hour 0 the NEXT DAY.
             at = datetime.fromisoformat(when).astimezone()
         except (ValueError, TypeError):
             continue
@@ -251,11 +236,9 @@ def observe(db_path=None, now=None):
         #     I was asked: <what they said>
         #     I said: <the reply>
         #     It brought back N earlier moments.
-        # Counting the whole body made the top recurring terms 'earlier',
-        # 'brought', 'formed', 'turning', 'seconds', 'moments', 'steadier' —
-        # Mati's own narration boilerplate. It would have predicted "you will
-        # come back to 'steadier'", which is not a fact about the user at all.
-        # A prediction about a person has to be built from what that person said.
+        # Counting the whole body would make Mati's own narration boilerplate
+        # ('earlier', 'brought', 'moments') the top "recurring subjects". A
+        # prediction about a person has to be built from what that person said.
         words.update({w.strip(".,:;!?\"'()").lower() for w in _asked(body).split()
                       if len(w) > 6})
     recurring = [(w, n) for w, n in words.most_common(20) if n >= EVIDENCE_MIN]
@@ -475,22 +458,21 @@ def score(db_path=None):
 
 
 # ── the three horizons, for the waking block ────────────────────────────────
-# ⚠️⚠️ AWARENESS IS NOT ACTION, AND THE GATE STAYS ON THE ACTION.
+# ⚠️ AWARENESS IS NOT ACTION, AND THE GATE STAYS ON THE ACTION.
 # `may_influence()` asks whether Mati has earned the right to ACT on its model
-# of someone — to time a reminder, to decide an interruption — and at a 0.307
-# hit rate the answer is correctly no. Holding an expectation in mind, LABELLED
-# AND WITH ITS RECORD ATTACHED, is a different thing: it is what the prediction
-# design was for. A prediction nobody is allowed to see cannot be checked by
-# the one person able to tell Mati it was wrong.
+# of someone: to time a reminder, to decide an interruption. Holding an
+# expectation in mind, LABELLED AND WITH ITS RECORD ATTACHED, is a different
+# thing, and it is what predictions are for. A prediction nobody is allowed to
+# see cannot be checked by the one person able to tell Mati it was wrong.
 #
 # ⭐ SO THESE ARE STATED AS EXPECTATIONS AND CARRY THE HIT RATE. "I expect X;
 # I have been right about this kind of thing 31% of the time" is honest at any
-# accuracy. "X will happen" is not honest at 31%.
+# accuracy. "X will happen" is not.
 #
-# ⚠️ A YEAR IS NOT PREDICTABLE FROM FOUR MONTHS, and saying so is the useful
-# answer rather than a failure. The record spans Jul–Oct; a seasonal claim
-# needs a year of it. `_why_not` already sets the precedent of explaining the
-# absence instead of returning nothing.
+# ⚠️ A YEAR IS NOT PREDICTABLE FROM A FEW MONTHS, and saying so is the useful
+# answer rather than a failure: a seasonal claim needs a year of record.
+# `_why_not` sets the precedent of explaining an absence instead of returning
+# nothing.
 YEAR_MONTHS_MIN = 12
 
 

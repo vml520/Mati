@@ -5,35 +5,29 @@ Today's conversation, as a transcript. Append-only, one day at a time.
     python3 -m Mati.daylog --day 2026-10-24
     python3 -m Mati.daylog --days       # which days exist
 
-⚠️ WHY THIS EXISTS. The user: *"The active recall that makes 'say that again'
-work should be a separate record for the day only, and recorded at night into
-the field overnight. It should read like a transcript or log."*
+⚠️ WHY THIS EXISTS. The active recall that makes "say that again" work needs a
+separate record for the day, and it should read like a transcript or log.
 
-They are right that it needed a real record. "Say that again" was reading
-`notes._LAST_REPLY` — an **in-memory dict that dies with the process**. I
-wrote that register because the episode store is too slow to answer it: the
-worker commits episodes ~40 seconds later, so a replay typed straight after a
-cut-off reply handed back the PREVIOUS answer. The dict fixed the timing and
-kept none of the properties a record should have.
-
-This is the record. It survives a restart, it is one day, and it reads like
-what it is.
+The episode store cannot answer it: the worker commits an episode tens of
+seconds after the reply, so a replay typed straight after a cut-off reply would
+hand back the PREVIOUS answer. An in-memory register fixes the timing and dies
+with the process. This is the record: it survives a restart, it is one day,
+and it reads like what it is.
 
 ⚠️ A TABLE, NOT A PLAINTEXT FILE, AND THE DIFFERENCE IS NOT COSMETIC. A log
 file in `.cache` would be a transcript of someone's conversation sitting
 unencrypted on disk, beside a notes store whose whole point is that bodies are
 sealed. "Nothing leaves this machine" is not the same as "anything may be
 written in the clear on it". The rows are sealed exactly as notes are; the
-TRANSCRIPT is a rendering, which is what was actually asked for.
+TRANSCRIPT is a rendering.
 
-⚠️ AND THE OVERNIGHT-IMPRINT HALF IS DELIBERATELY NOT BUILT HERE. The user
-proposed the day's log as the nightly imprint, and that was preregistered and
-run:
+⚠️ AND IT IS NEVER IMPRINTED. Imprinting the day's log into the field
+overnight sounds like consolidation, and it was preregistered and run:
 
     A per-turn   1/8      B nightly   0/8      C control (no imprint)   8/8
 
-Batching the day into one imprint scored zero, and the control is the finding:
-**imprinting at all is what destroys addressability**. `rest()` already does
+Batching the day into one imprint scores zero, and the control is the
+finding: **imprinting at all is what destroys addressability**. `rest()` does
 the thing that works — `promote()` then reindex. This module records; it does
 not imprint.
 """
@@ -86,12 +80,10 @@ def _conn(db_path=None):
     return conn
 
 
-# ⚠️ HOW FAR BACK A QUESTION CAN REACH, and this number is the whole bug that
-# was reported. `block()` defaulted to TODAY, so a conversation from last night
-# was structurally invisible — not ranked low, not gated out, never queried.
-# The user: Mati "did not bring up our last conversation... when I
-# pressed it, they found the conversation in verbatim, but said they didn't
-# have the conversation."
+# ⚠️ HOW FAR BACK A QUESTION CAN REACH. Limited to TODAY, last night's
+# conversation would be structurally invisible — not ranked low, not gated out,
+# never queried — and Mati, pressed, would find it in the verbatim and still
+# say it had not had the conversation.
 #
 # ⚠️ BOUNDED, because the transcript grows forever and this runs on a turn. A
 # week is what "did we talk about this recently" means; older than that is the
@@ -164,12 +156,11 @@ def append(who, text, note=None, db_path=None, now=None, ref=None):
 def rows(day=None, db_path=None, limit=None):
     """The day's lines, oldest first. [] if the vault is locked."""
     day = day or today()
-    # ⚠️ MIGRATE BEFORE READING, AND DO NOT READ READ-ONLY. `ref` was added
-    # after the table existed, and a read-only SELECT naming it fails on an
-    # older store — which this function then swallowed, returning [] while
-    # `days()` cheerfully reported four lines for the same day. A silent []
-    # from a record that exists is worse than an error: "say that again" would
-    # have quietly stopped working and nothing would have said why.
+    # ⚠️ MIGRATE BEFORE READING, AND DO NOT READ READ-ONLY. `ref` is newer than
+    # the table, and a read-only SELECT naming it fails on an older store —
+    # swallowed, that would return [] while `days()` reported lines for the
+    # same day. A silent [] from a record that exists is worse than an error:
+    # "say that again" would quietly stop working and nothing would say why.
     try:
         _conn(db_path).close()
     except Exception:
@@ -184,8 +175,8 @@ def rows(day=None, db_path=None, limit=None):
             "ORDER BY at, rowid" + (f" LIMIT {int(limit)}" if limit else ""),
             (day,)).fetchall()
     except sqlite3.Error as e:
-        # ⚠️ SAY SO. The only reason this was found is that a probe printed
-        # both counts side by side; a bare `return []` hides a broken record.
+        # ⚠️ SAY SO. A bare `return []` hides a broken record: it reads
+        # exactly like a day with nothing in it.
         print(f"  [daylog] cannot read {day}: {e}", file=sys.stderr)
         return []
     finally:
@@ -216,18 +207,18 @@ def last_reply(day=None, db_path=None):
 def find(query, day=None, db_path=None, k=4):
     """Lines from the day that share the question's rarer words.
 
-    ⚠️ THIS IS WHY THE DAY LOG IS WORTH CONSULTING AND NOT JUST READING.
-    the user: *"we need a record that Mati can refer to ... They are supposed to
-    have better memory than humans."*
+    ⚠️ THIS IS WHY THE DAY LOG IS WORTH CONSULTING AND NOT JUST READING: Mati
+    needs a record it can refer to, and should remember better than a person
+    does.
 
     ⚠️ AND IT HOLDS WHAT THE EPISODE STORE DOES NOT. An episode is only
-    written when settling coherence clears `EPISODE_GATE_MIN` — measured on a
-    cold install, that rejected 5 of 12 turns. Those conversations happened
-    and the episode record does not contain them. The day log does, because
-    it records what was SAID rather than what settled well.
+    written when settling coherence clears `EPISODE_GATE_MIN`, so some
+    conversations happened that the episode record does not contain. The day
+    log has them, because it records what was SAID rather than what settled
+    well.
 
     Lexical, like `notes.search`, for the reason that path is primary:
-    field addressing measured 4/111 against lexical's 93/111.
+    field addressing scores 4/111 against lexical's 93/111.
     """
     import re
     from . import schedule
@@ -235,10 +226,10 @@ def find(query, day=None, db_path=None, k=4):
             re.findall(r"[a-z0-9'\-]+", (query or "").lower()) if len(w) > 3}
     if not want:
         return []
-    # ⚠️ ACROSS DAYS UNLESS ONE IS NAMED. `day=None` used to mean TODAY, which
-    # is what made last night's conversation unreachable. It now means "the
-    # last `DAYS_BACK` days"; passing a day still pins it to that day, which is
-    # what `transcript()` and the CLI want.
+    # ⚠️ ACROSS DAYS UNLESS ONE IS NAMED. `day=None` means "the last
+    # `DAYS_BACK` days", or last night's conversation would be unreachable;
+    # passing a day still pins it to that day, which is what `transcript()` and
+    # the CLI want.
     days = [day] if day else recent_days()
     hits = []
     for d in days:
@@ -259,12 +250,11 @@ def find(query, day=None, db_path=None, k=4):
 def block(query, day=None, db_path=None, k=3):
     """What was said about this recently, for the prompt. "" if nothing.
 
-    ⚠️⚠️ THIS USED TO TELL MATI THE TRANSCRIPT WAS "NOT MEMORY", AND THAT WAS
-    THE BUG. The old wording — *"not memory, just what was said in this
-    session"* — was written to stop Mati claiming to remember something that
-    had not been through the episode gate. It guarded against a small error
-    and caused a much worse one: the user asked about the previous night's
-    conversation, Mati found it, and said it had not had the conversation.
+    ⚠️⚠️ NOT "NOT MEMORY". Labelling the transcript "not memory, just what was
+    said in this session" — to stop Mati claiming to remember something that
+    has not been through the episode gate — guards against a small error and
+    causes a much worse one: asked about the previous night's conversation,
+    Mati finds it and says it did not have the conversation.
 
     ⚠️ A SEALED VERBATIM TRANSCRIPT IS THE STRONGEST EVIDENCE MATI HAS, not
     the weakest. The episode gate measures whether the FIELD settled on a
@@ -273,12 +263,10 @@ def block(query, day=None, db_path=None, k=3):
     of an internal coherence statistic the person cannot see and did not
     cause.
 
-    ⚠️ AND IMPRINTING THIS INTO THE FIELD IS NOT THE FIX — that was
-    preregistered and run: nightly 0/8,
-    per-turn 1/8, no-imprint control 8/8. Imprinting does not change a
-    provenance label, so Mati would hold the memory and still deny it, which
-    is precisely the failure `continuity.py` had to be built for after fixing
-    the instruction failed twice.
+    ⚠️ AND IMPRINTING THIS INTO THE FIELD IS NOT THE FIX — preregistered and
+    run: nightly 0/8, per-turn 1/8, no-imprint control 8/8. Imprinting does
+    not change a provenance label, so Mati would hold the memory and still deny
+    it, which is the failure `continuity.py` exists for.
     """
     got = find(query, day, db_path, k=k)
     if not got:
@@ -314,7 +302,7 @@ def days(db_path=None, limit=14):
 
 
 def transcript(day=None, db_path=None, width=78):
-    """The day, rendered as a log. This is the shape the user asked for."""
+    """The day, rendered as a log."""
     got = rows(day, db_path)
     if not got:
         return f"{day or today()} — nothing said yet."

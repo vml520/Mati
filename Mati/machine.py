@@ -3,15 +3,15 @@ What this Mac can actually do, measured before anything is promised.
 
     python3 -m Mati.machine            what this machine can run
 
-⚠️ THIS EXISTS SO NOTHING LATER HAS TO APOLOGISE. Step 0 of setup:
-the checks are "not preferences — whether Mati can run at all, stated up
-front rather than discovered halfway through." A 4 GB Mac should be told, not
-left to find out by being slow.
+⚠️ THIS EXISTS SO NOTHING LATER HAS TO APOLOGISE. Step 0 of setup: the checks
+are not preferences — they are whether Mati can run at all, stated up front
+rather than discovered halfway through. A 4 GB Mac should be told, not left to
+find out by being slow.
 
-⚠️ AND IT CHOOSES THE AVATAR DEFAULT. The user: *"Avatar should be set depending
-on machine specs; off on computers like mine."* The animation is a React
-component rendering every frame beside a 3B model and a phase field — on 8 GB
-that is real contention, so the default is derived here rather than fixed.
+⚠️ AND IT CHOOSES THE AVATAR DEFAULT. The avatar is set by the machine's specs,
+and off on the slowest. The animation is a React component rendering every
+frame beside a 3B model and a phase field — on 8 GB that is real contention,
+so the default is derived here rather than fixed.
 
 ⚠️ NO psutil, NO DEPENDENCIES. `sysctl` and `shutil` are already on the
 machine; a spec check that needs installing before it can tell you whether you
@@ -77,11 +77,11 @@ def ollama_ready():
     """(reachable, [model names]). ⚠️ Not 'installed' — reachable.
 
     ⚠️ `setup._pulled_models()` RETURNS `([(name, size), ...], error)` — a pair,
-    where the first element is a list of TUPLES. My first version treated it as
-    a list of dicts and called `.get("name")`, which raised, was swallowed, and
-    reported "Ollama is not reachable" on a machine that had just served a
-    reply. A false blocker in Step 0 stops setup dead on a working install,
-    which is worse than the missing check it replaced.
+    where the first element is a list of TUPLES. Treated as a list of dicts,
+    `.get("name")` raises, the exception is swallowed, and Step 0 reports
+    "Ollama is not reachable" on a machine that has just served a reply. A
+    false blocker in Step 0 stops setup dead on a working install, which is
+    worse than having no check at all.
     """
     try:
         from . import setup as _s
@@ -128,9 +128,9 @@ def avatar_default(p=None):
         8-16 GB Apple silicon  still   art without a render loop
         16 GB+ Apple silicon   on
 
-    ⚠️ Intel is `off` at ANY memory size. The user runs an Intel Mac and asked
-    for off on "computers like mine"; the 3B is 55-102s to a complete reply
-    there, and spending frames on an axolotl during that is the wrong trade.
+    ⚠️ Intel is `off` at ANY memory size. The 3B takes 55-102s to a complete
+    reply there, and spending frames on an axolotl during that is the wrong
+    trade.
     """
     p = p or profile()
     ram = p.get("ram_gb") or 0
@@ -170,8 +170,8 @@ def warnings(p=None):
                    "floor. A 1B model is the realistic choice here, and "
                    "replies will still be slow.")
     elif ram is not None and not p["arm"]:
-        # ⚠️ THE MEASURED NUMBER, not a hedge. This is the honest-latency
-        # moment the spec asks for, and it is the one on the release plan.
+        # ⚠️ THE MEASURED NUMBER, not a hedge — the honest-latency moment:
+        # a slow machine is told how slow, before it is used.
         out.append("On an Intel Mac a 3B model takes roughly 55-102 seconds "
                    "to finish a reply. That is normal here, not a fault.")
     return out

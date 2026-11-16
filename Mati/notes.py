@@ -1,26 +1,15 @@
 """
 The notes module: finding what is held. Lexical, exact, and the primary index.
 
-⚠️ THIS IS WHERE LEXICAL RETRIEVAL ALWAYS BELONGED, AND IT SPENT FIVE DAYS
-SOMEWHERE ELSE. The user: "the notes module was supposed to be the lexical
-retrieval — I don't know how it got lost in the mix." It was not lost. The
-notes module has been FIELD-ADDRESSED since the initial commit — `field/notes.py`
-still says so: "a pure index of physical addresses, retrieval is
-nearest-neighbor search in triplet space R³". Lexical `search()` arrived on
- and landed in `bridge.py`, which is the field↔LLM coupling and had no
-business owning an index. The design was right; the code put the pieces in the
-wrong boxes.
-
-WHY LEXICAL IS PRIMARY, measured  on a harness validated at lexical
-0.84 (two earlier probe sets were rejected at 0.15 and 0.29 before one passed):
+WHY LEXICAL IS PRIMARY. On a validated harness, with identical cues and pool:
 
     field    4/111 = 0.036      (chance 0.009)
     lexical 93/111 = 0.838
 
-The field address is marginally above chance and 23x worse on identical cues
-and pool. It also falls to 0.00 after a single turn of drift, because θ₀'s
-motion IS the learning signal — an address anchored to a learning substrate is
-stale by construction. See `ARCHITECTURE.md`.
+The field address is marginally above chance and 23x worse. It also falls to
+0.00 after a single turn of drift, because θ₀'s motion IS the learning signal —
+an address anchored to a learning substrate is stale by construction. See
+`ARCHITECTURE.md`.
 
 ⚠️ WHAT THIS MODULE CANNOT DO, and it is the field's remaining case: everything
 here is CUED. A memory arriving UNASKED is untested and is the one thing a
@@ -31,8 +20,9 @@ that is in the thing, and a search that quietly returns near-misses is how you
 end up confidently reading out the wrong memory.
 
 Naming: this is `Mati/notes.py`, the RETRIEVAL module. `Mati/field/notes.py`
-is the field-addressing primitive it was carved away from, and stays under
-`field/` because that is what it is — substrate.
+is the field-addressing primitive — a pure index of physical addresses,
+nearest-neighbour search in triplet space — and stays under `field/` because
+that is what it is: substrate. The coupling layer, `bridge.py`, owns no index.
 """
 
 from __future__ import annotations
@@ -47,13 +37,11 @@ from . import schedule, vault
 from .field.notes import _now
 
 
-# ⚠️ RESOLVED AT CALL TIME, NOT IMPORTED. Holding a module-level copy of
-# _db() broke every caller that REDIRECTS the store by assigning
-# `bridge.NOTES_DB_PATH` — five of them: test_tiers, test_server, test_coldstart,
-# test_transfer, and two constitution diagnostics. They kept pointing bridge at a
-# temp database while search quietly went on reading the real one. `test_tiers`
-# caught it by raising `vault.Locked`; the others would have READ THE LIVE STORE
-# and reported a pass. One source of truth, read when it is needed.
+# ⚠️ RESOLVED AT CALL TIME, NOT IMPORTED. Anything that points Mati at a
+# different store does it by assigning `bridge.NOTES_DB_PATH`; a module-level
+# copy here would keep reading the real store while the caller believed it had
+# redirected it — and a test would READ THE LIVE STORE and report a pass. One
+# source of truth, read when it is needed.
 def _db(db_path=None):
     from . import bridge
     return bridge.NOTES_DB_PATH if db_path is None else db_path
@@ -95,16 +83,13 @@ SEARCH_STOP = {
 # Decrypted bodies, keyed by their ciphertext.
 #
 # ⚠️ WHY THIS EXISTS. `vault.open_body` shells out to `openssl` — ONE SUBPROCESS
-# PER BODY — and `search` scans every note. Measured  at 1,144 notes:
-# 9.2s per search, 8ms/note, and no better on the second call. That alone is
-# survivable; what was not is that `inquiry.resolve_from_later` runs one search
-# PER PENDING QUESTION, and there were 129 of them. 129 x 9.2s is twenty
-# minutes of an idle pass spent spawning processes, which is exactly how long
-# the worker appeared to hang while `/health` reported it alive with no errors.
+# PER BODY — and `search` scans every note, so an uncached search takes seconds
+# and never gets faster. A background pass that runs one search per pending
+# question would spend many minutes spawning processes, and look hung while
+# `/health` reports it alive.
 #
-# Same defect class as the one already fixed in `recall` (101s -> 73ms at 8.9k
-# notes) — that one could skip decryption entirely by scoring on addresses.
-# Lexical search cannot: it needs the words. So the fix is to pay once.
+# `recall` avoids decryption entirely by scoring on addresses. Lexical search
+# cannot: it needs the words. So it pays once.
 #
 # Keyed on the CIPHERTEXT, so a rewritten body misses naturally and no
 # invalidation logic can go stale. Bounded, because an unbounded plaintext
@@ -113,10 +98,9 @@ _BODY_CACHE = {}
 
 
 # ⚠️ A HARD ENTRY CEILING, KEPT ONLY AS A BACKSTOP. The real limit is
-# `cache_budget_bytes()` — the user: *"the warming edge should be set by machine
-# capacity, but a year is a perfect floor."* This stays so that a pathological
-# store of millions of tiny notes cannot grow the dicts without bound even
-# while the byte budget is satisfied.
+# `cache_budget_bytes()`: machine capacity sets the warming edge, and a year is
+# the floor. This stays so that a pathological store of millions of tiny notes
+# cannot grow the dicts without bound even while the byte budget is satisfied.
 _BODY_CACHE_MAX = 2_000_000
 
 # Plaintext bytes held. ⚠️ TRACKED, NOT RECOMPUTED. Summing `len` over every
@@ -153,21 +137,18 @@ def _drop(key):
 
 
 def cache_budget_bytes():
-    """How much decrypted memory this machine may hold. The user's rule:
-    *"The warming edge should be set by machine capacity, but a year is a
-    perfect floor."*
+    """How much decrypted memory this machine may hold.
 
-    So the ceiling is the machine's, not a constant someone picked — and the
-    year is guaranteed underneath it by `_evict`, which will not drop a
-    memory from inside the year while any older one is still cached.
+    Machine capacity sets the ceiling, not a constant someone picked — and a
+    year is guaranteed underneath it by `_evict`, which will not drop a memory
+    from inside the year while any older one is still cached.
 
     ⚠️ A FRACTION OF TOTAL RAM, AND A SMALL ONE. The 8GB Mac is the stated
-    floor for Mati and Ollama's 3B already takes most of it
-    so this cannot budget against "free" memory
-    it is about to lose to the model. 1% is 80 MB on that machine, which at
-    the measured ~271 bytes an entry is ~300,000 memories — years of
-    conversation — while being small enough that being wrong about it costs
-    nothing anyone would notice.
+    floor for Mati and Ollama's 3B already takes most of it, so this cannot
+    budget against "free" memory it is about to lose to the model. 1% is 80 MB
+    on that machine, which at a few hundred bytes an entry is hundreds of
+    thousands of memories — years of conversation — while being small enough
+    that being wrong about it costs nothing anyone would notice.
 
     ⚠️ AND IT IS STILL BOUNDED ABOVE. Plaintext in RAM is the thing the vault
     exists to avoid; a bigger machine is a reason to hold more of the past,
@@ -205,21 +186,12 @@ def _cache_bytes():
 def _evict():
     """Make room, oldest memories first, never breaking the year floor.
 
-    ⚠️ THIS DROPPED THE NEWEST MEMORIES FIRST UNTIL IT WAS MEASURED. The
-    previous version removed the oldest-INSERTED half, which sounds like the
-    oldest memories and is the exact opposite: `warm_verbatim` runs
-    newest-segment-first, so the first entries inserted are this month's.
-    Measured  — warm segment 0 (newest 30 days) and segment 2 (days
-    60-90), then evict:
-
-        before   segment0 300/777   segment2 300/710
-        after    segment0   0/777   segment2 300/710
-
-    The most valuable half went and the older half stayed. Under sustained
-    pressure that is a thrash, not a policy: warm this month, evict this
-    month, re-warm it.
-
-    Now eviction walks `_VERB_SEGMENT` from the highest segment down — real
+    ⚠️ OLDEST BY WHEN THEY WERE SAID, NOT BY WHEN THEY WERE CACHED.
+    `warm_verbatim` runs newest-segment-first, so the first entries inserted
+    are this month's: dropping the oldest-INSERTED half would drop the newest
+    memories and keep the older ones, and under sustained pressure that is a
+    thrash, not a policy — warm this month, evict this month, re-warm it. So
+    eviction walks `_VERB_SEGMENT` from the highest segment down — real
     recency, from the only record of it — and stops as soon as it is under
     budget.
 
@@ -287,28 +259,22 @@ def forget_bodies():
 
 # ── Verbatim is read in time segments ────────────────────────────────────────
 #
-# The user: *"We should split the verbatim into time segments, so we don't have
-# to decrypt everything at once"* and *"the last year should be RAG ready"*.
-#
-# Decrypting every verbatim in the store is 23.9s cold at 2,361 of them —
-# 10.1 ms each — and that number grows forever. Paying it in one lump was the
-# only reason scoring the exact words looked expensive.
+# The verbatim is split into time segments so nothing has to decrypt everything
+# at once, and the last year is kept ready to search by its exact words.
+# Decrypting a verbatim costs about 10 ms, and the number of them grows
+# forever.
 #
 # So the exact words are read in two tiers:
 #
-#   HOT   — anything inside `VERBATIM_HOT_DAYS`. Always decrypted, always
-#           scored, warmed at startup. Bounded by a YEAR OF CONVERSATION
-#           rather than by all history, so the cost stops growing.
+#   HOT   — anything inside `VERBATIM_HOT_DAYS`. Warmed first, a segment at a
+#           time. Bounded by a YEAR OF CONVERSATION rather than by all history,
+#           so the cost stops growing.
 #   COLD  — older. Scored only if `_cached_only` already has it, and warmed a
 #           segment at a time by the idle worker. A cold archive can never
 #           stall a search.
 #
-# ⚠️ TODAY THE WHOLE STORE IS HOT, and that is worth saying plainly rather
-# than implying a speed-up that has not happened: the store began ,
-# so at ~10 weeks old every note is inside the year and startup still pays the
-# full 23.9s. What this changes is that the figure is now bounded instead of
-# unbounded — it is a cap for later, applied now so it is in place before it
-# is needed.
+# ⚠️ A YOUNG STORE IS ENTIRELY HOT. In its first year every note is inside the
+# window; what this changes is that the cost is bounded rather than unbounded.
 VERBATIM_HOT_DAYS = 365.0
 # Warming granularity for the cold tier, in days. One segment per idle pass,
 # newest first — the oldest material is the least likely to be asked for, and
@@ -333,16 +299,17 @@ def warm_verbatim(segment=0, db_path=None, now=None, budget=300):
 
     `segment` 0 is the most recent `VERBATIM_SEGMENT_DAYS`, 1 the segment
     before that, and so on — so segments 0..`hot_segments()-1` are the year
-    the user asked to be RAG-ready, and anything beyond is bonus archive.
+    kept ready to search, and anything beyond is bonus archive.
 
     Returns (decrypted, remaining_in_segment). `decrypted` 0 with `remaining`
     0 means this segment is finished or empty, which is how the caller knows
     to advance.
 
-    ⚠️ BUDGETED, BECAUSE A SEGMENT IS NOT A KNOWN SIZE. Decryption is ~10.1 ms
-    each; 300 is ~3s, which an idle pass can hold without making an arriving
-    turn wait on it. A heavy month of conversation takes several passes
-    instead of one long one — which is the entire point of segmenting.
+    ⚠️ BUDGETED, BECAUSE A SEGMENT IS NOT A KNOWN SIZE. Decryption is about
+    10 ms each; 300 is a few seconds, which an idle pass can hold without
+    making an arriving turn wait on it. A heavy month of conversation takes
+    several passes instead of one long one — which is the entire point of
+    segmenting.
     """
     db_path = _db(db_path)
     if not os.path.exists(db_path):
@@ -421,10 +388,9 @@ def oldest_segment(db_path=None, now=None):
 def warming_edge(db_path=None, now=None):
     """How many segments warming should cover: the year, or more if it fits.
 
-    the user: *"The warming edge should be set by machine capacity, but a year
-    is a perfect floor."* So: never fewer than the year, never more than the
-    store actually holds, and between those two the budget decides — checked
-    as warming goes rather than predicted, since segment sizes vary.
+    Never fewer than the year, never more than the store actually holds, and
+    between those two the machine's budget decides — checked as warming goes
+    rather than predicted, since segment sizes vary.
     """
     return max(hot_segments(), oldest_segment(db_path, now) + 1)
 
@@ -497,14 +463,13 @@ FOCUS_TERMS = 4
 def _nouns(text):
     """The nouns and names in a sentence, or None if the tagger is unavailable.
 
-    ⚠️ RARITY ALONE CANNOT FIND THE SUBJECT, which is why this exists.
-    Measured  on the user's own question, the rarest stems were:
-
-        tweaked 7.84   let' 6.04   calmecac 5.23   training 4.75
+    ⚠️ RARITY ALONE CANNOT FIND THE SUBJECT, which is why this exists. In
+    "I tweaked your training recall… What does the book say about the
+    calmecac?" the rarest stems are `tweaked`, `let'`, `calmecac`, `training`.
 
     "tweaked" is rare because nobody says it, not because the question is about
     it — and "let'" is a tokenisation artefact of "Let's". Ranking by rarity
-    picked both over the subject. Grammar knows the difference: what a question
+    picks both over the subject. Grammar knows the difference: what a question
     is ABOUT is a noun. It is also what separates a command from a query — a
     command is carried by its verb, a question by its noun.
     """
@@ -512,31 +477,30 @@ def _nouns(text):
     try:
         import NaturalLanguage as NL
         from Foundation import NSString, NSMakeRange
-        # ⚠️ ONE THREAD AT A TIME, AND THIS SEGFAULTED THE SERVER ON
-        # `_TAGGER` is a module global and the call is two steps:
-        # `setString_` then `enumerateTagsInRange_`. The server is a
-        # ThreadingHTTPServer PLUS a worker thread, so a chat turn and a
-        # background pass could interleave — one swapped the string out from
-        # under the other's enumeration, and CoreNLP dereferenced null:
+        # ⚠️ ONE THREAD AT A TIME, OR THE PROCESS SEGFAULTS. `_TAGGER` is a
+        # module global and the call is two steps: `setString_` then
+        # `enumerateTagsInRange_`. The server is a ThreadingHTTPServer PLUS a
+        # worker thread, so a chat turn and a background pass can interleave —
+        # one swaps the string out from under the other's enumeration, and
+        # CoreNLP dereferences null:
         #
         #   EXC_BAD_ACCESS SIGSEGV at 0x0
         #   CoreNLP::CompositeTagger::getAttributedTokenAtIndex
         #   -[NLTagger enumerateTagsInRange:unit:scheme:options:usingBlock:]
         #
-        # ⚠️ NO try/except COULD HAVE CAUGHT THAT. A segfault is not a Python
-        # exception — it killed the process with no traceback, which is why
-        # the log ended mid-turn and looked like a clean exit. Prevention is
-        # the only option available, so the pair is made atomic.
+        # ⚠️ NO try/except CAN CATCH THAT. A segfault is not a Python
+        # exception — it kills the process with no traceback, and the log ends
+        # mid-turn looking like a clean exit. Prevention is the only option, so
+        # the pair is made atomic.
         with _TAGGER_LOCK:
             if _TAGGER is None:
                 _TAGGER = NL.NLTagger.alloc().initWithTagSchemes_(
                     [NL.NLTagSchemeLexicalClass])
         # ⚠️ ASK THE TAGGER WHERE THE WORDS ARE. Zipping its tags against a
-        # a separate regex put them out of step: "Let's" is one token to the
-        # regex and two to the tagger, so every tag after an apostrophe was
-        # attached to the wrong word. Measured  — 9 tokens against 10
-        # tags, and `calmecac` inherited its neighbour's part of speech, which
-        # is exactly the word the question was about.
+        # separate regex puts them out of step: "Let's" is one token to the
+        # regex and two to the tagger, so every tag after an apostrophe would
+        # attach to the wrong word — and the subject of the question can
+        # inherit its neighbour's part of speech.
             _TAGGER.setString_(NSString.stringWithString_(text))
             found = set()
 
@@ -558,8 +522,7 @@ def _nouns(text):
 def asking_part(text):
     """The part of a message that ASKS, when it also does something else.
 
-    ⚠️ A TURN IS OFTEN TWO THINGS. The user's message was a statement about what
-    they had changed, followed by a question:
+    ⚠️ A TURN IS OFTEN TWO THINGS — a statement followed by a question:
 
         "I tweaked your training recall to make it more like memories. Let's
          see if this helps with your recall of the text. What does the book say
@@ -567,7 +530,7 @@ def asking_part(text):
 
     Searching the whole thing retrieves for the statement as much as for the
     question, and the statement is about training and recall — so the notes
-    that came back were about tweaking recall, not about the calmecac.
+    that come back are about tweaking recall, not about the calmecac.
 
     A question mark is the reliable signal, and a leading interrogative is the
     fallback. Where neither is present the message is not asking, and the whole
@@ -611,19 +574,16 @@ def _focus(want, db_path=None, query=""):
 # near-perfect lexical match for the second — not because it holds the answer,
 # but because it holds the question. Matching it is matching yourself.
 #
-# , ten questions about the book, three recall slots each:
-# 13 of 30 slots went to Mati's own past turns and 12 to the book, with 4 of
-# 10 questions retrieving NO book content at all. The split was not random —
-# bare topic questions ("Who were the tlamatinime?") reached the book, and
-# questions about the reading itself ("do you remember reading…", "what does
-# the book say…") were crowded out, because those phrasings are exactly the
-# ones an episode echoes back.
+# Undiscounted, Mati's own past turns crowd the material out of the recall
+# slots — and selectively: bare topic questions ("Who were the tlamatinime?")
+# still reach the book, while questions about the reading itself ("do you
+# remember reading…", "what does the book say…") lose, because those phrasings
+# are exactly the ones an episode echoes back.
 #
 # That is "it cannot remember reading the book", and it is self-reinforcing:
 # each asking writes a new episode containing the question, which outranks the
-# material on the next asking. One of the crowding episodes read "I do not
-# actually remember reading the book" — a denial, recalled as evidence and
-# repeated.
+# material on the next asking — and an episode reading "I do not actually
+# remember reading the book" gets recalled as evidence and repeated.
 #
 # DISCOUNTED, NOT DROPPED. "What did I ask you about last week?" is a real
 # question and the asked half is its answer, so it still counts — at a
@@ -633,8 +593,9 @@ def _focus(want, db_path=None, query=""):
 ASKED_ECHO = 0.25
 
 
-# Swept  over ten book questions (episodes / book notes / questions
-# returning no book at all, three slots each):
+# The weight on a document's TITLE (its `source`), swept over ten questions
+# about a book (episodes / book notes / questions returning no book at all,
+# three slots each):
 #
 #     0.00   ep  5   book 14   no-book 4/10
 #     0.25   ep  5   book 14   no-book 4/10
@@ -649,22 +610,19 @@ ASKED_ECHO = 0.25
 SOURCE_WEIGHT = 1.0
 
 # Weight on a word that appears ONLY in a memory's verbatim — the exact
-# exchange — and not in the gist Mati kept. Fallback pass only; see
-# `_search_pass`.
+# exchange — and not in the gist Mati kept. See `_search_pass`.
 #
 # ⚠️ WHY IT IS DISCOUNTED RATHER THAN 1.0. A verbatim-only word is one Mati
 # HEARD but did not keep: it may be the person's passing phrasing, or the
 # question rather than the answer. Matching it is a weaker claim than matching
-# the gist, and this tier is only ever consulted when the gist pass returned
-# nothing at all — so there is no stronger evidence alongside it to correct an
-# over-confident hit.
+# the gist.
 #
-# ⚠️ SWEPT, on 20 real episodes cued by the RAREST word that
-# appears in their verbatim and not in their gist. The control is the same 20
-# notes cued by their rarest GIST word, which must not get worse:
+# ⚠️ CHOSEN AGAINST A CONTROL. Notes cued by the rarest word that appears in
+# their verbatim and not in their gist, while the same notes cued by their
+# rarest GIST word must not get worse:
 #
 #     weight   verbatim-only cue   gist cue (control)
-#     0.00           1/20                19/20          <- shipped until today
+#     0.00           1/20                19/20
 #     0.25          15/20                19/20
 #     0.50          20/20                19/20          <- chosen
 #     1.00          20/20                19/20
@@ -675,17 +633,14 @@ SOURCE_WEIGHT = 1.0
 # here, a word Mati merely HEARD starts beating a word it KEPT, and the
 # control is the only thing that shows it.
 #
-# ⚠️ AND THE FIRST SWEEP OF THIS WAS A BAD INSTRUMENT. It picked cue words by
-# LENGTH, so cues like "consciousness" and "conversation" were common words
-# every note matched; it reported 1/20 at every weight and would have had me
-# conclude the fix did not work. The scorer ranks by RARITY, so the probe has
-# to as well.
+# ⚠️ A PROBE FOR THIS MUST PICK CUE WORDS BY RARITY, as the scorer ranks.
+# Picked by LENGTH, the cues are common words every note matches, and every
+# weight looks the same.
 VERBATIM_WEIGHT = 0.5
 
 # How far a corrected memory falls behind an uncorrected one that matches
-# equally well. Deliberately NOT zero: the user's rule is that the error does not
-# disappear, it stops being what comes to mind. `/recall` and `/source` still
-# reach it.
+# equally well. Deliberately NOT zero: the error does not disappear, it stops
+# being what comes to mind. `/recall` and `/source` still reach it.
 CORRECTED_WEIGHT = 0.35
 
 
@@ -719,14 +674,12 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
             if len(w) > 1 and w not in SEARCH_STOP}
     if not want:
         return []
-    # ⚠️ THE QUESTION IS ITS RAREST WORDS. Weighting was not enough: a note
-    # matching ten ordinary words still outscored one matching the single word
-    # the question was ABOUT, because the numerator grows with every match.
-    #
-    # Measured  on the user's own message — "calmecac" found the right
-    # notes 5 of 5, and the same question inside a 30-word conversational turn
-    # found 1 of 5. That is "if I don't use the keyword search it can't find
-    # anything": retrieval did not fail, TALKING NORMALLY WAS PENALISED.
+    # ⚠️ THE QUESTION IS ITS RAREST WORDS. Weighting is not enough: a note
+    # matching ten ordinary words would still outscore one matching the single
+    # word the question was ABOUT, because the numerator grows with every
+    # match. A bare keyword finds the right notes where the same question
+    # inside a long conversational turn does not — retrieval does not fail,
+    # TALKING NORMALLY IS PENALISED.
     #
     # So filler is dropped rather than down-weighted. A long question is
     # searched on what it is about, and padding it costs nothing.
@@ -758,11 +711,10 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
         try:
             body = _open_cached(stored)
         except Exception:
-            # ⚠️ A LOCKED VAULT USED TO LOOK LIKE AN EMPTY STORE. Every body
-            # failed to decrypt, every one was skipped, and search returned
-            # zero hits with no error — which is exactly what "the terminal
-            # cannot recall any memory". Not breaking is
-            # right; being silent about it is not.
+            # ⚠️ A LOCKED VAULT MUST NOT LOOK LIKE AN EMPTY STORE. Every body
+            # fails to decrypt and is skipped, and a search would return zero
+            # hits with no error. Not breaking is right; being silent about it
+            # is not.
             unreadable += 1
             continue
         def _stems(t):
@@ -771,18 +723,15 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
 
         # An episode is scored on what it RECORDS; the question it quotes back
         # counts at `ASKED_ECHO`. See the note above `_episode_halves`.
-        # ⚠️ THE TITLE OF A DOCUMENT IS NOT IN THE DOCUMENT. Measured
-        # : 1 of 400 book notes contains the words "Aztec Thought
-        # and Culture" in its body. The title lives in `source`, search scored
-        # `body` alone, and so NAMING THE BOOK COULD NOT MATCH THE BOOK — the
-        # slots went to `studied:asked about religion` and the like, which at
-        # least shared an ordinary word. "What does the book say about X" and
-        # "what did you learn from <title>" are the two most natural ways to
-        # ask, and both were unanswerable by construction.
+        # ⚠️ THE TITLE OF A DOCUMENT IS NOT IN THE DOCUMENT. Almost no passage
+        # of a book contains the book's title; it lives in `source`. Scoring
+        # `body` alone, NAMING THE BOOK COULD NOT MATCH THE BOOK — and "what
+        # does the book say about X" and "what did you learn from <title>" are
+        # the two most natural ways to ask.
         #
         # Discounted, because every chunk of a document matches its title
         # equally: it is a topic signal, not evidence that THIS passage is the
-        # apposite one, and at full weight it would flatten 1,744 notes into a
+        # apposite one, and at full weight it would flatten a whole book into a
         # tie broken by recency.
         src_words = re.sub(r"^studied:|\.txt$|[_/]", " ", source or "")
         if source == "episode":
@@ -791,53 +740,35 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
         else:
             have_full, echo_only = _stems(body), set()
         title_only = _stems(src_words) - have_full - echo_only
-        # ⚠️ THE EXACT WORDS, AND ONLY ON THE FALLBACK PASS. Measured
-        #  on the real store: 34% of the words in a verbatim do not
-        # appear in its gist, and a note was reachable by a verbatim-only word
-        # 0 times out of 12 — against 8 of 12 by a gist word. The verbatim was
-        # decrypted lazily AFTER scoring and attached to the hit, so it could
-        # only ever be reached by a note you had already found. Write-only
-        # memory.
+        # ⚠️ THE EXACT WORDS. A third of the words in a verbatim do not appear
+        # in its gist; attached to a hit only after scoring, the verbatim could
+        # only ever be read off a memory found some other way — write-only
+        # memory. So verbatim-only words are scored, at `VERBATIM_WEIGHT`.
         #
-        # ⚠️ NOT ON THE NORMAL PASS, FOR TWO MEASURED REASONS. Decrypting
-        # every verbatim costs 23.9s cold (0.002s warm) — the same shape as
-        # the 101s regression that made `recall` decrypt every body. And the
-        # verbatim holds the WHOLE exchange including the question, so folding
-        # it into every score is the dilution this function has already been
-        # fixed for twice. The fallback runs only when the gist pass found
-        # nothing, so an ordinary turn pays neither cost.
         # ⚠️ A QUERY NEVER DECRYPTS A VERBATIM. `_cached_only` returns what is
         # already open and never does work, so the exact words cost a set
         # difference and nothing else. All decryption happens in
-        # `warm_verbatim`, one time segment per idle pass.
+        # `warm_verbatim`, one time segment per idle pass. A per-query
+        # decryption is decrypting everything at once, wearing a bound: in a
+        # young store "inside the year" is every note, and a cold search would
+        # take over a minute.
         #
-        # ⚠️ THE FIRST VERSION DECRYPTED HOT ROWS ON DEMAND AND THAT WAS THE
-        # WHOLE PROBLEM RESTATED. Measured: a cold search took 73.0s against
-        # 0.36s warm, because "hot" is every note in a ten-week-old store —
-        # the year window bounds the archive, it does not make the current
-        # year cheap. The user: *"split the verbatim into time segments, so we
-        # don't have to decrypt everything at once."* A per-query decryption
-        # is decrypting everything at once, wearing a bound.
-        #
-        # The cost of being wrong this way is bounded and self-correcting: a
-        # verbatim not yet warm is not yet searchable by its exact words, and
-        # becomes searchable a segment later. The cost of the other way was a
-        # 73-second sentence.
+        # The cost of this is bounded and self-correcting: a verbatim not yet
+        # warm is not yet searchable by its exact words, and becomes searchable
+        # a segment later.
         verb_only = set()
         if deep and stored_verbatim is not None:
             text = _cached_only(stored_verbatim)
             if text:
                 verb_only = (_stems(text)
                              - have_full - echo_only - title_only)
-        # ⚠️ THE READING SUMMARY WAS RETURNED AND NEVER SCORED. `digest` came
-        # back on every hit but its own words made nothing findable — so a
-        # condensation Mati wrote about a passage could not be reached by
-        # anything it said. Asked for: the library, the study notes
-        # AND the reading summaries should all be searchable by Mati.
+        # ⚠️ THE READING SUMMARY IS SCORED TOO. `digest` comes back on every
+        # hit; unscored, a condensation Mati wrote about a passage could not be
+        # reached by anything it said. The library, the study notes AND the
+        # reading summaries are all searchable by Mati.
         #
-        # ⚠️ CACHED-ONLY, LIKE VERBATIM, FOR THE SAME MEASURED REASON. A
-        # per-query decryption is decrypting everything at once wearing a
-        # bound — it made a cold search 73 seconds. A digest not yet warm is
+        # ⚠️ CACHED-ONLY, LIKE VERBATIM, FOR THE SAME REASON: a per-query
+        # decryption is decrypting everything at once. A digest not yet warm is
         # not yet searchable by its words and becomes so a segment later.
         dig_only = set()
         if deep and stored_digest is not None:
@@ -849,21 +780,18 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
         hits = want & have
         if not hits:
             continue
-        # ⚠️ WEIGHTED BY RARITY. The old score was len(hits)/len(want) — every
-        # matched word worth the same — so "what have you been reading" reduced
-        # to {been, have, reading} and EVERY note holding those three scored a
-        # perfect 1.00. Dozens tied, the tie broke on note_id DESC, and the
-        # most recent chatter buried the memory of reading the book. Measured
-        # : 0 of 4 natural phrasings could find it.
-        #
-        # `been` and `have` did no work and outvoted `reading` two to one.
-        # Weighting by how rare a stem is in the store fixes exactly that:
-        # `tlamatinime` counts, `have` barely does.
+        # ⚠️ WEIGHTED BY RARITY. With every matched word worth the same, "what
+        # have you been reading" reduces to {been, have, reading} and EVERY note
+        # holding those three scores a perfect 1.00 — dozens tie, the tie breaks
+        # on note_id DESC, and the most recent chatter buries the memory of
+        # reading the book. `been` and `have` do no work and outvote `reading`
+        # two to one. Weighting by how rare a stem is in the store fixes
+        # exactly that: `tlamatinime` counts, `have` barely does.
         # ⚠️ Weighting only separates PARTIAL matches. A note containing
         # every query stem still scores 1.00, so a query whose only content
         # word is common ("what have you been reading") cannot be ranked at
-        # all. That is why the present tense moved out of retrieval and into
-        # the waking block — see orient.
+        # all. That is why the present tense lives in the waking block rather
+        # than in retrieval — see orient.
         idf = _idf(db_path)
         num = (sum(idf.get(w, _IDF_MAX) for w in (want & have_full))
                + ASKED_ECHO * sum(idf.get(w, _IDF_MAX)
@@ -880,27 +808,19 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
                + VERBATIM_WEIGHT * sum(idf.get(w, _IDF_MAX)
                                        for w in (want & verb_only)))
         # ⚠️ NORMALISED BY THE BEST POSSIBLE MATCH, NOT BY THE WHOLE QUERY.
-        # Dividing by every stem in the question meant each extra word you
-        # typed made the word that mattered count for less. Measured
-        #  on the user's own message:
-        #
-        #     "calmecac"                          5 of 5 hits were the right ones
-        #     "What does the book say about..."   5 of 5
-        #     their actual 30-word message          1 of 5
-        #
-        # That is "if I don't use the keyword search it can't find anything":
-        # retrieval did not fail, TALKING NORMALLY WAS PENALISED. A
-        # conversational question carries filler that a bare keyword does not,
-        # and the filler was outvoting the subject.
+        # Dividing by every stem in the question would make each extra word
+        # typed count against the word that mattered: a bare keyword would
+        # find the right notes and the same question in a normal sentence would
+        # not. Filler would outvote the subject.
         #
         # Dividing by the weight of the rarest few stems instead means a
         # question is scored on whether it found what it was ABOUT, and padding
         # it with ordinary words costs nothing.
         top = sorted((idf.get(w, _IDF_MAX) for w in want), reverse=True)[:3]
         den = sum(top) or 1.0
-        # ⚠️ DECRYPTED LAZILY. `recall` once decrypted every body on every
-        # call — 101s at 8.9k notes. Only the rows that actually MATCHED get
-        # their verbatim opened, so this is a handful per turn, not the store.
+        # ⚠️ DECRYPTED LAZILY. Decrypting every body on every call costs 101s
+        # at 8.9k notes. Only the rows that actually MATCHED get their
+        # verbatim opened, so this is a handful per turn, not the store.
         try:
             exact = _open_cached(stored_verbatim) if stored_verbatim else None
         except Exception:
@@ -911,11 +831,11 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
             dig = None
         # ⚠️ DENSITY BREAKS THE TIE, AND WITHOUT IT A ONE-WORD QUERY IS A
         # COIN TOSS DECIDED BY RECENCY. `score` saturates at 1.0 when every
-        # query word is present, so "tlamatinime" scored 1.000 for all 98 book
-        # passages AND for every recent episode that mentioned it once — and
-        # the sort fell through to `ORDER BY note_id DESC`, handing all four
-        # slots to the newest chatter. Naming a specific thing is exactly when
-        # retrieval matters most, and it was the case with no resolution at all.
+        # query word is present, so "tlamatinime" scores 1.000 for every book
+        # passage AND for every recent episode that mentions it once — and the
+        # sort falls through to `ORDER BY note_id DESC`, handing every slot to
+        # the newest chatter. Naming a specific thing is exactly when retrieval
+        # matters most.
         #
         # Density is occurrences of the matched stems per 100 words: a passage
         # ABOUT the tlamatinime uses the word repeatedly; a conversation that
@@ -931,17 +851,12 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
                     "when": created, "when_said": when_said(created)})
     # More query words matched wins; ties go to the more recent memory, which
     # `ORDER BY note_id DESC` above has already arranged.
-    # ⚠️ A CORRECTION MUST TRAVEL WITH THE MEMORY IT CORRECTS, AND ON THIS
-    # PATH IT DID NOT. `bridge.recall` has attached corrections since they were
-    # built — but that was when the FIELD was the primary index. Lexical became
-    # primary on  (0.838 against the field's 0.036), and this
-    # function had never heard of `corrects`. So the channel that actually
-    # answers questions was the one blind to every correction the user had made.
-    #
-    # The user's framing, and it is the right one: a verified correction should
-    # outweigh the original. The error does not disappear — it stops being what
-    # surfaces, unless something goes deliberately looking. "I said pass-a-port
-    # when I was twelve, and what I remember is the learning."
+    # ⚠️ A CORRECTION MUST TRAVEL WITH THE MEMORY IT CORRECTS, on this path as
+    # on `bridge.recall` — and this is the channel that actually answers
+    # questions. A verified correction should outweigh the original. The error
+    # does not disappear — it stops being what surfaces, unless something goes
+    # deliberately looking: "I said pass-a-port when I was twelve, and what I
+    # remember is the learning."
     #
     # Attached to the BODY rather than returned beside it, so no consumer can
     # render the error without it — the same rule, and the same reason, as in
@@ -964,19 +879,12 @@ def _search_pass(query, k=5, db_path=None, sources=None, deep=False):
                 if fix:
                     r["body"] = correction.annotate(r["body"], fix)
                     r["corrected"] = True
-                    # ⚠️ OUTWEIGHED, NOT ERASED. The user: "any verified
-                    # correction to memory should outweigh the original
-                    # incorrect memory. The incorrect memory doesn't disappear,
-                    # it just isn't recalled unless the LLM is doing active
-                    # memory lookup."
-                    #
-                    # So a corrected memory is DEMOTED rather than dropped: it
-                    # loses to anything uncorrected that also matches, and it
-                    # still carries its correction if it does surface. `/recall`
-                    # and `/source` reach it unchanged, which is the deliberate
-                    # lookup they described — the twelve-year-old's "pass-a-port"
-                    # is still there to be remembered, it is simply not what
-                    # comes to mind now.
+                    # ⚠️ OUTWEIGHED, NOT ERASED. A corrected memory is DEMOTED
+                    # rather than dropped: it loses to anything uncorrected that
+                    # also matches, and it still carries its correction if it
+                    # does surface. `/recall` and `/source` reach it unchanged —
+                    # the deliberate lookup — so "pass-a-port" is still there
+                    # to be remembered; it is simply not what comes to mind now.
                     r["score"] *= CORRECTED_WEIGHT
         except (sqlite3.Error, vault.Locked):
             pass          # a sealed or busy store must not lose the search
@@ -1041,34 +949,21 @@ def search(query, k=5, db_path=None, sources=None):
 
     Returns a list of dicts: note_id, body, source, hits, score.
 
-    ⚠️ THE EXACT WORDS ARE SEARCHABLE, AND THAT TAKES DELIBERATE WORK.
-    the user raised it. Measured on the real store:
+    ⚠️ THE EXACT WORDS ARE SEARCHABLE, AND THAT TAKES DELIBERATE WORK. A third
+    of the words in a verbatim are not in its gist, so asking for what was
+    actually SAID, rather than how Mati summarised it, needs verbatim-only
+    words scored — at `VERBATIM_WEIGHT`; see the sweep above the constant.
 
-        words in a verbatim but not in its gist      34%
-        notes reachable by a rare verbatim-only word  1/20
-        the same notes reachable by a gist word      19/20   (control)
+    ⚠️ ON EVERY SEARCH, NOT AS A FALLBACK. Run only when the gist pass found
+    nothing, it would almost never run, because a rare word still matches
+    *something* — just not the right thing. A wrong memory confidently returned
+    is worse than an empty result, so "found something" is not evidence the
+    deep pass was unnecessary.
 
-    `verbatim` was selected, decrypted lazily AFTER scoring, and attached to
-    whatever had already matched — so the exact words could only be read off a
-    memory found some other way. Asking for what was actually SAID, rather
-    than how Mati summarised it, found nothing. Write-only memory.
-
-    Now `_search_pass(deep=True)` scores verbatim-only words at
-    `VERBATIM_WEIGHT`, which took that 1/20 to 20/20 with the control
-    unchanged. See the sweep above the constant.
-
-    ⚠️ ALWAYS ON, NOT A FALLBACK, AND THE FALLBACK WAS TRIED FIRST. Running it
-    only when the gist pass found NOTHING left the measurement at 0/12,
-    because a rare word still matches *something* — just not the right thing.
-    A wrong memory confidently returned is worse than an empty result, so
-    "found something" is not evidence the deep pass was unnecessary. Any
-    score threshold instead of "empty" would fire on ordinary queries anyway.
-
-    ⚠️ THE COST IS DECRYPTION, AND IT IS PAID AT STARTUP. Reading every
-    verbatim is 23.9s cold and 0.002s warm; measured per query, deep is
-    0.53s against plain's 0.49s. `OlinService` warms it with a deep search
-    on boot, for exactly the reason it already warmed the body cache: this is
-    a cost Mati should pay, never the person in their first sentence.
+    ⚠️ IT COSTS NO DECRYPTION AT QUERY TIME. Only verbatims that are already
+    warm are scored (`_cached_only`); warming happens at startup and on idle, a
+    segment at a time — a cost Mati pays, never the person in their first
+    sentence.
     """
     return _search_pass(query, k=k, db_path=db_path, sources=sources,
                         deep=True)
@@ -1077,11 +972,10 @@ def search(query, k=5, db_path=None, sources=None):
 def when_said(stored, now=None):
     """When a memory was made, in words a person would use.
 
-    ⚠️ A RECALLED MEMORY MUST CARRY ITS TIME. Without it `search`
-    returned body, source, hits and score, so Mati was handed the content of a
-    memory with nothing about when it happened — and then asked what day it
-    was, or what came first. It was not failing to work that out; it had never
-    been told. This is the missing half.
+    ⚠️ A RECALLED MEMORY MUST CARRY ITS TIME. Handed the content of a memory
+    with nothing about when it happened, Mati cannot say what day it was or
+    what came first — not for failing to work it out, but for never having
+    been told.
 
     Local, because the stored column is UTC and nobody thinks in UTC. Relative
     while relative is meaningful, absolute once it is not — "yesterday" is
@@ -1184,23 +1078,15 @@ def search_sources(query, k=3, db_path=None):
 # Reading the log back: say that again
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# ⚠️ WHY THIS IS A READ AND NOT A TURN. The user: *"the text in the response
-# window is getting cut off. Can you put in a method that will immediately
-# repeat the last response when asked. Requesting from the input line always
-# triggers a new turn that then fails to answer the question properly. This was
-# supposed to be the reason for the log being readable."*
+# ⚠️ WHY THIS IS A READ AND NOT A TURN. "Say that again" sent through the
+# ordinary path is a NEW question: the field addresses it, the model generates,
+# and what comes back is a fresh answer to a different question — so the one
+# thing the person asked for, the words that were already on screen, is the one
+# thing they cannot get. The log holds them exactly. This hands them back
+# verbatim, with no model call and no new episode.
 #
-# They are right about the mechanism, not just the annoyance. "Say that again"
-# sent through the ordinary path is a NEW question: the field addresses it, the
-# model generates, and what comes back is a fresh answer to a different
-# question — so the one thing the person asked for, the words that were
-# already on screen, is the one thing they cannot get. The log holds them
-# exactly. This hands them back verbatim, with no model call and no new
-# episode.
-#
-# ⚠️ AND IT LIVES HERE, in the notes module, because the user said so and
-# because they are right about that too: this is retrieval of a stored exchange,
-# which is what this module is: the notes are the conversation.
+# ⚠️ AND IT LIVES HERE, in the notes module, because this is retrieval of a
+# stored exchange: the notes are the conversation.
 
 _REPEAT = re.compile(
     r"^\s*(?:"
@@ -1232,16 +1118,15 @@ def asks_repeat(text_in):
 
 # The reply Mati last gave, in memory, per session.
 #
-# ⚠️ THE STORE IS TOO SLOW FOR THIS, AND IT FAILS IN THE EXACT CASE THE
-# FEATURE EXISTS FOR. Episodes are written by the WORKER, not by the turn:
-# , the count stayed at 677 immediately after a reply and
-# reached 678 about forty seconds later. So "say that again", typed straight
-# after a reply got cut off, read the store and handed back the PREVIOUS
-# answer — confidently, with no sign anything was wrong. Which is worse than
-# the problem it was built to fix.
+# ⚠️ THE EPISODE STORE IS TOO SLOW FOR THIS, AND FAILS IN THE EXACT CASE THE
+# FEATURE EXISTS FOR. Episodes are written by the WORKER, tens of seconds after
+# the reply, so "say that again" typed straight after a cut-off reply would read
+# the store and hand back the PREVIOUS answer — confidently, with no sign
+# anything was wrong.
 #
-# So the live reply is registered here the moment the turn finishes, and the
-# store is the fallback for a fresh process.
+# So the live reply is registered here the moment the turn finishes. The day
+# log is read first, because it survives a restart; this register is the
+# fallback behind it.
 _LAST_REPLY = {}
 
 

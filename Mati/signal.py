@@ -5,29 +5,28 @@ Field state as a colour signal — the pipe, not the language.
     signal.encode(coherence=0.83)
     # {'encoder': 'steady', 'components': [...], 'period_ms': None, ...}
 
-THE LONG IDEA is that Mati communicates in colour — eventually between agents,
-first with the person in front of it. How is undecided: a **pulse** of colours
-spelling out symbols over time, or a **range of frequencies** carrying words at
-once. This module deliberately does not choose. It is the connection those
-would be built on.
+THE LONG IDEA is that Mati communicates in colour — between agents, and with
+the person in front of it. There are two shapes it could take: a **pulse** of
+colours spelling out symbols over time, or a **range of frequencies** carrying
+words at once. The pulse exists (`carrier`); the spectral form does not. This
+module is the connection either is built on, and it does not choose between
+them.
 
-WHAT THAT COSTS, IN DESIGN TERMS. Both futures have to stay reachable, so the
-signal shape carries what each would need even though today's encoder uses
-neither:
+WHAT THAT COSTS, IN DESIGN TERMS. Both have to stay reachable, so the signal
+shape carries what each needs:
 
-    components   a LIST, always — one entry now. A spectral encoding puts
-                 several present-at-once frequencies here.
-    period_ms    None now, meaning static. A temporal encoding sets it, and
+    components   a LIST, always. The steady encoder puts one entry here; a
+                 spectral encoding would put several present-at-once
+                 frequencies; `carrier` puts the sequence.
+    period_ms    None for a static signal. A temporal encoding sets it, and
                  the components become a repeating sequence.
 
 An encoder that emitted a bare colour would be simpler and would have to be
 thrown away twice.
 
-WHAT IT ENCODES TODAY. One thing: **how settled the field is.** Coherence,
-which is already computed every turn and already published — so this costs
-nothing on the backend. It is also the state the system prompt ALREADY asks
-Mati to express in words ("let low coherence show as genuine uncertainty"), so
-the frame and the sentence agree rather than saying two things.
+WHAT THE STEADY ENCODER CARRIES. One thing: **how settled the field is.**
+Coherence, which is already computed every turn and already published — so
+this costs nothing on the backend.
 
 ⚠️ **THE RANGE IS NARROW AND THAT IS THE WHOLE PROBLEM.** Coherence sits around
 0.77–0.94 in real use, not 0–1. Mapped naively the frame would be one colour
@@ -54,10 +53,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── palettes ────────────────────────────────────────────────────────────────
 #
-# DEFAULT IS ONE HUE. The brief was "one colour", and sweeping between two hues
-# turned out to collide with the app: interpolating amber (38) to Maya blue
-# (191) passes through GREEN at ~114, and the chat bubbles are blue and green.
-# A mid-coherence frame would have read as a bubble colour.
+# DEFAULT IS ONE HUE. Sweeping between two hues collides with the app:
+# interpolating amber (38) to Maya blue (191) passes through GREEN at ~114, and
+# the chat bubbles are blue and green, so a mid-coherence frame would read as a
+# bubble colour.
 #
 # So `maya` holds the hue at Maya blue and moves saturation and lightness
 # instead: settled is full Maya blue, unsettled is pale and washed out. That
@@ -80,8 +79,8 @@ PALETTES = {
 }
 DEFAULT_PALETTE = "maya"
 
-# Observed coherence over real turns. NOT 0–1: mapped against the
-# full range the frame would never move. Re-measure if the field is retrained.
+# Observed coherence over real turns. NOT 0–1: mapped against the full range
+# the frame would never move. Re-measure if the field is retrained.
 CALIBRATION = (0.75, 0.95)
 
 STEADY = "steady"
@@ -149,21 +148,17 @@ CARRIER = "carrier"
 
 
 def carrier(symbols, rate=10.0, palette=DEFAULT_PALETTE):
-    """The temporal encoder this module reserved room for. ⚠️ AGENT-FACING.
+    """The temporal encoder: a pulse of colours spelling out symbols. ⚠️ AGENT-FACING.
 
-    ⚠️ THIS FILE PREDICTED THIS FUNCTION AND I NEARLY MISSED IT. The docstring
-    above says the long idea is "a **pulse** of colours spelling out symbols
-    over time", that `components` is a list so a sequence can live there, and
-    that `period_ms` is None "now, meaning static. A temporal encoding sets
-    it". `Mati/cuttlefish.py` was then built as a PARALLEL module that emitted
-    hex strings and never touched any of it. This is the join: cuttlefish
-    decides WHAT to say, `signal` remains the one pipe that says it.
+    ⚠️ THIS IS THE JOIN. `cuttlefish` decides WHAT to say; `signal` remains
+    the one pipe that says it. The sequence goes in `components` and its step
+    in `period_ms` — the room the signal shape keeps for a temporal encoding.
 
     ⚠️ THE TWO ENCODERS CARRY DIFFERENT AUDIENCES ON ONE SURFACE, and they
     must never overlap in time. `steady` is for the person — ambient, slow,
     "how settled am I". `carrier` is for another machine — a handshake, a few
     seconds, then gone. Fax and voice shared a line by being in one mode at a
-    time; see STUDY_cuttlefish.md §5.
+    time.
 
     ⚠️ THE COLOURS COME FROM `cuttlefish.ALPHABET` AND ARE NOT NEGOTIABLE
     HERE. They were derived by maximising the worst-case separation across
@@ -191,8 +186,7 @@ def carrier(symbols, rate=10.0, palette=DEFAULT_PALETTE):
         "encoder": CARRIER,
         "palette": palette,
         "components": comps,
-        # No longer None: this is the sequence's step, and the whole point of
-        # the field existing.
+        # The sequence's step, and the whole point of the field existing.
         "period_ms": round(1000.0 / float(rate), 1),
         "meaning": "handshake",
         "raw": None,
@@ -221,10 +215,9 @@ def _hex_to_hsl(hexcol):
 def describe():
     """What exists, and what deliberately does not. For the frontend."""
     return {
-        # ⚠️ THIS LIST WENT STALE THE MOMENT `carrier` WAS ADDED, and it is
-        # read by the frontend — a module describing itself wrongly is worse
-        # than one that says nothing. `pulse` moved from `planned` to built
-        # and is called `carrier`; `spectral` is still genuinely absent.
+        # ⚠️ THE FRONTEND READS THIS LIST, so it must change with the
+        # encoders — a module describing itself wrongly is worse than one that
+        # says nothing. `spectral` is genuinely absent.
         "encoders": [STEADY, CARRIER],
         "planned": ["spectral (frequencies at once)"],
         "audiences": {
@@ -232,7 +225,7 @@ def describe():
             CARRIER: "another machine — a handshake, a few seconds, then gone",
         },
         # ⚠️ NEVER BOTH AT ONCE. Fax and voice shared a line by being in one
-        # mode at a time; see STUDY_cuttlefish.md §5.
+        # mode at a time.
         "exclusive": True,
         "carrier_bits_per_second": 20,
         "calibration": CALIBRATION,

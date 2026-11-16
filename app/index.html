@@ -65,36 +65,15 @@
   .face.back { transform: rotateY(180deg); }
   @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
 
-  /* ── The station list, under the avatar ───────────────────────────────── */
-  /* ⚠️ the user: "I would like to see a list of the five stations under the
-     avatar. That way I can change stations as I see fit. The dj still follows
-     textual commands as a fallback. There should be a button to close the
-     stations window."
+  /* ── The station list and the presets ─────────────────────────────────── */
+  /* A band between the reply and the input (see `.stations`). The spoken
+     commands still work; the list is the other way in, and it has its own
+     close button.
 
-     ⚠️ POINTER-EVENTS: AUTO, EXPLICITLY, AND THIS IS THE THIRD TIME. The
-     avatar wrap is `pointer-events: none` so the avatar stays clear of
-     clicks; `.subs.held` needed this, and then `.nowplaying` needed it after
-     I put a button in the same dead zone anyway. Anything clickable near the
-     avatar has to say so itself.
-
-     ⚠️ A ROW OF `.avatar-wrap`, AND MY FIRST GUESS WAS WRONG. I made it a
-     SIBLING, reasoning the wrap would stack it under the avatar — but the
-     cell-sharing is in `.main`, not in the wrap. As a sibling it became a
-     THIRD child of `.main`, which is one cell with `place-items: center`, so
-     it landed in a new implicit row in the MIDDLE of the screen, behind the
-     subtitle. the user: *"It appearing in the middle of the screen, behind the
-     text of Mati's response."*
-
-     `.avatar-wrap` is itself `display: grid; align-content: start` holding
-     the disc and the patience line, so a third row sits under the avatar,
-     left-aligned, and moves with it — which is where it was asked for. */
-  /* ⚠️ THE TOKEN NAMES ABOVE WERE INVENTED AND RESOLVED TO NOTHING. I wrote
-     --panel, --line, --ink and --muted; this page defines --surface,
-     --separator, --label and --label-2. An unknown custom property is not an
-     error — `background: var(--panel)` simply paints nothing — so the panel
-     rendered as bare text floating over the conversation with no card, no
-     borders and no row separators, and every static check still passed.
-     the user saw it before I did. */
+     ⚠️ Tokens here are --surface, --separator, --label and --label-2. An
+     unknown custom property is not an error — `background: var(--panel)`
+     simply paints nothing — so a misspelt token renders a bare, borderless
+     panel and every static check still passes. */
   .sect {
     font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--label-2);
@@ -111,16 +90,10 @@
   }
   .stations {
     /* ⚠️ A BAND BETWEEN THE REPLY AND THE INPUT, NOT A ROW OF THE AVATAR
-       STACK. the user: *"now the avatar is not centered. move the lists so they
-       appear horizontally between the response window and the input line."*
-       Putting it inside `.avatar-wrap` made it a third row of that grid, so
-       the wrap grew to the panel's width and the avatar stopped sitting where
-       it had — fixing the panel's position cost the thing above it. Its own
-       band, between `.main` and the composer, touches neither.
-
-       ⚠️ Tokens here are --surface/--separator/--label/--label-2. I invented
-       --panel/--line/--ink/--muted once: an unknown custom property paints
-       nothing, and every static check still passed. */
+       STACK. Inside `.avatar-wrap` it would be a third row of that grid, the
+       wrap would grow to the panel's width, and the avatar would stop sitting
+       where it does. Its own band, between `.main` and the composer, touches
+       neither. */
     pointer-events: auto;
     flex: 0 0 auto;
     margin: 0 24px 8px;
@@ -132,6 +105,36 @@
     overflow: hidden;
   }
   .stations[hidden] { display: none; }
+  /* ⚠️ ONLY WHILE THE MEMORIES ARE LOCKED. Same band and the same tokens as
+     the stations: its own row above the composer, so it moves nothing else. */
+  .unlock {
+    pointer-events: auto;
+    flex: 0 0 auto;
+    margin: 0 24px 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--separator);
+    border-radius: 0.7rem;
+    background: var(--surface);
+    font-size: 0.82rem;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .unlock[hidden] { display: none; }
+  .un-text { color: var(--label-2); flex: 1 1 12rem; }
+  .unlock input {
+    flex: 1 1 10rem; min-width: 8rem;
+    font: inherit; color: var(--label);
+    background: var(--bg); border: 1px solid var(--separator);
+    border-radius: 0.5rem; padding: 6px 8px;
+  }
+  .un-btn {
+    font: inherit; color: var(--tint); background: none;
+    border: 1px solid var(--separator); border-radius: 0.5rem;
+    padding: 6px 10px; cursor: pointer;
+  }
+  .un-btn[hidden] { display: none; }
+  .un-btn:disabled { opacity: .5; cursor: default; }
+  .un-btn:focus-visible, .unlock input:focus-visible {
+    outline: 2px solid var(--tint); outline-offset: 2px; }
   /* The header is a narrow rail on the left, so the stations get the width. */
   .st-head {
     display: flex; flex-direction: column; align-items: center;
@@ -189,27 +192,30 @@
   .icon-btn:hover { color: var(--tint); }
   .icon-btn:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
   .icon-btn[hidden] { display: none; }
+  /* The terminal button sits on the left by itself: `margin-right: auto`
+     takes all the free space in the bar, so Library / Commands / Settings
+     stay at the right. */
+  #toTerm { margin-right: auto; }
 
-  /* ── VERTICAL: avatar is the page. ──────────────────────────────────── */
-  /* ⚠️ ONE CELL, TWO LAYERS. This was `grid-template-rows: 1fr auto` — the
-     avatar in one row, the subtitle in another — so a long reply grew the
-     text row and squeezed the avatar's, and the frame visibly rose and fell
-     with how much Mati had to say. Both children now occupy the SAME cell,
-     so neither can push the other and the avatar never moves. */
+  /* ── VERTICAL: the conversation fills the page. ──────────────────────── */
+  /* ⚠️ ONE CELL, TWO LAYERS. The avatar and the subtitle occupy the SAME
+     cell, so neither can push the other: in separate rows, a long reply would
+     grow the text row and squeeze the avatar's, and the frame would rise and
+     fall with how much Mati had to say. */
   .main {
     flex: 1; min-height: 0; display: grid;
     place-items: center;
     padding: 0 24px;
   }
   .avatar-wrap, .subs { grid-area: 1 / 1; }
-  /* ⚠️ THE AVATAR IS A CORNER MARK NOW, NOT THE PAGE. It stretches the shared
+  /* ⚠️ THE AVATAR IS A CORNER MARK, NOT THE PAGE. It stretches the shared
      cell and pins its content top-left; the subtitle keeps the same cell and
      its own `place-items: end center`, so the two cannot move each other —
      which is the whole reason they share one cell. */
   .avatar-wrap {
     /* ⚠️ `align-content: start`, not `place-items`. The wrap stretches the
-       cell and now holds TWO rows — the disc and the patience line — so the
-       rows must pack to the top rather than each item aligning inside a
+       cell and holds TWO rows — the disc and the patience line — so the rows
+       must pack to the top rather than each item aligning inside a
        half-height row. */
     display: grid; justify-items: start; align-content: start;
     gap: 9px; min-height: 0;
@@ -248,10 +254,9 @@
   /* ── What is playing, and how to stop it ──────────────────────────────── */
   .nowplaying {
     /* ⚠️ `.avatar-wrap` IS pointer-events: none SO THE AVATAR STAYS CLEAR,
-       and this chip lives inside it — without re-enabling, Stop is drawn and
-       cannot be pressed. Exactly the fix `.subs.held` already needed, which
-       I had written the comment for and then put a BUTTON in the same dead
-       zone. A control that is visible and inert is worse than no control. */
+       and this chip lives inside it — without re-enabling, its controls are
+       drawn and cannot be pressed. A control that is visible and inert is
+       worse than no control. */
     pointer-events: auto;
     display: flex; align-items: center; gap: 8px;
     max-width: min(26vh, 36vw, 150px);
@@ -281,6 +286,24 @@
   }
   .np-stop:hover { background: var(--label-3); }
   .np-stop:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+  /* Paused: the dot stops pulsing and greys, because no sound is coming out. */
+  .nowplaying.paused .np-dot { background: var(--label-3); animation: none; }
+  /* ── Play / pause / stop, under the label ─────────────────────────────── */
+  /* ⚠️ pointer-events: auto for the same reason as `.nowplaying` — this sits
+     inside `.avatar-wrap`, which lets pointers through. */
+  .np-controls {
+    pointer-events: auto;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .np-controls[hidden] { display: none; }
+  .np-btn {
+    width: 32px; height: 32px; display: grid; place-items: center;
+    border: 1px solid var(--separator); border-radius: 50%;
+    background: var(--surface); color: var(--label); cursor: pointer;
+  }
+  .np-btn:hover:not(:disabled) { background: var(--separator); }
+  .np-btn:disabled { opacity: .35; cursor: default; }
+  .np-btn:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
   /* While a film is up, the animation is not painted — see `showFilm`. */
   .avatar.behind-film #clip { display: none; }
   .avatar.listening { --frame: var(--you); }
@@ -298,10 +321,9 @@
      Both are suppressed in the frame now, so the 1:1 stage fills a square
      iframe exactly and no scaling trick is needed. */
   /* ⚠️ THE STAGE INSETS ITS ART BY A FIXED 22px PER SIDE, so a frame sized to
-     the disc drew the axolotl 44px too small inside a ring of background.
-     Measured at two viewport heights — 513 → 469 art, 288 → 244 art — a 44px
-     difference both times, and the art centred. Growing the frame by exactly
-     that and re-centring crops the padding instead of the art.
+     the disc would draw the axolotl 44px too small inside a ring of
+     background. Growing the frame by exactly that and re-centring crops the
+     padding instead of the art.
 
      ⚠️ ABSOLUTE PIXELS, NOT A PERCENTAGE. The inset does not scale with the
      viewport, so a ratio would only be right at one avatar size. */
@@ -431,7 +453,7 @@
   }
 
   /* ── Composer ───────────────────────────────────────────────────────── */
-  /* ⚠️ ONE OLLIN. The second window says so and does nothing else. */
+  /* ⚠️ ONE MATI. The second window says so and does nothing else. */
   .taken .composer,
   .taken .chrome { display: none; }
   /* ⚠️ Ring width tracks `.avatar` — 12px here against 5px there would make
@@ -453,15 +475,10 @@
           cursor: pointer; font-size: 1.05rem; }
 
   /* ── Settings ───────────────────────────────────────────────────────── */
-  /* ⚠️ IT MUST SCROLL, AND NOT SCROLLING MADE IT UNUSABLE. There was a
-     max-width and no max-height, so once the sheet grew taller than the
-     window every control below the fold was simply off-screen —
-     `elementFromPoint` returned null for Speak answers aloud, Avatar, Name
-     and Done while Reply length, higher up, worked fine. It reads as "the
-     buttons do not click" rather than as "the panel is too tall", which is
-     why it went unreported as a layout bug.
-     ⚠️ Each row added here makes it taller. The name row added on
-      is what pushed Done off the bottom. */
+  /* ⚠️ IT MUST SCROLL. Without a max-height, a sheet taller than the window
+     puts every control below the fold off-screen, and that reads as "the
+     buttons do not click" rather than as "the panel is too tall".
+     ⚠️ Each row added here makes it taller. */
   dialog.sheet { border:0; border-radius:14px; padding:0; max-width:380px;
                  width:90%; background:var(--surface); color:var(--label);
                  max-height: 85vh; overflow-y: auto;
@@ -477,12 +494,10 @@
   .switch input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
   /* ⚠️ THE PAINTED PARTS MUST NOT EAT THE CLICK. `.switch input` is the real
      control — invisible, absolutely positioned over the whole switch — but
-     `.track` and `.knob` come after it in the DOM and paint on top, so they
-     received the click and the toggle did nothing. Measured with
-     `elementFromPoint`: the centre of "Speak answers aloud" resolved to
-     SPAN.knob, not to the input.
-     ⚠️ The label still worked, which is why this reads as "sometimes the
-     switch does not respond" rather than as a dead control. */
+     `.track` and `.knob` come after it in the DOM and paint on top, so without
+     this they take the click and the toggle does nothing. The label still
+     works, so the fault would read as "sometimes the switch does not respond"
+     rather than as a dead control. */
   .track, .knob { pointer-events: none; }
   .track { position:absolute; inset:0; border-radius:16px;
            background:var(--label-3); transition: background .2s; }
@@ -497,6 +512,9 @@
   .done { min-height:var(--tap); padding:0 18px; border:0; border-radius:10px;
           background:var(--tint); color:#fff; font:600 1rem/1 var(--sans);
           cursor:pointer; }
+  /* Cancel sits beside Done and reads as the secondary choice. */
+  .done.cancel { background: transparent; color: var(--tint);
+                 margin-right: 8px; }
 
   /* ── Terminal face: the record the front deliberately does not keep ── */
   .nav { flex:none; display:flex; align-items:center; justify-content:space-between;
@@ -577,9 +595,9 @@
              Putting Restart next to Speaking pace would be the same
              confusion that filed "go to sleep" alongside "pack the store
              for transfer". -->
-        <!-- ⚠️ ALWAYS AVAILABLE. The library is no longer behind the
-             terminal switch — tending what Mati has read is an ordinary
-             task, not an inspection of the mechanism. -->
+        <!-- ⚠️ ALWAYS AVAILABLE, not behind the terminal switch: tending what
+             Mati has read is an ordinary task, not an inspection of the
+             mechanism. -->
         <button class="icon-btn" id="openLibrary" type="button"
                 aria-label="Library" title="Library"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M5 4v16M9.5 4v16M14 5l4.5 15"/></svg></button>
         <button class="icon-btn" id="openCommands" type="button"
@@ -613,20 +631,21 @@
              hidden>Still thinking… please wait.</p>
 
 
-          <!-- ⚠️ THE STOP BUTTON. the user had the radio on and no way to
-               silence it — the player lives inside the server, so there is no
-               window, no menu bar item and nothing to click. You had to type a
-               sentence, and that took 16.5s. This polls `/playing` and posts
-               `/silence`; neither spends a turn. -->
+          <!-- ⚠️ WHAT IS PLAYING, AND HOW TO STOP IT. The player lives inside
+               the server, so there is no window, no menu bar item and nothing
+               else to click. This polls `/playing` and posts `/silence`;
+               neither spends a turn. -->
           <div class="nowplaying" id="nowplaying" hidden>
             <span class="np-dot" aria-hidden="true"></span>
             <span class="np-what" id="npWhat"></span>
-            <!-- ⚠️ THE STOP BUTTON IS GONE. the user: "I thought you would
-                 replace the off button with these clickable lists." The X
-                 on the presets list is the off switch now — one control,
-                 reached by stepping back through what is on screen,
-                 rather than a second button doing the same job from
-                 somewhere else. Its handler goes with it. -->
+          </div>
+          <!-- Play, pause and stop, under the label. Pause keeps the station
+               so Play can bring it back; Stop is off, and the presets go with
+               it. The X on the presets list reaches the same place. -->
+          <div class="np-controls" id="npControls" hidden>
+            <button class="np-btn" id="npPlay" type="button" aria-label="Play"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg></button>
+            <button class="np-btn" id="npPause" type="button" aria-label="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/></svg></button>
+            <button class="np-btn" id="npStop" type="button" aria-label="Stop"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
           </div>
 
         </div>
@@ -659,6 +678,19 @@
         </div>
         <ol id="stList"></ol>
       </section>
+
+      <!-- ⚠️ SHOWN ONLY WHILE THE MEMORIES ARE LOCKED. Locked, Mati reads
+           nothing it holds and keeps nothing it is told; without this the
+           only sign is an assistant that forgets, with no reason given. -->
+      <form class="unlock" id="unlock" hidden aria-label="Unlock memories">
+        <span class="un-text" id="unlockText">Memories are locked.</span>
+        <input id="unlockPhrase" type="password"
+               placeholder="Recovery passphrase"
+               aria-label="Recovery passphrase" autocomplete="off">
+        <button class="un-btn" id="unlockGo" type="submit">Unlock</button>
+        <button class="un-btn" id="unlockRetry" type="button"
+                hidden>Use Touch ID</button>
+      </form>
 
       <form class="composer" id="composer">
         <input id="entry" placeholder="Say something" aria-label="Message"
@@ -738,22 +770,20 @@
       costs before you choose it.</p>
   </header>
 
+  <!-- ⚠️ SLEEP KEEPS THE FIELD. It is the night — consolidate, dream, still
+       answer if spoken to — and never the handoff to the pro terminal. -->
   <div class="switchrow">
-    <span><label>Sleep now</label>
-      <p class="hint">Lets the field go and stops answering until woken.</p></span>
+    <span><label>Sleep</label>
+      <p class="hint">Keeps the field, consolidates the day, and dreams. Still
+        answers if you speak to it.</p></span>
     <button class="pick" id="cmdSleep" type="button">Sleep</button>
   </div>
 
   <div class="switchrow">
     <span><label>Wake</label>
-      <p class="hint">Picks the field back up. About two minutes.</p></span>
+      <p class="hint">Ends a sleep. If the field was handed to the terminal,
+        picks it back up — about two minutes.</p></span>
     <button class="pick" id="cmdWake" type="button">Wake</button>
-  </div>
-
-  <div class="switchrow">
-    <span><label>Rest for the night</label>
-      <p class="hint">Keeps the field, consolidates the day, dreams.</p></span>
-    <button class="pick" id="cmdRest" type="button">Rest</button>
   </div>
 
   <div class="switchrow">
@@ -775,7 +805,7 @@
   </div>
 
   <p class="hint" id="cmdSaid" style="padding:12px 18px"></p>
-  <footer><button class="done" id="closeCommands" type="button">Done</button></footer>
+  <footer><button class="done cancel" id="cancelCommands" type="button">Cancel</button><button class="done" id="closeCommands" type="button">Done</button></footer>
 </dialog>
 
 <dialog class="sheet" id="settings">
@@ -803,28 +833,24 @@
     takes a couple of minutes, so the last line is held on screen until you
     come back whether or not this is on.</p>
 
-  <!-- ⚠️ OLLIN'S OWN SETTINGS, in the one place a person already looks.
-       the user: "There should also be easy access to the customizable Mati
-       settings." These change what Mati DOES, as distinct from what the
-       page shows. -->
+  <!-- ⚠️ MATI'S OWN SETTINGS, in the one place a person already looks. These
+       change what Mati DOES, as distinct from what the page shows. -->
   <h2 class="sect">Mati</h2>
 
   <div class="switchrow">
     <label for="replyLen">How much Mati says</label>
     <select id="replyLen" class="pick">
-      <!-- ⚠️ BRIEF IS SELECTED, and it is a measured choice rather than a
-           timid one: 160 tokens is 22.5s against normal's 31.6s on a 3B.
-           Length IS latency here, so the untouched default should be the
-           fast one. The seconds are in the labels because the trade is the
-           whole point and hiding it would be dishonest. -->
+      <!-- ⚠️ BRIEF IS SELECTED BY DEFAULT. Reply length IS latency on a 3B,
+           so the untouched default should be the fast one. The seconds are in
+           the labels because the trade is the whole point and hiding it would
+           be dishonest. -->
       <option value="brief" selected>Brief — fastest, about 22s</option>
       <option value="normal">Normal — about 32s</option>
       <option value="thorough">Thorough — slowest</option>
     </select>
   </div>
-  <!-- ⚠️ THE SECONDS ARE SHOWN BECAUSE THE TRADE IS THE WHOLE POINT.
-       Measured: 160 tokens 22.5s, 220 31.6s, 260 54.1s. Reply length IS
-       latency on a 3B, and hiding that would be dishonest. -->
+  <!-- ⚠️ THE SECONDS ARE SHOWN BECAUSE THE TRADE IS THE WHOLE POINT: reply
+       length IS latency on a 3B, and hiding that would be dishonest. -->
   <p class="hint">Shorter answers arrive sooner — roughly 20 seconds against a
     minute. Reply length is most of the wait.</p>
 
@@ -850,10 +876,8 @@
   </div>
 
   <div class="switchrow">
-    <!-- ⚠️ AGREEING TO BE SPOKEN TO LEFT NO WAY TO CHOOSE THE VOICE. Mati
-         asks "shall I read my replies aloud?", stores `voice_name`, and the
-         sheet had no control for it — so the answer was macOS's default with
-         no way to change it. 25 English voices are installed here. -->
+    <!-- The voice Mati reads replies in. Agreeing to be spoken to stores
+         `voice_name`; this is where it is chosen. -->
     <label for="voiceName">Voice</label>
     <select id="voiceName" class="pick"></select>
   </div>
@@ -876,17 +900,14 @@
     </select>
   </div>
 
-  <footer><button class="done" id="closeSettings" type="button">Done</button></footer>
+  <footer><button class="done cancel" id="cancelSettings" type="button">Cancel</button><button class="done" id="closeSettings" type="button">Done</button></footer>
 </dialog>
 
 <script>
   const $ = (id) => document.getElementById(id);
 
-  // ⚠️ THIS WAS A HARDCODED ARRAY OF INVENTED EXCHANGES, replayed on a timer,
-  // and the app had never once called the server. Worse than a stub: the
-  // "origins" it listed were fabricated memories shown in the place reserved
-  // for provenance, which is the one thing in Mati that must never be made
-  // up. It is now filled only by real turns.
+  // Filled only by real turns. What appears in the place reserved for
+  // provenance must never be made up.
   const TURNS = [];
   let SESSION = "app";
 
@@ -919,7 +940,7 @@
       // ⚠️ NAMES THE LIKELY CAUSE ONLY WHEN IT KNOWS IT. From a file:// page
       // the server is usually fine and the origin is the problem.
       say(SERVED ? "I can't reach Mati. Is the server running?"
-                 : "Open me from " + OLLIN_URL + " — a file:// page cannot "
+                 : "Open me from " + MATI_URL + " — a file:// page cannot "
                    + "reach Mati.", true);
       setState(null);
       return;
@@ -953,15 +974,13 @@
         }
         if (isDoc) { showDoc(full); said = true; return; }
         spoken += data.text || "";
-        // ⚠️ SENTENCES ARE SHOWN AS THEY ARRIVE, which is the whole reason
-        // the old timer had to go: subtitles used to advance on a stopwatch
-        // whether or not Mati had said anything yet.
-        // ⚠️ "…" IS NOT A SENTENCE END HERE. `report._clip` truncates every
-        // headline with an ellipsis, so treating it as a terminator cut each
-        // news item mid-phrase and left its source — "— Quanta Magazine" —
-        // orphaned at the head of the NEXT line, where it read as that
-        // article's attribution. A display bug that misattributes a source is
-        // not cosmetic.
+        // ⚠️ SENTENCES ARE SHOWN AS THEY ARRIVE, never on a stopwatch that
+        // advances whether or not Mati has said anything yet.
+        // ⚠️ "…" IS NOT A SENTENCE END HERE. Headlines are truncated with an
+        // ellipsis, so treating it as a terminator would cut each news item
+        // mid-phrase and leave its source — "— Quanta Magazine" — at the head
+        // of the NEXT line, where it reads as that article's attribution. A
+        // display bug that misattributes a source is not cosmetic.
         let m;
         while ((m = spoken.match(/^([\s\S]*?[.!?])(\s+|$)/))) {
           const line = m[1].trim();
@@ -1056,11 +1075,9 @@
     queue.push(line);
     if (!draining) drain();
   }
-  // ⚠️ THE LAST LINE USED TO STAY UP FOREVER. `drain` returned when the queue
-  // emptied and nothing ever cleared the subtitle, so Mati's final sentence
-  // sat on screen until the next turn — which made a finished reply look like
-  // an unfinished one. the user: "Mati's responses should disappear after a
-  // few seconds."
+  // ⚠️ THE LAST LINE CLEARS ITSELF. Nothing else clears the subtitle when the
+  // queue empties, and a final sentence left on screen until the next turn
+  // makes a finished reply look like an unfinished one.
   //
   // ⚠️ IT LINGERS BEFORE IT GOES. Clearing the instant the dwell ends would
   // cut the last sentence shorter than every other one; the pause is what
@@ -1075,11 +1092,10 @@
     fadeTimer = setTimeout(() => { $("subs").textContent = ""; }, 700);
   }
 
-  // ⚠️ SPEECH FADES BECAUSE IT ASSUMES A LISTENER. the user: "If I start to do
-  // something else I may never see the response because it is set to
-  // disappear." A turn takes ~110s, so walking away is the normal case, not
-  // the exception — and the subtitle was timing out against a person who was
-  // not there. No listener, no fade: the last line is HELD until the next
+  // ⚠️ SPEECH FADES ONLY WHEN SOMEONE IS THERE TO SEE IT. A turn takes long
+  // enough that walking away is the normal case, not the exception, and a
+  // subtitle that times out against a person who is not there is an answer
+  // they never get. No listener, no fade: the last line is HELD until the next
   // turn, or until it is tapped away.
   //
   // This is the half of the problem a notification cannot fix. Being told
@@ -1184,11 +1200,10 @@
       const i = x.info || {};
 
       // ⚠️ WHICH MEMORIES — AND THIS IS WHAT LETS THE REPLY STOP RECITING.
-      // Mati used to name its own memories aloud, in three separate places,
-      // because `info` carried only COUNTS and the spoken reply was the only
-      // route by which a memory's identity reached the user. Memories are
-      // passive inputs: they shape the answer and do not announce themselves.
-      // That only holds if the record names them instead, which is here.
+      // Memories are passive inputs: they shape the answer and do not
+      // announce themselves. That only holds if the record names them
+      // instead, which is here; otherwise the spoken reply would be the only
+      // route by which a memory's identity reached the person.
       //
       // ⚠️ The `kind` label is the server's `provenance_of(source)`, derived
       // from the stored `source` column — it cannot be wrong about how the
@@ -1240,32 +1255,30 @@
   const termOn = $("termOn"), toTerm = $("toTerm"), card = $("card"),
         avatar = $("avatar");
 
-  // ⚠️ THE TERMINAL IS A MAC THING, EVEN WHEN THE SETTING IS ON. the user:
-  // "make the terminal only available from the Mac even if turned on in
-  // setting." Detected by INPUT CAPABILITY, not by user-agent string: a
-  // terminal wants a pointer and a keyboard, and that is what the media
-  // query actually asks. An iPad with a trackpad passes, which is right —
-  // the question is whether the device can drive it, not what it is called.
+  // ⚠️ THE TERMINAL IS A MAC THING, EVEN WHEN THE SETTING IS ON. Detected by
+  // INPUT CAPABILITY, not by user-agent string: a terminal wants a pointer and
+  // a keyboard, and that is what the media query actually asks. An iPad with a
+  // trackpad passes, which is right — the question is whether the device can
+  // drive it, not what it is called.
   const isMac = window.matchMedia("(hover: hover) and (pointer: fine)").matches
                 && window.matchMedia("(min-width: 700px)").matches;
   const applyTerm = () => { toTerm.hidden = !(termOn.checked && isMac); };
   termOn.addEventListener("change", applyTerm); applyTerm();
 
   // ── Being told that the answer arrived ──────────────────────────────────
-  // ⚠️ THE WEB NOTIFICATION API, NOT OLLIN'S `notify.send`. Mati has an
-  // osascript notifier already, and using it would be one mechanism instead
-  // of two — but the server cannot know whether the person is looking at the
-  // page, and that is the only fact this decision turns on. Notifying someone
-  // who is watching is noise. The page also gets click-to-focus for free,
-  // which a detached osascript cannot do.
+  // ⚠️ THE WEB NOTIFICATION API, NOT MATI'S `notify.send`. The server cannot
+  // know whether the person is looking at the page, and that is the only fact
+  // this decision turns on: notifying someone who is watching is noise. The
+  // page also gets click-to-focus for free, which a detached osascript cannot
+  // do.
   //
-  // ⚠️ NO NEW SERVER SURFACE. The alternative was an endpoint that posts
+  // ⚠️ NO NEW SERVER SURFACE. The alternative would be an endpoint that posts
   // arbitrary text to the macOS notification centre, reachable by anything
   // that can talk to 127.0.0.1.
   //
   // ⚠️ `document.hidden` IS NOT ENOUGH. A window that is merely behind
-  // another is still "visible", and that is exactly the user's case — "if I
-  // start to do something else". `watching()` requires focus too.
+  // another is still "visible", and that is exactly the case of someone who
+  // has turned to something else. `watching()` requires focus too.
   const notifyOn = $("notifyOn");
   const NOTIFY_KEY = "mati.notify";
 
@@ -1323,11 +1336,10 @@
     } catch (e) { /* denied between the check and here; nothing to do */ }
   }
   // ── settings live on the SERVER, not in the page ─────────────────────
-  // ⚠️ the user: "the terminal becomes only available if the user switches on
-  // the setting in the Mati app." The toggle used to hide a BUTTON and
-  // nothing else — every terminal route stayed reachable with curl. It now
-  // writes `terminal_enabled`, and the server REFUSES those routes until it
-  // is true. Hiding a door is not locking it.
+  // ⚠️ The terminal switch writes `terminal_enabled`, and the server REFUSES
+  // the terminal's routes until it is true. Hiding a button would not be
+  // enough — every route would stay reachable with curl. Hiding a door is not
+  // locking it.
   const SETTING_IDS = { termOn: "terminal_enabled", notifyOn: "notify_on_reply",
                         voiceOn: "voice_on", replyLen: "reply_length",
                         avatarMode: "avatar", assistantName: "assistant_name",
@@ -1369,14 +1381,9 @@
   // the axolotl carry on swimming reads as the setting not working.
   $("avatarMode").addEventListener("change", (e) => applyAvatar(e.target.value));
 
-  // ⚠️ THE WHOLE ROW TOGGLES, not just the label and the 51px switch.
-  // Reported: "the switches only work when clicking text, the toggles
-  // themselves are unclickable". A probe showed the switch toggling fine
-  // when it was on screen and unscrolled — so the hit target was RIGHT and
-  // still not reachable in practice. A 51x31 target inside a scrolling sheet
-  // is small, and arguing with the measurement was not going to make it
-  // bigger. The row is ~340x48, cannot be missed, and removes the failure
-  // mode instead of explaining it.
+  // ⚠️ THE WHOLE ROW TOGGLES, not just the label and the 51px switch. A 51x31
+  // target inside a scrolling sheet is small enough to miss; the row is
+  // ~340x48 and cannot be.
   for (const row of document.querySelectorAll("#settings .switchrow")) {
     const box = row.querySelector('input[type="checkbox"]');
     if (!box) continue;                  // a select/text row owns its own clicks
@@ -1438,7 +1445,6 @@
 
   for (const [id, path, label] of [["cmdSleep", "/sleep", "Going to sleep"],
                                    ["cmdWake", "/wake", "Waking"],
-                                   ["cmdRest", "/rest", "Resting"],
                                    ["cmdRestart", "/restart", "Restarting"]]) {
     const b = $(id);
     if (b) b.addEventListener("click", () => runCommand(path, label, b));
@@ -1574,8 +1580,8 @@
     } catch (err) { $("cmdOut").textContent = "That did not save."; }
   });
 
-  // ⚠️ EACH SURFACE REFRESHES WHAT IT OWNS. The terminal used to refresh
-  // the library because they shared a face; they do not any more.
+  // ⚠️ EACH SURFACE REFRESHES WHAT IT OWNS: the terminal and the library are
+  // separate faces, so neither refreshes the other.
   $("toTerm").addEventListener("click", loadModels);
 
   const libraryEl = $("library");
@@ -1620,18 +1626,99 @@
   }
   $("cmdEnc").addEventListener("click", loadEncyclopedia);
 
+  // ── The two sheets: Done, Cancel, the background and Return ─────────────
+  // Each sheet closes when the background is clicked or Return is pressed,
+  // and has a Cancel beside Done.
+  //
+  // ⚠️ SETTINGS SAVE AS THEY CHANGE, so Cancel has to UNDO, not just close.
+  // The values are taken when the sheet opens (after the server has been
+  // read) and Cancel writes back any that differ. Commands act the moment
+  // they are pressed and cannot be taken back, so there Cancel closes.
+  // ⚠️ The background and Return mean Done: keep what was changed. Escape
+  // means Cancel.
+  let settingsAtOpen = null;
+
+  function snapshotSettings() {
+    const s = {};
+    for (const id of Object.keys(SETTING_IDS)) {
+      const el = $(id);
+      if (el) s[id] = el.type === "checkbox" ? el.checked : el.value;
+    }
+    return s;
+  }
+
+  function revertSettings() {
+    if (!settingsAtOpen) return;
+    for (const id of Object.keys(settingsAtOpen)) {
+      const el = $(id), was = settingsAtOpen[id];
+      if (!el) continue;
+      const now = el.type === "checkbox" ? el.checked : el.value;
+      if (now === was) continue;
+      if (el.type === "checkbox") el.checked = was; else el.value = was;
+      saveSetting(id);
+      if (id === "termOn") applyTerm();
+      if (id === "avatarMode") applyAvatar(was);
+      if (id === "notifyOn") {
+        try { localStorage.setItem(NOTIFY_KEY, was ? "1" : "0"); } catch (e) {}
+      }
+    }
+  }
+
+  function closeSheet(dlg, cancel) {
+    if (!dlg.open) return;
+    // ⚠️ BLUR FIRST. The Name box saves on `change`, which fires on blur;
+    // closing with the cursor still in it could drop what was typed.
+    if (!cancel && dlg.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    if (cancel && dlg.id === "settings") revertSettings();
+    if (dlg.id === "settings") settingsAtOpen = null;
+    dlg.close();
+  }
+
+  for (const dlg of [$("commands"), $("settings")]) {
+    // ⚠️ THE BACKDROP IS THE DIALOG ITSELF as far as events go, so a click is
+    // tested against the sheet's rectangle — a click on the sheet's own
+    // padding must not close it.
+    dlg.addEventListener("click", (e) => {
+      if (e.target !== dlg) return;
+      const r = dlg.getBoundingClientRect();
+      const inside = e.clientX >= r.left && e.clientX <= r.right
+                  && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (!inside) closeSheet(dlg, false);
+    });
+    // ⚠️ RETURN CLOSES EVEN ON A FOCUSED BUTTON. `showModal` focuses the
+    // first control, which in Commands is Sleep — without preventDefault,
+    // Return would put Mati to sleep instead of closing the menu.
+    dlg.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      e.preventDefault();
+      // Return on a focused Cancel is still Cancel.
+      closeSheet(dlg, e.target.classList.contains("cancel"));
+    });
+    // Escape: the browser's own `cancel`, routed through Cancel.
+    dlg.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      closeSheet(dlg, true);
+    });
+  }
+
   $("openCommands").addEventListener("click", () => {
     $("cmdSaid").textContent = "";
     loadEncyclopedia();
     $("commands").showModal();
   });
-  $("closeCommands").addEventListener("click", () => $("commands").close());
+  $("closeCommands").addEventListener("click", () => closeSheet($("commands"), false));
+  $("cancelCommands").addEventListener("click", () => closeSheet($("commands"), true));
 
-  $("openSettings").addEventListener("click", () => {
-    loadSettings();                 // the server is the truth, not the page
+  $("openSettings").addEventListener("click", async () => {
+    settingsAtOpen = null;
     $("settings").showModal();
+    await loadSettings();           // the server is the truth, not the page
+    if ($("settings").open) settingsAtOpen = snapshotSettings();
   });
-  $("closeSettings").addEventListener("click", () => $("settings").close());
+  $("closeSettings").addEventListener("click", () => closeSheet($("settings"), false));
+  $("cancelSettings").addEventListener("click", () => closeSheet($("settings"), true));
   toTerm.addEventListener("click", () => card.classList.add("flipped"));
   $("toMati").addEventListener("click", () => card.classList.remove("flipped"));
 
@@ -1671,21 +1758,72 @@
     try {
       const r = await fetch("/playing", { cache: "no-store" });
       const d = await r.json();
-      const np = d && d.playing;
-      if (np && np.name) {
-        $("npWhat").textContent =
-          (np.preset ? np.preset + " · " : "") + np.name;
-        $("nowplaying").hidden = false;
-      } else {
-        $("nowplaying").hidden = true;
-      }
+      showNowPlaying(d && d.playing, d && d.paused);
     } catch (e) {
       // Server unreachable: say nothing rather than claim silence.
-      $("nowplaying").hidden = true;
+      showNowPlaying(null, null);
     }
   }
 
-  // ── The station list, under the avatar ──────────────────────────────────
+  // ⚠️ PAUSED IS ITS OWN STATE, from the server. `/playing` answers "is sound
+  // coming out", so a paused station is not in it; `paused` carries it, and
+  // the label stays up with Play enabled instead of vanishing.
+  function showNowPlaying(np, paused) {
+    const on = np && np.name ? np : null;
+    const held = !on && paused && paused.name ? paused : null;
+    const x = on || held;
+    const tuning = !!(held && held.tuning);
+    // ⚠️ A FAILED PLAY SAYS WHY, for a few seconds, instead of quietly
+    // returning to "Paused" — which looks like the button did nothing.
+    const note = held && npNote && Date.now() < npNote.until ? npNote.text : "";
+    if (x) {
+      $("npWhat").textContent = note || ((tuning ? "Tuning · " : held ? "Paused · " : "")
+        + (x.preset ? x.preset + " · " : "") + x.name);
+      $("npWhat").title = $("npWhat").textContent;
+    }
+    $("nowplaying").hidden = !x;
+    $("nowplaying").classList.toggle("paused", !!held);
+    $("npControls").hidden = !x;
+    $("npPlay").disabled = !held || tuning;
+    $("npPause").disabled = !on;
+    $("npStop").disabled = !x;
+  }
+  let npNote = null;
+
+  async function npPost(path) {
+    // ⚠️ STOP STAYS PRESSABLE WHILE PLAY TUNES. A stream can take up to 12 s
+    // to start; locking every button for that long left no way out.
+    for (const id of ["npPlay", "npPause"]) $(id).disabled = true;
+    if (path === "/resume") {
+      $("npWhat").textContent = "Tuning · " + $("npWhat").textContent
+        .replace(/^(Paused|Tuning) · /, "");
+    }
+    try {
+      const r = await fetch(path, { method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: "{}" });
+      const d = await r.json();
+      if (path === "/resume" && !d.playing && d.said) {
+        npNote = { text: d.said.replace(/^Could not resume: /, "Didn't start: "),
+                   until: Date.now() + 8000 };
+      }
+      if (path !== "/silence") showNowPlaying(d.playing, d.paused);
+    } catch (e) { /* the poll will show whatever actually happened */ }
+    refreshNowPlaying();
+    refreshStations();
+  }
+  $("npPlay").addEventListener("click", () => npPost("/resume"));
+  $("npPause").addEventListener("click", () => npPost("/pause"));
+  // ⚠️ STOP IS THE SAME OFF AS THE X ON THE PRESETS: the search is dismissed
+  // and the list closes, so it does not spring back on the next poll.
+  $("npStop").addEventListener("click", () => {
+    stDropSearch = true;
+    stClosed = true;
+    $("stations").hidden = true;
+    npPost("/silence");
+  });
+
+  // ── The station list ─────────────────────────────────────────────────────
   // ⚠️ IT READS THE SAME HELD LIST THE WORDS USE. `/stations` reports
   // `radio.listing()` — what `remember_found` kept from the last search — and
   // a row posts `/station {n}`, which runs the same `media.answer` that "the
@@ -1693,8 +1831,7 @@
   // separately for the page would drift from what "next station" means and
   // nobody would notice until it was wrong.
   //
-  // ⚠️ PRESETS WHEN SOMETHING IS PLAYING. the user: *"The presets can show up
-  // there when the radio is playing."* That is the car-radio logic — a found
+  // ⚠️ PRESETS ONCE MUSIC IS PLAYING. That is the car-radio logic — a found
   // list matters just after a search; once music is on, the useful buttons
   // are your own. Both arrive in one response so the page never shows a
   // stale half.
@@ -1708,6 +1845,7 @@
   let stPresetsOnly = false;
   let stDropSearch = false;
   let stFoundSig = "";
+  let stMusicWas = false;
 
   function stRow(label, name, extra, onPick) {
     const li = document.createElement("li");
@@ -1756,29 +1894,38 @@
       const found = (d && d.stations) || [];
       const pres = (d && d.presets) || [];
       const playing = d && d.playing && d.playing.name;
+      const musicOn = !!(playing || (d && d.paused && d.paused.name));
       // ⚠️ A SEARCH OVERWRITES THE PRESETS; NO SEARCH MEANS ONLY PRESETS.
-      // the user's rule, and it is simpler than the one I built first — I keyed
-      // it on whether something was PLAYING, which got it wrong in both
-      // directions: presets hid a fresh search whenever the radio was
-      // already on, and a search that found nothing left the panel empty
-      // instead of falling back to the buttons. What decides it is whether
-      // there IS a held search. `radio.listing()` is [] until one happens,
-      // so this needs no extra state.
+      // What decides it is whether there IS a held search, not whether
+      // something is playing: keyed on playing, presets would hide a fresh
+      // search whenever the radio was already on, and a search that found
+      // nothing would leave the panel empty instead of falling back to the
+      // buttons. `radio.listing()` is [] until a search happens, so this needs
+      // no extra state.
       // ⚠️ A NEW SEARCH UN-DISMISSES, AND THIS HAS TO BE CHECKED ON THE FOUND
       // LIST ITSELF. Keying it on the DISPLAYED rows does not work: once the
       // search is dismissed the panel shows presets, so the displayed
       // signature stops changing and a fresh search could never bring the
-      // list back — the X would have silently disabled searching.
+      // list back — the X would silently disable searching.
       const foundSig = found.map((x) => x.n + ":" + x.name).join("|");
       if (foundSig !== stFoundSig) {
         stFoundSig = foundSig;
         stDropSearch = false;           // a different search is a new offer
       }
-      // ⚠️ A DISMISSED SEARCH COUNTS AS NO SEARCH. The rule is still
-      // the user's — a held search wins, otherwise presets — but X-ing the
-      // search out has to make it stop winning, or the panel springs back.
+      // ⚠️ A DISMISSED SEARCH COUNTS AS NO SEARCH. A held search wins,
+      // otherwise presets — but X-ing the search out has to make it stop
+      // winning, or the panel springs back.
       const usePresets = found.length === 0 || stDropSearch;
       stPresetsOnly = usePresets;
+      // ⚠️ PRESETS ONLY ONCE MUSIC HAS STARTED, not from the moment the page
+      // opens. A pause keeps them (the radio is still in use); Stop takes them
+      // away.
+      // ⚠️ Music starting again re-opens a list that Stop closed — otherwise
+      // a preset played by voice after a Stop would leave the presets hidden,
+      // because their signature has not changed since they were dismissed.
+      if (musicOn && !stMusicWas) stClosed = false;
+      stMusicWas = musicOn;
+      if (usePresets && !musicOn) { $("stations").hidden = true; return; }
       const rows = usePresets ? pres : found;
       if (!rows.length) { $("stations").hidden = true; return; }
 
@@ -1812,15 +1959,13 @@
     }
   }
 
-  // ⚠️ THE X IS THE OFF SWITCH, REACHED BY STEPPING BACK. the user: *"X-ing out
-  // of the search list brings up the presets list. X-ing out of the presets
-  // list stops playing music."* And: *"I thought you would replace the off
-  // button with these clickable lists."*
+  // ⚠️ THE X IS AN OFF SWITCH, REACHED BY STEPPING BACK. X-ing out of the
+  // search list brings up the presets; X-ing out of the presets stops the
+  // music.
   //
   // So closing is not one action, it is a ladder: a search is the most
   // specific thing on screen, your presets are the thing underneath it, and
-  // silence is underneath that. Each X takes one step down, and the old
-  // separate Stop button is gone because this reaches the same place.
+  // silence is underneath that. Each X takes one step down.
   $("stClose").addEventListener("click", async () => {
     if (!stPresetsOnly) {
       // Step one: drop the search, fall back to the buttons.
@@ -1844,17 +1989,12 @@
   });
 
 
-  // ⚠️ THE POLL IS STARTED AT THE BOTTOM, NOT HERE. It used to read
-  // `if (SERVED)` on this line, and `const SERVED` is declared ~50 lines
-  // further down — a temporal dead zone, so the whole script died with
-  // "Cannot access 'SERVED' before initialization" and every listener after
-  // this point never attached. The page came up with the axolotl fallback and
-  // would not answer anything typed into it.
-  //
-  // ⚠️ `const` IS NOT `var`. A hoisted `var` would have been `undefined` here
-  // and merely skipped the poll; `const` throws. Starting it beside
-  // `claimPrimacy()` is the fix, because that block is already the one that
-  // documents itself as running last.
+  // ⚠️ THE POLL IS STARTED AT THE BOTTOM, NOT HERE. `const SERVED` is declared
+  // further down, and reading it here is a temporal dead zone: the whole
+  // script would die with "Cannot access 'SERVED' before initialization" and
+  // every listener after this point would never attach. A hoisted `var` would
+  // merely be `undefined`; `const` throws. The poll starts beside
+  // `claimPrimacy()`, in the block that documents itself as running last.
 
   $("entry").addEventListener("input", () => {
     if (inflight && $("entry").value.trim()) interrupt();
@@ -1871,9 +2011,9 @@
     // The query is NOT shown. The avatar acknowledges it instead.
     setState("listening");
     say("…", true);
-    // ⚠️ NO TIMER DECIDES WHAT OLLIN SAYS ANY MORE. The avatar still moves
+    // ⚠️ NO TIMER DECIDES WHAT MATI SAYS. The avatar still moves
     // to "thinking" on a beat, because that is about the wait rather than
-    // about the answer — but every WORD now comes from the stream.
+    // about the answer — but every WORD comes from the stream.
     setTimeout(() => {
       if (inflight) setState("thinking");
     }, 900);
@@ -1908,19 +2048,19 @@
   // sits blank rather than erroring: the clip is only ever requested after
   // /events reports an expression, and /events never connected.
   const SERVED = location.protocol.startsWith("http");
-  const OLLIN_URL = "http://127.0.0.1:8756/";
+  const MATI_URL = "http://127.0.0.1:8756/";
 
   function wrongOrigin() {
     say("Open me from Mati, not from the file.", true);
     setTimeout(() => {
       const p = document.createElement("p");
       p.className = "sub state";
-      p.textContent = OLLIN_URL;
+      p.textContent = MATI_URL;
       $("subs").appendChild(p);
     }, 2200);
     // ⚠️ The composer is disabled rather than left to fail on every message.
     $("entry").disabled = true;
-    $("entry").placeholder = "not connected — open " + OLLIN_URL;
+    $("entry").placeholder = "not connected — open " + MATI_URL;
   }
 
   let havePrimacy = true;
@@ -1941,13 +2081,11 @@
   function standDown() {
     document.body.classList.add("taken");
     say("Mati is already open in another window.", true);
-    // ⚠️ THE FALLBACK'S TEXT, NOT THE DISC'S. `avatar.textContent = ""` empties
-    // the whole disc — it deletes the iframe, the still <img> and the fallback
-    // span as DOM nodes, not just the word "axolotl". Reclaiming primacy then
-    // set the text back and the avatar stayed permanently blank, because the
-    // iframe it needs no longer exists. Found while screenshotting the stills:
-    // both "still" and "off" produced an empty disc and the setting looked
-    // broken, when what had happened is that the test window stood down.
+    // ⚠️ THE FALLBACK'S TEXT, NOT THE DISC'S. `avatar.textContent = ""` would
+    // empty the whole disc — the iframe, the still <img> and the fallback span
+    // as DOM nodes, not just the word "axolotl" — and the avatar would stay
+    // blank when this window reclaims primacy, because the iframe it needs
+    // would no longer exist.
     if ($("avatarFallback")) $("avatarFallback").textContent = "";
     // ⚠️ Keep waiting rather than giving up. The moment the other window
     // closes, the lock frees and this one becomes the real Mati.
@@ -1963,11 +2101,72 @@
     }
   }
 
-  // ── ⚠️ OPENING THE APP WAKES OLLIN. the user: "opening the app should
-  // autowake Mati." Waking costs ~90s of field load and prompt warming; if
-  // it only happened on the first message, that cost would land on the
-  // person mid-sentence. Asking now means it is usually ready by the time
-  // they have typed anything.
+  // ── ⚠️ LOCKED MEMORIES ARE SAID, AND OPENED FROM HERE. A Mati whose
+  // vault did not open at start still answers — it simply reads nothing it
+  // holds and keeps nothing it is told. `/unlock` opens the vault in the
+  // running Mati, so nothing has to be restarted.
+  //
+  // ⚠️ THE PASSPHRASE GOES TO `/unlock` AND NOWHERE ELSE. It has its own
+  // field — never the message box, which becomes a turn and a memory — and
+  // the field is emptied the moment it has been sent.
+  let lockTried = false;
+  async function askUnlock(passphrase) {
+    try {
+      const r = await fetch("/unlock", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(passphrase ? { passphrase } : {}) });
+      return await r.json();
+    } catch (e) { return {}; }
+  }
+  function unlocked() {
+    $("unlock").hidden = true;
+    say("Memories open.", true);
+  }
+  async function checkLock(h) {
+    if (!h || !h.memories_locked) { $("unlock").hidden = true; return; }
+    const typed = h.unlock_method === "passphrase";
+    // ⚠️ ONE TRY UNASKED, AND ONLY WHERE NOTHING HAS TO BE TYPED. Someone has
+    // just opened the app, so they are here to answer a fingerprint prompt —
+    // which is exactly who was missing when Mati started.
+    if (!typed && !lockTried) {
+      lockTried = true;
+      if ((await askUnlock()).unlocked) { unlocked(); return; }
+    }
+    $("unlockText").textContent = typed
+      ? "Memories are locked. Type the recovery passphrase to open them."
+      : "Memories are locked.";
+    $("unlockRetry").textContent =
+      h.unlock_method === "touch_id" ? "Use Touch ID" : "Try again";
+    $("unlockRetry").hidden = typed;
+    $("unlock").hidden = false;
+  }
+  $("unlock").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const field = $("unlockPhrase");
+    const phrase = field.value.trim();
+    if (!phrase) { field.focus(); return; }
+    $("unlockGo").disabled = true;
+    const d = await askUnlock(phrase);
+    $("unlockGo").disabled = false;
+    field.value = "";
+    if (d.unlocked) { unlocked(); return; }
+    $("unlockText").textContent = d.retry_after
+      ? "Too many tries. Wait a minute, then try again."
+      : "That passphrase did not open them.";
+  });
+  $("unlockRetry").addEventListener("click", async () => {
+    $("unlockRetry").disabled = true;
+    const d = await askUnlock();
+    $("unlockRetry").disabled = false;
+    if (d.unlocked) { unlocked(); return; }
+    $("unlockText").textContent =
+      "Still locked. Try again, or type the recovery passphrase.";
+  });
+
+  // ── ⚠️ OPENING THE APP WAKES MATI. Waking costs ~90s of field load and
+  // prompt warming; if it only happened on the first message, that cost
+  // would land on the person mid-sentence. Asking now means it is usually
+  // ready by the time they have typed anything.
   //
   // Only works when the page is SERVED by Mati — a file:// page is a
   // different origin and every fetch is blocked. Failure is silent on
@@ -1982,6 +2181,7 @@
                                body: "{}" });
       }
       say(h.asleep ? "Here." : "Here.", true);
+      await checkLock(h);
     } catch (e) {
       say("Here.", true);          // offline or opened from a file
     }
@@ -2023,7 +2223,7 @@
   // no missing-file case. That also retires the transition machinery: the
   // component moves between cues itself.
   //
-  // ⚠️ THREE OF OLLIN'S SEVEN STATES HAVE NO FAITHFUL SCENE, and they are
+  // ⚠️ THREE OF MATI'S SEVEN STATES HAVE NO FAITHFUL SCENE, and they are
   // marked. Aliasing them silently is what this comment exists to prevent.
   const SCENE = {
     idle:      "Idle2",      // faithful
@@ -2065,10 +2265,7 @@
   }
 
   // ── Animated / Still frame / Off ─────────────────────────────────────────
-  // ⚠️ THE SETTING WAS STORED AND READ BY NOTHING. `avatar` round-tripped
-  // through /settings faithfully and the disc animated regardless.
-  //
-  // ⚠️ AND "STILL" HAS TO STOP THE ANIMATION, NOT HIDE IT. Hiding a running
+  // ⚠️ "STILL" HAS TO STOP THE ANIMATION, NOT HIDE IT. Hiding a running
   // iframe leaves React rendering every frame behind an opacity change, which
   // saves nothing — and saving the work is the only reason to pick still over
   // animated. The frame is torn down to about:blank and rebuilt on the way
@@ -2106,22 +2303,12 @@
     if (!img.src.endsWith(next)) img.src = next;
   }
 
-  // ⚠️ RESTORED. This was deleted along with the mp4 player and all SIX of its
-  // callers were left behind. Every one of them threw a ReferenceError, and
-  // the three symptoms the user reported were the three call sites:
-  //
-  //   submit handler   setState("listening") threw AFTER preventDefault(),
-  //                    so `ask()` was never reached — "entering a prompt
-  //                    returns nothing", with no reload to hint at why.
-  //   showExpression   threw before `play()`, so the scene never changed —
-  //                    "the axolotl is repeating the loop".
-  //   the subtitle     therefore still held its boot line — "a text field
-  //                    that says 'Here'".
-  //
-  // ⚠️ AND I CALLED THAT COMMIT VERIFIED ON "JS PARSES". A ReferenceError is
-  // a runtime event; parsing cannot see it. Same lesson as the `FieldBusy`
-  // anchor that never inserted: a syntax check is not a definition check.
-  // `tools/check-app.js` now fails on a called-but-undefined name.
+  // ⚠️ STATE DRIVES THREE THINGS AT ONCE. The submit handler, `showExpression`
+  // and the subtitle all go through `setState`, so a missing definition breaks
+  // all three together: a prompt that returns nothing, an axolotl stuck on one
+  // loop, and a subtitle still holding its boot line. A ReferenceError is a
+  // runtime event that parsing cannot see, which is why `tools/check-app.js`
+  // fails on a called-but-undefined name.
   const STATES = ["listening", "thinking", "asleep", "attending",
                   "away", "dreaming", "locked"];
 
@@ -2158,17 +2345,10 @@
 
 
   // ── Films play HERE, in the page ─────────────────────────────────────────
-  // ⚠️ ALSO RESTORED, AND NOTHING WAS LEFT OF IT BUT THE MARKUP. The same
-  // commit deleted `showFilm`, `closeFilm`, the three element refs and all
-  // three listeners. `showFilm` still had a caller, so a film Mati named
-  // threw; `closeFilm` had none, so the ✕ and Escape were simply dead and
-  // nothing would have reported it.
-  //
-  // ⚠️ the user asked whether video could go through AVFoundation like the
-  // radio does. It can — AVKit and AVPlayerView are both present — but a
-  // window in the server would turn a headless daemon into a GUI app with a
-  // Dock icon and a run loop fighting serve_forever. The page already has a
-  // <video>, and archive.org serves these with HTTP 206 + content-range.
+  // ⚠️ IN THE PAGE, NOT IN THE SERVER. AVKit could play them, but a window in
+  // the server would turn a headless daemon into a GUI app with a Dock icon
+  // and a run loop fighting serve_forever. The page already has a <video>,
+  // and archive.org serves these with HTTP 206 + content-range.
   const filmEl = $("film"), filmVideo = $("filmVideo"),
         filmCredit = $("filmCredit");
 
@@ -2181,24 +2361,19 @@
     filmEl.classList.add("on");
     const go = filmVideo.play();
     if (go && go.catch) go.catch(() => { /* user can press play */ });
-    // ⚠️ THE ORIGINAL REASON CHANGED AND THE LINE HAD TO CHANGE WITH IT. This
-    // used to call `clipEl.pause()` because two video decoders on an Intel
-    // machine with no GPU is how both stutter. `clipEl` is an iframe now and
-    // has no `pause` — the old call sat inside a try/catch that would have
-    // swallowed the error forever. Hiding it stops the frame being painted,
-    // which is the part that actually competed.
+    // ⚠️ HIDDEN, SO THE FRAME STOPS BEING PAINTED. A film and an animation at
+    // once on an Intel machine with no GPU is how both stutter, and the avatar
+    // is an iframe, so hiding it is what stops the competition.
     avatar.classList.add("behind-film");
   }
 
   // ── The reel ────────────────────────────────────────────────────────────
-  // Silent-era shorts and cartoons, looping, MUTED. the user: "there should be
-  // a short playlist of shorts and cartoons from the era that play in a loop.
-  // This way it can play at the same time as listening to music."
+  // Silent-era shorts and cartoons, looping, MUTED, so they can play at the
+  // same time as the radio.
   //
-  // ⚠️ MUTED IS NOT A PREFERENCE, IT IS THE POINT. The whole reason this is
-  // silent-era material is so it can run while the radio does — and
-  // archive.org prints of silent films often carry an ADDED music track, so
-  // "it's a silent film" is not enough on its own.
+  // ⚠️ MUTED IS NOT A PREFERENCE, IT IS THE POINT. archive.org prints of
+  // silent films often carry an ADDED music track, so "it's a silent film" is
+  // not enough on its own.
   //
   // ⚠️ IT WRAPS, unlike `next station`. A reel is an ambient loop and running
   // out would leave a dead rectangle over the page; a search result list is a
@@ -2312,15 +2487,11 @@
     setInterval(refreshNowPlaying, NP_MS);
     setInterval(refreshStations, NP_MS);
 
-    // ⚠️ AND THE SETTINGS NEED THEIR OWN CALL HERE, FOR THE SAME REASON — this
-    // is the station-panel bug again, one layer along. `loadSettings()` was
-    // reachable ONLY from the settings-sheet open handler, so every stored
-    // setting was applied for the first time when the person happened to open
-    // the sheet. Choosing "Still frame", closing the app and reopening it
-    // showed the animation again; worse, `applyTerm()` never ran at boot, so
-    // the terminal button was visible until the sheet was opened once.
-    // ⚠️ Measured, not reasoned: with `avatar` stored as "off" the disc still
-    // rendered art, which is what sent me looking for the missing call.
+    // ⚠️ AND THE SETTINGS NEED THEIR OWN CALL HERE. If `loadSettings()` ran
+    // only when the settings sheet opened, every stored setting would first
+    // apply when the person happened to open it: a stored "Still frame" would
+    // animate on the next launch, and `applyTerm()` would leave the terminal
+    // button visible until the sheet was opened once.
     loadSettings();
 
     claimPrimacy().then((first) => {

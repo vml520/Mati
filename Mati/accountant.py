@@ -1,17 +1,14 @@
 """
 The accountant — a shopping assistant, not a bookkeeper.
 
-The user's framing: keep the personal-assistant/confidant role, and make this
-more like a shopping assistant — shopping budgets, payment schedules, finding
-local deals, help searching for items. The reasoning and the measurements are
-recorded separately; this is the build.
+Mati keeps its personal-assistant, confidant role here, and this is the
+shopping assistant inside it — shopping budgets, payment schedules, finding
+local deals, help searching for items.
 
 ⚠️ MONEY IS INTEGER CENTS, EVERYWHERE, ALWAYS. `0.1 + 0.2 != 0.3` and a budget
-is a comparison against a limit. There was no cents convention in this
-codebase before; this establishes one. Formatting to "$12.34" happens at the
-edge, in `money()`, and nowhere else. (Shopify's own agent surface arrived at
-the same rule independently: "integers in the currency's ISO 4217 minor
-units".)
+is a comparison against a limit. Formatting to "$12.34" happens at the edge,
+in `money()`, and nowhere else. (Shopify's own agent surface uses the same
+rule: "integers in the currency's ISO 4217 minor units".)
 
 ⚠️ "NO DATA" AND "SPENT NOTHING" ARE DIFFERENT ANSWERS. `spent()` returns None
 when nothing has been recorded, and 0 only when something was. "$0 of $200
@@ -20,8 +17,7 @@ it is the first thing the tests check.
 
 ⚠️ THE ANNEALER IS NOT USED HERE. Knapsack at 5–50 items is exact by dynamic
 programming in milliseconds, and annealing returns no optimality certificate.
-For money an approximate answer is a wrong answer. The solver upgrade is real
-and this is not its job.
+For money an approximate answer is a wrong answer.
 
 ⚠️ WHAT THIS MODULE DOES NOT OWN. Payment schedules are `agenda` events — a
 bill is a recurring dated fact and §Bills here is a thin adapter, not storage.
@@ -29,11 +25,11 @@ Deal feeds are `world`. Nudges and quiet hours are `schedule` + `notify`.
 Local circulars are `flipp`, behind its own firewall. If any of those grow a
 table in this file, something has gone wrong.
 
-⚠️ `forget()` IS THE ONE REAL DELETE IN MATI, BY DECISION (the user,
-). Everywhere else corrections annotate and withdrawals hide.
-Spending is the exception because a recorded purchase can be someone else's
-business, and a gift is the obvious case. It is named plainly, it is the only
-one, and `correct()` beside it still annotates rather than overwrites.
+⚠️ `forget()` IS THE ONE REAL DELETE IN MATI, BY DECISION. Everywhere else
+corrections annotate and withdrawals hide. Spending is the exception because a
+recorded purchase can be someone else's business, and a gift is the obvious
+case. It is named plainly, it is the only one, and `correct()` beside it still
+annotates rather than overwrites.
 """
 
 from __future__ import annotations
@@ -74,11 +70,11 @@ def money(cents):
 def to_cents(text):
     """"$12.34", "12.34", "12" -> 1234, 1234, 1200. None if unreadable.
 
-    ⚠️ ROUNDED, NEVER TRUNCATED. Measured: `int(8.70 * 100)` is **869** and
+    ⚠️ ROUNDED, NEVER TRUNCATED. `int(8.70 * 100)` is **869** and
     `int(0.29 * 100)` is **28**, because neither has an exact binary form. A
-    budget tool that loses a cent per entry is not a budget tool. (4.99 is
-    safe, which is exactly why picking one example and trusting it is not a
-    check — the first draft of this comment cited 4.99 and was wrong.)
+    budget tool that loses a cent per entry is not a budget tool. (4.99 happens
+    to be safe, which is exactly why picking one example and trusting it is not
+    a check.)
 
     ⚠️ An unreadable amount is None, never zero — recording a purchase as
     free is worse than refusing it.
@@ -419,9 +415,9 @@ def forget(entry_id, db_path=None):
     """⚠️ THE ONE REAL DELETE IN MATI. Removes a purchase entirely.
 
     Everywhere else corrections annotate and withdrawals hide. Spending is the
-    exception by decision (the user): a recorded purchase can be
-    someone else's business — a gift is the obvious case — and hiding a row
-    that still sums into a total is not forgetting it.
+    exception by decision: a recorded purchase can be someone else's business —
+    a gift is the obvious case — and hiding a row that still sums into a total
+    is not forgetting it.
 
     ⚠️ So it must really go. No tombstone, no `forgotten` column, nothing left
     that a later feature could resurrect and recite.
@@ -683,19 +679,17 @@ def _price_in(text):
 
 
 def track_search(page_url, item=None, target=None, db_path=None):
-    """The user pastes a shopping-search URL; Mati tracks it. (ok, message).
+    """The person pastes a shopping-search URL; Mati tracks it. (ok, message).
 
-    ⚠️ THE WATCHLIST BECOMES USER-EXTENSIBLE HERE, and that is the point. Two
-    feeds chosen by me cover what I thought to pick. A search someone ran
-    themselves covers what they actually want, and a search URL is the most
-    natural thing to hand over — it is already in the address bar.
-
-    , and both halves work:
+    ⚠️ THE WATCHLIST IS USER-EXTENSIBLE HERE, and that is the point. A search
+    someone ran themselves covers what they actually want, and a search URL is
+    the most natural thing to hand over — it is already in the address bar.
+    Both of these work:
 
         slickdeals.net/newsearch.php?q=espresso+machine&rss=1
-            -> 25 items, "'espresso machine' search", prices in the titles
+            -> items titled "'espresso machine' search", prices in the titles
         allbirds.com/collections/mens-shoes.atom
-            -> 25 entries with a structured <price>: 130.00, 140.00
+            -> entries with a structured <price>: 130.00, 140.00
 
     ⚠️ NOTHING HERE WORKS AROUND A BLOCK. `world.discover_feed` reads only
     what a site advertises about itself. eBay and Craigslist return their
@@ -825,12 +819,10 @@ def asks_about_money(text_in):
 
 # ── Hearing money in a sentence ──────────────────────────────────────────────
 #
-# ⚠️ THE MODULE WAS BUILT, TESTED AND UNREACHABLE. `asks_about_money` only ever
-# injected a READ block; `set_budget`, `record`, `watch`, `correct` and
-# `forget` had no caller from a turn at all. So "set a grocery budget of 400"
-# was recognised, answered, and stored nothing — `budgets: []` after weeks.
-# The user: *"the budgeting modules… appear to not function."* They functioned;
-# nothing could reach them.
+# ⚠️ A TURN HAS TO BE ABLE TO REACH THE WRITERS. A read block alone would
+# recognise "set a grocery budget of 400", answer it, and store nothing:
+# `set_budget`, `record`, `watch`, `correct` and `forget` are reached from a
+# turn through here.
 #
 # ⚠️ A FALSE POSITIVE HERE RECORDS A WRONG NUMBER, which is worse than a miss
 # in every other recogniser in this project. Money gets the literal treatment:
@@ -911,13 +903,13 @@ def _budget_name(t):
 def _singular(name):
     """Fold an obvious plural so one envelope does not become two.
 
-    ⚠️ CONSERVATIVE ON PURPOSE. The first version was `s$ -> ''` then
-    `ies$ -> y`, in that order, which turned "gas" into "ga" and "groceries"
-    into "grocerie". A wrong envelope name is worse than an unmerged one: the
-    person sets a budget and is then told there is no data for it.
+    ⚠️ CONSERVATIVE ON PURPOSE. Naive rules — `s$ -> ''` then `ies$ -> y` —
+    turn "gas" into "ga" and "groceries" into "grocerie". A wrong envelope name
+    is worse than an unmerged one: the person sets a budget and is then told
+    there is no data for it.
 
     So: only the last word, only when it is long enough to be a real plural,
-    and never after s/ss/us/is — which is what made "gas" wrong.
+    and never after s/ss/us/is — which is what makes "gas" safe.
     """
     parts = name.split()
     if not parts:
@@ -944,8 +936,8 @@ def hears_money(text_in):
         return None
 
     # ⚠️ "how much have I spent" IS A QUESTION, NOT A FAILED RECORDING. It
-    # contains "spent", so it matched `_SPEND`, found no amount, and came back
-    # as unclear — Mati offering to record a purchase in answer to a request
+    # contains "spent", so `_SPEND` matches it and finds no amount — and
+    # without this Mati would offer to record a purchase in answer to a request
     # for a total. Same shape as `play` matching "What role did X play".
     if _ASKING_MONEY.search(t):
         return None
@@ -982,18 +974,17 @@ def hears_money(text_in):
 def act(req, db_path=None):
     """Carry out a money instruction from `hears_money`. Returns a sentence.
 
-    ⚠️ THIS IS THE WRITER THE MODULE NEVER HAD. Everything below it was built
-    and tested on  and reachable only from the terminal.
+    ⚠️ THIS IS THE WRITER A TURN REACHES. Everything below it is otherwise
+    reachable only from the terminal.
     """
     if not req:
         return None
     verb = req.get("verb")
 
     if verb == "unclear":
-        # ⚠️ ASKS FOR THE ONE MISSING THING. The user, on setup: it must
-        # "function with limited data, but also request the missing data when
-        # necessary." That rule is not only for setup — the same sentence can
-        # arrive half-formed any day, and guessing an amount is how a number
+        # ⚠️ ASKS FOR THE ONE MISSING THING. Mati works with limited data and
+        # asks for the missing piece when it is needed — and the same sentence
+        # can arrive half-formed any day. Guessing an amount is how a number
         # nobody chose starts governing their spending.
         if req.get("kind") == "budget":
             return (f"I can set that up — I just need {req.get('why')}. "
@@ -1005,12 +996,11 @@ def act(req, db_path=None):
         name = set_budget(req["name"], req["cents"], period=req["period"],
                           db_path=db_path)
         if not name:
-            # ⚠️ ASK, DO NOT REPORT. The user: *"Clarify, before and after an
-            # error occurs, before transferring the request to an error
-            # handler."* A budget that would not store is almost always a
-            # NAME Mati read badly out of a longer sentence — the measured
-            # case was a budget called "lunch that can cover from" — so the
-            # useful answer asks what to call it, not that something failed.
+            # ⚠️ ASK, DO NOT REPORT. Clarify before an error reaches an error
+            # handler. A budget that would not store is almost always a NAME
+            # Mati read badly out of a longer sentence — a budget called "lunch
+            # that can cover from", say — so the useful answer asks what to
+            # call it, not that something failed.
             return (f"I have {money(req['cents'])} a {req['period']}, but I "
                     f"am not sure what to call it. What should this budget "
                     f"be named?")

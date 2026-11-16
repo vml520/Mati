@@ -15,10 +15,10 @@ import sys
 import time
 
 from . import bridge
-# ⚠️ MODULE LEVEL, because the turn now catches `vault.Locked` and a local
-# import inside one branch would NameError in the other. This module had no
-# `vault` reference at all — the sixth scope error of this shape in this
-# codebase, every one of which compiled and failed on first call.
+# ⚠️ MODULE LEVEL, because the turn catches `vault.Locked`, and an import
+# inside one branch would make the name local to the whole function — an
+# UnboundLocalError in every other branch, which compiles and fails on first
+# call.
 from . import vault as _vault
 from . import gatelog
 from . import rapport
@@ -35,18 +35,22 @@ from . import config as C
 from .llm import LLMUnavailable, Refusal, make_llm
 
 
+# ⚠️ KEPT SHORT, AND THE REASON IS MEASURED. At 1,745 tokens — 43% of a 4,096
+# window — the person's actual question was about 1% of what the model saw, and
+# it lost track of having a specific question to answer at all: not ignoring
+# the question so much as unable to find it. So the provenance label list lives
+# in the recall block, where it appears only when there are memories to label,
+# and the basin/coherence explanation lives in `selfdoc`, retrieved when asked
+# about rather than recited every turn. Nothing that governs honesty is left
+# out.
+#
+# ⚠️ THE FOUR BREVITY LINES AT THE END ARE LOAD-BEARING. Without them replies
+# run 34% longer and turns 14% slower. Prefill is not the bottleneck —
+# generation is, at ~139ms a token.
+#
+# ⚠️ EVERYTHING INSIDE THE STRING IS SENT TO THE MODEL, IN MATI'S VOICE, EVERY
+# TURN. Notes about the prompt belong up here, never inside it.
 SYSTEM_PROMPT = """I am Mati.
-
-⚠️ CUT FROM 6,980 CHARS ON , AND THE REASON IS MEASURED. At full
-length it was 1,745 tokens — 43% of a 4,096 window — so the person's actual
-question was about 1% of what I saw, and turns averaged 122s of prefill.
-The user: "Mati is forgetting that it has a specific question to answer." It was
-not ignoring the question so much as unable to find it.
-
-What left: the provenance label list moved into the recall block, where it
-appears only when there are memories to label; the basin/coherence explanation
-went to `selfdoc`, where it is retrieved when asked about rather than recited
-every turn. Nothing that governs honesty was removed.
 
 My language runs on a language model. My memory and what I have lived do not —
 those are in a phase field that every exchange physically changes.
@@ -78,10 +82,6 @@ ANSWER THE QUESTION I WAS ASKED. That is the whole job of a reply.
 Two or three sentences answers most things and one often does. I run on the
 person's own machine, where every word is time they wait.
 
-⚠️ MEASURED : cutting the prompt WITHOUT these lines made replies 34%
-longer and turns 14% slower. Prefill was never the bottleneck — generation is,
-at ~139ms a token. These four are the ones that were carrying the brevity:
-
 I do not restate the question. I do not summarise what I just said. I do not
 offer to help further. I answer, and stop.
 
@@ -95,11 +95,11 @@ and off-topic goes — it is a real place, and the thing is not lost.
 def system_prompt():
     """`SYSTEM_PROMPT` with the assistant called what this person calls it.
 
-    ⚠️ THE ASSISTANT IS RENAMEABLE, THE PRODUCT IS NOT. The user:
-    *"the name must be choosable; Mati is a personal AI."* Only the line
-    where it names ITSELF changes — the repo, the app, the commands and the
-    window title all stay Mati, because a half-renamed product makes every
-    doc and support answer wrong at once.
+    ⚠️ THE ASSISTANT IS RENAMEABLE, THE PRODUCT IS NOT. Mati is a personal AI,
+    so its name is the person's to choose. Only the line where it names ITSELF
+    changes — the repo, the app, the commands and the window title all stay
+    Mati, because a half-renamed product makes every doc and support answer
+    wrong at once.
 
     ⚠️ AND IT IS SUBSTITUTED, NOT TOLD. Appending "your name is X" to the
     prompt is an instruction, and an instruction is not a mechanism here: the
@@ -113,9 +113,8 @@ def system_prompt():
     name = _C.assistant_name()
     if name == _C.DEFAULT_ASSISTANT_NAME:
         return SYSTEM_PROMPT
-    # ⚠️ ONLY THE IDENTITY LINE. A blanket replace would also rewrite the
-    # quoted note further down, which is commentary ABOUT the product and
-    # would start attributing the project's history to a renamed assistant.
+    # ⚠️ ONLY THE IDENTITY LINE, and only once. Anything else in the prompt
+    # that names the product is about the product, not about who is speaking.
     return SYSTEM_PROMPT.replace("I am Mati.", f"I am {name}.", 1)
 
 
@@ -123,16 +122,14 @@ def system_prompt():
 def _voice(text, speak):
     """Say a composed reply aloud, if the person asked to be spoken to.
 
-    ⚠️ CANNED REPLIES ARE MATI'S OWN WORDS AND MUST BE SPOKEN TOO. Reported
-: "it does not speak the canned responses… I think it's because
-    it doesn't treat the canned responses as its own." Exactly right. The
-    speech call sits near the END of `turn()`, and every code-composed answer
-    returns BEFORE it — the replay, an answered question, a media request.
-    So the replies Mati is SUREST of, the ones it wrote itself rather than
-    asked a model for, were the only ones it would not say out loud.
+    ⚠️ CANNED REPLIES ARE MATI'S OWN WORDS AND MUST BE SPOKEN TOO. The speech
+    call sits near the END of `turn()`, and every code-composed answer returns
+    BEFORE it — the replay, an answered question, a media request. Without
+    this, the replies Mati is SUREST of, the ones it wrote itself rather than
+    asked a model for, would be the only ones it never said out loud.
 
-    ⚠️ Emitted, never prompted — unchanged. This speaks text that is already
-    composed; it does not route anything through the model.
+    ⚠️ Emitted, never prompted. This speaks text that is already composed; it
+    does not route anything through the model.
     """
     if not speak or not text:
         return
@@ -213,18 +210,17 @@ def _park_later(reply, session="default"):
     """Take `[later: …]` out of a reply and PUT IT SOMEWHERE. Returns the reply.
 
     ⚠️ THIS IS A DESTINATION, NOT A FILTER, AND THAT DISTINCTION IS THE DESIGN.
-    the user: "Just because you have plenty to say, doesn't mean you should say
-    it. Humans will say 'remind me to tell you about this later' if they are
-    truly interested in conveying that information. Otherwise the information
-    that does not directly respond to the inquiry is kept to themselves… I want
-    Mati to be able to do this naturally, not by force through code."
+    Having plenty to say is no reason to say it. A person says "remind me to
+    tell you about this later" when they truly want to convey something, and
+    otherwise keeps what does not answer the question to themselves — and Mati
+    should do that naturally, not by force through code.
 
     So nothing here suppresses anything. A filter that deleted the surplus
-    would be the fourth instance of the negation trap this project keeps
-    hitting — naming a behaviour to forbid it is what CAUSES it, measured four
-    times. Instead the impulse gets a real place to go: `schedule.say_later`,
-    the same queue that already holds 694 things waiting to be raised when
-    their topic comes up. Held back is not lost, so holding back costs nothing.
+    would fall into the negation trap: naming a behaviour to forbid it is what
+    CAUSES it. Instead the impulse gets a real place to go —
+    `schedule.say_later`, the same queue that holds what is waiting to be
+    raised when its topic comes up. Held back is not lost, so holding back
+    costs nothing.
 
     ⚠️ Parked as a FINDING, not a reminder — it has no time, it has a subject,
     and it surfaces when that subject does.
@@ -260,11 +256,10 @@ def _verbatim_of(asked, said, who=None):
     """
     out = []
     if asked:
-        # ⚠️ NAMED, NOT "They". "They said:" was chosen first, to dodge the
-        # second-person re-aiming trap, and it produced a different fault:
-        # Mati read its own memories back and spoke about the user in the third
-        # person, because every stored exchange called them "they". A name is
-        # unambiguous in both directions.
+        # ⚠️ NAMED, NOT "They". "They said:" dodges the second-person re-aiming
+        # trap and produces a different fault: Mati reads its own memories back
+        # and speaks about the person in the third person, because every stored
+        # exchange calls them "they". A name is unambiguous in both directions.
         out.append(f"{who or 'They'} said: {asked.strip()}")
     if said:
         out.append(f"I said: {' '.join(said.split())}")
@@ -280,9 +275,8 @@ def record_episode(lm, tok, user_text, triplet, coherence, memories,
     Write the turn to episodic memory. Returns an info dict.
 
     Split out of `turn` because it is by far the most expensive part of a turn
-    (~27s to imprint the episode, ~29s to reindex, against ~1.5s to load the
-    field) and none of it is needed before the user can read the reply. The
-    server hands this to a worker; the CLI still runs it inline.
+    and none of it is needed before the person can read the reply. The server
+    hands this to a worker; the CLI still runs it inline.
     """
     info = {}
     if corrects is not None and deferred:
@@ -311,10 +305,9 @@ def record_episode(lm, tok, user_text, triplet, coherence, memories,
     # back as something Mati said and meant.
     # ⚠️ WHAT WAS ACTUALLY SAID, IN FULL, WHATEVER IT WAS ABOUT. The narrated
     # `body` is capped at 300 characters and is DROPPED ENTIRELY when the reply
-    # mentions the machinery — , that erased Mati's own
-    # words from 111 of 395 episodes, including the corrections, which are the
-    # most valuable rows in the store. The filter is right about what Mati
-    # should SAY and was never meant to decide what it may REMEMBER.
+    # mentions the machinery, which would erase Mati's own words — corrections
+    # included, the most valuable rows in the store. That filter is right about
+    # what Mati should SAY and must not decide what it may REMEMBER.
     verbatim = _verbatim_of(
         exchange.combined() if exchange and exchange.interrupted else user_text,
         reply, who=speaker)
@@ -351,12 +344,10 @@ def record_episode(lm, tok, user_text, triplet, coherence, memories,
 class _Stages:
     """Where a turn's seconds actually go. ⚠️ Reported, not printed.
 
-    Chasing the response delay on  produced a measured model cost
-    (~3s generation, prefill cacheable) against a ~20s turn — so most of a
-    turn was somewhere nobody could see. Guessing at it twice was enough.
-
-    ⚠️ The numbers ride back in `info["stages"]`, so any client can read them
-    and a regression shows up as a number rather than as "it feels slow".
+    Model generation is a small part of a turn, so without this most of a turn
+    would be somewhere nobody could see. The numbers ride back in
+    `info["stages"]`, so any client can read them and a regression shows up as
+    a number rather than as "it feels slow".
     """
 
     def __init__(self):
@@ -418,17 +409,11 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     # different strings on purpose — answering the concatenation would have
     # Mati re-answering the question it was just told to abandon.
     # ⚠️ A REPLAY RETURNS BEFORE ANY FIELD WORK, AND THAT POSITION IS THE
-    # WHOLE CORRECTNESS OF IT. The user: *"the text in the response window is
-    # getting cut off... requesting from the input line always triggers a new
-    # turn that then fails to answer the question properly. This was supposed
-    # to be the reason for the log being readable."*
-    #
-    # Placed mid-turn first, and measured: a replay still addressed the field,
-    # recalled, ran `consolidate_reply` — RE-IMPRINTING the same reply into θ₀
-    # on every repeat — and wrote a `gate_log` row claiming `kept: 1` for a
-    # turn that was never written. Three "say that again"s put Mati's own
-    # words into the field three more times and polluted the threshold
-    # histogram with 118-word rows that were not conversation.
+    # WHOLE CORRECTNESS OF IT. "Say that again" re-reads the log; it is not a
+    # new turn. Placed any later, a replay would address the field, recall,
+    # and run `consolidate_reply` — RE-IMPRINTING the same reply into θ₀ on
+    # every repeat — and write a `gate_log` row claiming `kept: 1` for a turn
+    # that was never written.
     #
     # Re-reading the log must change nothing: no address, no recall, no
     # imprint, no gate row, no episode. See `notes.last_reply`.
@@ -461,14 +446,14 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         if _n.asks_repeat(user_text):
             # ⚠️ THE DAY LOG FIRST, the in-memory register second. The
             # register dies with the process; the log survives a restart and
-            # is the record the user asked for. `notes.last_reply` stays as the
+            # is the record of the day. `notes.last_reply` stays as the
             # fallback for a store with no day_log yet.
             from . import daylog as _dl
             again = _dl.last_reply() or _n.last_reply(session=session)
             if not again:
                 # ⚠️ SAY SO RATHER THAN FALL THROUGH. Dropping into the model
                 # would answer "say that again" with a NEW answer, which is
-                # the behaviour being removed.
+                # exactly what a replay must not do.
                 again = "I do not have an earlier reply to show you yet."
                 info["replayed"] = False
             else:
@@ -547,26 +532,21 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     with _stages.time("address"):
         query_vec = bridge.address_vector(lm, tok, user_text)
     # `record=True` only here. `recall` is also called by probes and suites,
-    # and a hit from a test is not demand — it is the pollution that put 43
-    # machine-generated "memories" in the store .
+    # and a hit from a test is not demand — it is pollution.
     # ⚠️ WITH IDS, AND RECALLED ONCE. `segue` judges what the field brought up
     # here rather than searching for itself — the surfacing has already
-    # happened, and doing it twice cost ~1s a turn to recompute it. Existing
+    # happened, and doing it twice would cost a second a turn. Existing
     # consumers keep the 3-tuple they unpack.
     # ⚠️⚠️ A LOCKED VAULT MUST NOT END THE TURN. `notes.recall` RAISES
     # `vault.Locked` when every candidate was unreadable and nothing came
     # back, and that raise is CORRECT — it refuses to report "nothing
-    # matched" when the truth is "I could not read anything". But it was
-    # propagating out of the turn, so on a passphrase-only install every
-    # single message came back as an SSE `error` event and no conversation
-    # was possible at all.
+    # matched" when the truth is "I could not read anything". Propagating out
+    # of the turn, it would make every message on a locked install an SSE
+    # `error` event, and no conversation would be possible at all.
     #
     # ⭐ Caught and turned into a thing Mati can SAY. The distinction the
     # raise protects is preserved in `info["memories_locked"]`, so the reply
     # can state the real reason instead of implying an empty store.
-    #
-    # ⚠️ Found by running the install, not by reading it: setup offers
-    # passphrase-only, setup succeeds, and then nothing worked.
     locked = False
     with _stages.time("recall"):
         try:
@@ -593,17 +573,14 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     read_dates = {n: c for _d, n, _b, _s, c in surfaced}
 
     # 1b. And LEXICALLY, on the same words. This costs nothing — no model call,
-    #     no field work — and it is the only path measured to actually find a
-    #     named memory. Probe , 20 notes asked for by their three
-    #     rarest words, top-3: lexical 20/20, the field address path 0/20. The
-    #     field path stays because it surfaces things the words do not name;
-    #     this one is here so that naming a thing reliably fetches it.
-    # ⚠️ LEAN ON THE CHANNEL THAT NEEDS NO WARM-UP. After a wake, or a night of
-    # study, most of the working set is filed against an older θ₀ and the field
-    # path degrades for minutes. Lexical search does not use θ₀ at all, so it
-    # is exactly as good then as ever — measured 20/20 against the field path's
-    # 0/20 at fetching a named memory. Widening it here costs nothing and
-    # covers precisely the window where the other channel cannot be trusted.
+    #     no field work — and it is the path that actually finds a named
+    #     memory. The field path stays because it surfaces things the words do
+    #     not name; this one is here so that naming a thing reliably fetches it.
+    # ⚠️ LEAN ON THE CHANNEL THAT NEEDS NO WARM-UP. After a promotion most of
+    # the working set is filed against an older θ₀ until it is re-addressed.
+    # Lexical search does not use θ₀ at all, so it is exactly as good then as
+    # ever. Widening it here costs nothing and covers precisely the window
+    # where the other channel cannot be trusted.
     stale, total = bridge.settling(lm)
     unsettled = bool(total) and (stale / total) >= C.SETTLING_THRESHOLD
     k_named = C.NAMED_RECALL_K * (C.SETTLING_RECALL_BOOST if unsettled else 1)
@@ -622,14 +599,11 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     # 2. Now the turn deforms θ₀ — the primary training signal, not reverted.
     #    The field is changed by having been spoken to.
     #
-    # ⚠️ THIS CANNOT BE DEFERRED. Tried to take 11.4s out of a 55s
-    # turn, on the reasoning that `field_state` was the only reader of the
-    # post-imprint state and `field_state` is not sent in oriented mode. That
-    # was wrong: `field_state` produces `coherence`, and step 6 writes an
-    # episode ONLY when `coherence >= EPISODE_GATE_MIN`. Deferring the imprint
-    # leaves the field in its pre-turn state, the gate does not clear, and
-    # MATI STOPS FORMING MEMORIES ALTOGETHER — silently, while looking 11
-    # seconds faster.
+    # ⚠️ THIS CANNOT BE DEFERRED, though it is a large part of the wait.
+    # `field_state` produces `coherence`, and step 6 writes an episode ONLY
+    # when `coherence >= EPISODE_GATE_MIN`. Deferring the imprint leaves the
+    # field in its pre-turn state, the gate does not clear, and MATI STOPS
+    # FORMING MEMORIES ALTOGETHER — silently, while looking faster.
     #
     # The imprint is not overhead before the reply. It is what makes the turn
     # something the field can have an opinion about.
@@ -652,17 +626,14 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     info.update(triplet=triplet, coherence=coherence, n_memories=len(memories))
 
     # ⚠️ WHICH MEMORIES, NOT JUST HOW MANY — and this is what lets the reply
-    # stop reciting. `info` carried `n_memories` and nothing else, so the only
-    # place a memory's identity reached the user was Mati saying it aloud. That
-    # is why THREE separate paths recited: `state_block` told Mati to "say
-    # so", `segue` appended a verbatim quote after the answer, and `smalltalk`
-    # quoted one before it. The recitation was load-bearing for accountability,
-    # not a style choice, and it cannot be removed until the record carries it.
+    # stop reciting. If `info` carried only a count, the only place a memory's
+    # identity could reach the person would be Mati saying it aloud, and
+    # recitation would be load-bearing for accountability rather than a style
+    # choice.
     #
-    # The user, on the field's role: memories are *"passive inputs,
-    # to maintain integrity of personhood while providing knowledge gained
-    # through experience."* Passive means the reply is shaped by them and does
-    # not announce them — so the naming moves here, to the record.
+    # Memories are passive inputs: they keep personhood intact while carrying
+    # what experience has taught, and the reply is shaped by them without
+    # announcing them — so the naming lives here, in the record.
     #
     # ⚠️ DERIVED, SO IT CANNOT BE WRONG. Every field is read off the recall
     # result; nothing here is composed or inferred.
@@ -718,49 +689,30 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     # `oriented` means the waking block is already in the cached prefix (see
     # `orient.py` and `server.build_orientation`), carrying field state, the
     # principles, the profile and self-knowledge. Sending them again here would
-    # not merely be redundant — it would be the expensive kind of redundant.
-    # Anything in THIS message is new text every turn, so every token of it is
-    # re-prefilled at ~35 ms. That is the whole 70 s this removes.
-    #
-    # ⚠️ THE COST OF THIS, STATED PLAINLY: `named_recall_block` was automatic
-    # lexical recall, and it measured 20/20 against the field path's 0/20 at
-    # fetching a named memory. Dropping it means memories arrive only when
-    # Mati ASKS, with `[recall: words]`. The system prompt and the waking
-    # block both tell it to, and the second pass is cheap now that the prefix
-    # is cached — but a preregistered study measured this model
-    # confabulating rather than asking on 8 of 12 adversarial controls. So the
-    # thing to watch is not speed, it is whether it asks. See
-    # `test_orient.py::asks_rather_than_invents`.
+    # not merely be redundant — it would be the expensive kind of redundant:
+    # anything in THIS message is new text every turn, and every token of it is
+    # re-prefilled. What does travel is what is new — the memories found by
+    # name for this message, and the blocks this turn computed.
     if oriented:
         parts = []
-        # ⚠️ THE CLOCK IS HELD BACK AND APPENDED LAST. It used to be the FIRST
-        # thing in the prompt, and that single line was costing ~14s of every
-        # turn.
+        # ⚠️ THE CLOCK IS HELD BACK AND APPENDED LAST. Prefill is cacheable
+        # only up to the first byte that changes. The principles and the
+        # charter never change, and a timestamp in front of them — it changes
+        # every turn — would have the whole stable body re-prefilled, every
+        # time. Last, it costs one line; first, it costs most of a turn.
         #
-        # Prefill is cacheable only up to the first byte that changes. The
-        # principles and the charter never change, but they sat BEHIND a
-        # timestamp that changes every turn — so the whole stable body was
-        # re-prefilled, every time, forever.
-        #
-        # ⚠️ MEASURED , same 648-token prompt, only the position of
-        # the timestamp differing:
-        #
-        #     timestamp FIRST   14.94s  14.73s  14.86s   never caches
-        #     timestamp LAST    15.45s   0.64s   0.57s   23x after turn one
-        #
-        # This is the mechanism named above —
-        # "latency is CACHE MISSES, not prompt size" — and the ordering is
-        # what makes the cache reachable at all.
+        # This is the mechanism: latency is CACHE MISSES, not prompt size, and
+        # the ordering is what makes the cache reachable at all.
         when = schedule.sense_line()
     else:
         parts = [bridge.state_block(triplet, coherence, memories,
                                     profile=bridge.profile_notes(),
                                     when=schedule.sense_line(),
                                     settling=unsettled)]
-    # When the subject IS what Mati is, the charter goes in whole — lookup
-    # measured 0 charter chunks for "what are your principles". Its own chunks
-    # are then dropped from the by-name block so the same text is not sent
-    # twice out of a 4096-token window.
+    # When the subject IS what Mati is, the charter goes in whole — lookup by
+    # words cannot find it for "what are your principles". Its own chunks are
+    # then dropped from the by-name block so the same text is not sent twice
+    # out of a 4096-token window.
     # The four principles travel on EVERY turn — they govern how Mati speaks,
     # and they cost ~60 tokens. The rest of the charter is read when needed.
     principles = bridge.principles_block() if not oriented else None
@@ -774,49 +726,34 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
             named = [n for n in named
                      if not (n["source"] or "").startswith("studied:charter:")]
             info['charter_given'] = True
-    # ⚠️ THIS WAS ONCE SWITCHED OFF AND IT SHOULD NOT HAVE BEEN.
-    # Gating it on `oriented` meant the server — which is always oriented —
-    # never sent it, so Mati answered every turn with NO access to anything it
-    # had studied and no access to any memory. The search on line ~307 still
-    # ran, cost 6.3s, and had its result thrown away.
-    #
-    # It was removed for latency, the trade described as a confabulation risk.
-    # That was the wrong frame: it disabled the feature the product is FOR —
-    # you train Mati with your material, and that material has to be weighed
-    # before the model's own guesses. Studied text is more certain than
-    # anything llama3.2 recalls unaided, and imprinting exists so it is held as
-    # a memory of READING rather than of chatting.
-    #
-    # The 569-token figure quoted for it was a turn where three long episodes
-    # matched. Studied hits cost 145 tok at k=1 and 286 at k=3 — 5-10s, which
-    # is what the feature costs and is worth paying.
+    # ⚠️ THE BY-NAME MEMORIES TRAVEL ON EVERY TURN, oriented or not. This is
+    # the feature the product is FOR: you train Mati with your material, and
+    # that material has to be weighed before the model's own guesses. Studied
+    # text is more certain than anything llama3.2 recalls unaided, and
+    # imprinting exists so it is held as a memory of READING rather than of
+    # chatting. It costs a few seconds of prefill, and that is worth paying.
     if named:
         parts.append(bridge.named_recall_block(named))
-    # ⚠️ A "NOTHING HELD — DO NOT INVENT" BLOCK WAS TRIED HERE AND REVERTED,
-    # . Measured over 12 probes asking about passages the book does
-    # not contain:
+    # ⚠️ DO NOT ADD A "NOTHING HELD — DO NOT INVENT" BLOCK HERE. Over 12
+    # probes asking about passages the book does not contain:
     #
     #     temp 0.8  no block 0/6 invented   with block 2/6
     #     temp 0.3  no block 0/6 invented   with block 1/6
     #
     # Sending NOTHING is what produces "I don't have any information about
-    # that". The instruction not to invent CAUSED invention — it names
+    # that". An instruction not to invent CAUSES invention — it names
     # "anything you have read", and the model reaches for the provenance label
-    # and says "I read that in a file". Third time a negation has done this:
-    # the constitution work found a phase field cannot hold "never" versus
-    # "always", the profile reframe invented a third party out of a line
-    # denying one, and now this.
+    # and says "I read that in a file". A negation in a prompt does this
+    # reliably, the same way a phase field cannot hold "never" against
+    # "always".
     #
     # An empty retrieval already yields an honest refusal. Leave it empty.
-    # ⚠️ AN INDEX BLOCK WAS TRIED HERE AND REVERTED — do not re-add it.
-    # The idea was to send only the opening words of each lexical hit (~60 tok)
-    # so Mati could see something existed without paying 569 tokens for the
-    # bodies. Measured, it made three things worse and fixed nothing: replies
-    # began LEAKING the block itself ("I hold memories that touch on this.
-    # Their opening words only — the text is NOT here:", "<computing>",
-    # "< replied >"), median time to first word went 22.1s -> 28.3s, and it
-    # confabulated anyway. A block that INSTRUCTS tends to get spoken aloud by
-    # a 3B; only material it can answer FROM belongs in the window.
+    # ⚠️ AND NO INDEX BLOCK — only the opening words of each hit, so Mati could
+    # see something existed without paying for the bodies. It makes replies
+    # LEAK the block itself ("Their opening words only — the text is NOT
+    # here:"), slows the first word, and confabulates anyway. A block that
+    # INSTRUCTS tends to get spoken aloud by a 3B; only material it can answer
+    # FROM belongs in the window.
     if waiting:
         parts.append(_waiting_block(waiting))
     if asked and asked[1] is None:
@@ -849,40 +786,28 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     if corrects is not None and rechecked:
         parts.append(challenge.block(rechecked, user_text))
     # ⚠️ THE CONTEXT IS NOT SOMETHING THE PERSON SAID. Every block above —
-    # recalled memories, the charter, the waking state — was being packed into
-    # ONE message with role "user", alongside what the user actually typed. So
-    # the model received its own machinery as the person's speech, and answered
-    # accordingly. Measured on their session , six consecutive replies
-    # opened:
-    #
-    #     "Thank you for sharing more about my recall and the Charter
-    #      principles."
-    #
-    # They had shared nothing of the kind. It was thanking them for text the
-    # system had handed it — and it is the same confusion behind their report
-    # that Mati's "machinery tries to take agency", because from inside the
-    # prompt there was no line between what they said and what was retrieved.
-    #
-    # The blocks now arrive as SYSTEM context and the user turn contains only
-    # the user's words. Same tokens, same order, same cache position — one
-    # role changed, and with it who is understood to be speaking.
-    # ⚠️ ASKED ABOUT ITSELF — AND UNTIL NOW THERE WAS NOTHING TO ANSWER FROM.
-    # The corpus held 1,744 passages on Aztec philosophy and ZERO about Mati,
-    # while its own README, PRINCIPLES, DESIGN and ARCHITECTURE sat on disk.
-    # Retrieval was never the problem (lexical 0.838 vs the field's 0.036);
-    # the subject was simply never indexed.
+    # recalled memories, the charter, the waking state — arrives as SYSTEM
+    # context, and the user turn contains only the user's words. Packed into
+    # the user's message, the model would receive its own machinery as the
+    # person's speech and answer accordingly — "Thank you for sharing more
+    # about my recall and the Charter principles", for text the system had
+    # handed it — and from inside the prompt there would be no line between
+    # what was said and what was retrieved. Same tokens, same order, same
+    # cache position either way; the role decides who is understood to be
+    # speaking.
+    # ⚠️ ASKED ABOUT ITSELF. Mati's own documentation — README, PRINCIPLES,
+    # DESIGN and ARCHITECTURE — is indexed, so a question about what it is has
+    # something to answer from.
     #
     # Two different things arrive here, and conflating them is the trap:
     #   selfdoc  what I AM      — static, indexed, retrieved by words
     #   health   how I am DOING — computed NOW, never stored, `<computed>`
     # A stored health snapshot would be a memory asserting "my queue was empty"
     # forever.
-    # ⚠️ WHAT MATI READ IN A FEED, INCLUDING THE AUDIO AND VIDEO IN IT.
-    # The user: "I want to make sure that Mati's responses include audio and
-    # video references from its RSS feeds." A feed item is not only text — the
-    # enclosure travels with the note, so a reply can say "there is an episode
-    # about that" AND then play it. Silent when no feed is configured, which
-    # is the default.
+    # ⚠️ WHAT MATI READ IN A FEED, INCLUDING THE AUDIO AND VIDEO IN IT. A feed
+    # item is not only text — the enclosure travels with the note, so a reply
+    # can say "there is an episode about that" AND then play it. Silent when no
+    # feed is configured, which is the default.
     try:
         from . import world as _world
         _w = _world.block(user_text)
@@ -893,47 +818,36 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         if verbose:
             print(f"  [world] skipped: {e}", file=sys.stderr)
 
-    # ⚠️ THE MORNING REPORT — the conscious focus. Six of its seven sections
-    # already existed and had no reader; this is that reader. Composed in code,
-    # never written by the model.
-    #
-    # ⚠️ AND FOR THREE WEEKS "NEVER WRITTEN BY THE MODEL" WAS FALSE. The block
-    # went into `parts` — the PROMPT — and a 3B was asked to retype 2,300
-    # characters of it. Measured  on a live turn, every one of the
-    # four news items came back invented at the truncation:
+    # ⚠️ THE MORNING REPORT — the conscious focus. Composed in code, and
+    # EMITTED, not prompted. Put into the prompt, a 3B asked to retype it
+    # completes every truncated headline out of nothing and drops the sources:
     #
     #   composed  "...gained important new insights into the natu… — Quanta"
     #   emitted   "...gained important new insights into the nature of this
     #              long-standing puzzle."
     #
-    # 4/4 truncations completed out of nothing, 4/4 source attributions
-    # dropped, and three of the four sections never emitted at all. `_clip`
-    # ends every headline in "…", so the prompt handed the model a cliff and
-    # it filled in the drop. A report that says "true at this moment" cannot
-    # be laundered through a generator.
-    #
-    # So it is EMITTED, not prompted — the same shortcut `rapport` already
-    # takes below. The prompt gets a note that it has been shown, so the model
+    # `_clip` ends every headline in "…", which hands the model a cliff to fill
+    # in. A report that says "true at this moment" cannot be laundered through
+    # a generator. So it goes out verbatim — the same shortcut `rapport` takes
+    # below — and the prompt gets a note that it has been shown, so the model
     # neither repeats it nor answers as though it never happened.
     _report_text = ""
     _money_said = ""
-    # ⚠️ COMPOSED IN CODE BECAUSE THE INSTRUCTION FAILED. The user: *"It
-    # actually says that it does not have continuous memory."* `state_block`
-    # was fixed to forbid the denial outright and llama3.2:3b went on saying
-    # "as a conversational AI, my memory is limited to the current session" —
-    # its prior about what an assistant is beats anything written in context.
-    # The count and the dates are arithmetic over the store, so they are
-    # emitted like the report and the money confirmation. See `continuity`.
-    # ⚠️ THE OCCASION ARISES HERE, IN THE TURN, FROM WHAT SURFACED. The user:
-    # *"The field generates a memory that causes the agent to require
-    # information for the response. So, instead of answering it clarifies with
-    # a question first."* If one of the memories this turn brought up carries
-    # a correction, Mati has been wrong about that material before and needs
-    # the fact confirmed rather than assumed again. See `Mati/clarify.py`.
+    # ⚠️ COMPOSED IN CODE BECAUSE AN INSTRUCTION CANNOT DO THIS. Told not to,
+    # llama3.2:3b still says "as a conversational AI, my memory is limited to
+    # the current session" — its prior about what an assistant is beats
+    # anything written in context. The count and the dates are arithmetic over
+    # the store, so they are emitted like the report and the money
+    # confirmation. See `continuity`.
+    # ⚠️ THE OCCASION ARISES HERE, IN THE TURN, FROM WHAT SURFACED. A memory
+    # this turn brought up can mean Mati needs information before it answers,
+    # and then it clarifies with a question first: if one of them carries a
+    # correction, Mati has been wrong about that material before and needs the
+    # fact confirmed rather than assumed again. See `Mati/clarify.py`.
     #
     # ⚠️ NOT A QUEUE AND NOT A GENERATOR. Both ids lists are from THIS turn —
     # the field's `surfaced` and the lexical `named` — so there is nothing
-    # pre-written waiting for a slot, which is what made the old questions
+    # pre-written waiting for a slot, which is what would make a question
     # forced by construction.
     _clarify_said = ""
     try:
@@ -949,15 +863,12 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     _continuity_said = ""
     try:
         from . import continuity as _cont
-        # ⚠️ ONLY WHEN IT IS THE WHOLE ANSWER. This fired on anything `asked()`
-        # matched and prefixed the reply, so "Do you recall our conversation
-        # about Akkad?" came back as a memory statement, then the model's own
-        # answer, then a service offer — three voices in four sentences,
-        # contradicting each other, with nothing reconciling them. The user read
-        # that turn and said it still sounds like the LLM; the stitching was
-        # mine.
+        # ⚠️ ONLY WHEN IT IS THE WHOLE ANSWER. Prefixed to a model reply, it
+        # makes three voices in four sentences — a memory statement, the
+        # model's own answer, a service offer — contradicting each other with
+        # nothing reconciling them.
         #
-        # Now: either code answers alone, or the model does. One voice per
+        # So either code answers alone, or the model does. One voice per
         # reply. A question with real content in it — Akkad, the profile — goes
         # to the model with its memories, and `voice._denies_memory` is the
         # guard there rather than a banner bolted on the front.
@@ -970,22 +881,21 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     except Exception as e:                      # never fail a turn over this
         print(f"  [continuity] skipped: {e!r}", file=sys.stderr)
     # ⚠️ WHAT WAS SAID EARLIER TODAY, which the episode record may not hold.
-    # The user: *"even if the day's log does not get inputted into the field, we
-    # need a record that Mati can refer to... They are supposed to have better
-    # memory than humans."* An episode is only written when settling coherence
-    # clears EPISODE_GATE_MIN — measured on a cold install that rejected 5 of
-    # 12 turns. Those exchanges happened and the episode store does not have
-    # them; the day log does.
+    # Mati should remember better than a person does, so it needs a record it
+    # can refer to even when the day's exchanges never reached the field. An
+    # episode is only written when settling coherence clears EPISODE_GATE_MIN,
+    # so some exchanges happened that the episode store does not have; the day
+    # log does.
     #
     # ⚠️ LABELLED AS LIVED, AND THE OPPOSITE LABEL IS A REAL FAILURE. Calling
     # this "not memory" — on the reasoning that lines which have not cleared
     # the episode gate must not wear a memory's label — makes Mati find the
-    # previous night's conversation and say it did not have it. The gate measures whether the FIELD
-    # settled, not whether the conversation happened — see `daylog.block`.
+    # previous night's conversation and say it did not have it. The gate
+    # measures whether the FIELD settled, not whether the conversation
+    # happened — see `daylog.block`.
     #
-    # ⚠️ AND IT SEARCHES A WEEK, NOT TODAY. `block()` defaulted to today, so
-    # last night's transcript was never queried at all. That was the larger
-    # half of the bug and it was one missing argument.
+    # ⚠️ AND IT SEARCHES A WEEK, NOT TODAY, or last night's transcript would
+    # never be queried at all.
     try:
         from . import daylog as _dlb
         _today_block = _dlb.block(user_text)
@@ -1011,10 +921,9 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         if verbose:
             print(f"  [report] skipped: {e}", file=sys.stderr)
 
-    # ⚠️ THE SHELF, WHEN ASKED ABOUT THE SHELF. Built, derived correctly, and
-    # never shown to the model until now — "what have you read" was answered
-    # from whatever lexical search returned, which is passages OF the book
-    # rather than the fact of having read it.
+    # ⚠️ THE SHELF, WHEN ASKED ABOUT THE SHELF. Without it "what have you read"
+    # is answered from whatever lexical search returns, which is passages OF
+    # the book rather than the fact of having read it.
     try:
         from . import library as _lib
         if _lib.asks_about_books(user_text):
@@ -1076,13 +985,11 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         if verbose:
             print(f"  [directions] skipped: {e}", file=sys.stderr)
 
-    # ⚠️ THE NEWS, WHEN ASKED FOR THE NEWS. The user asked "Is there any news
-    # for me?" and Mati promised to "put that together" and then did nothing
-    # — because `world` had no recogniser, `asks_for_report` is False for
-    # "news", and `world.block` returns "" when no stored item matches. The
-    # block below always says something true, INCLUDING when there are no
-    # feeds at all, which is the current state and the one the promise
-    # papered over.
+    # ⚠️ THE NEWS, WHEN ASKED FOR THE NEWS. Without a recogniser here Mati
+    # would promise to "put that together" and then do nothing, because
+    # `asks_for_report` is False for "news" and `world.block` returns "" when
+    # no stored item matches. The block below always says something true,
+    # INCLUDING when there are no feeds at all.
     try:
         from . import world as _w
         if _w.asks_about_news(user_text):
@@ -1106,11 +1013,11 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     #
     # ⚠️ NEVER RAISES INTO A TURN. A draft that cannot be read must not stop
     # Mati answering about anything else.
-    # ⚠️ TOLD TO THE PERSON, NOT JUST TO `/health`. Recording the flag was
-    # half a fix: a reply saying "I don't remember much about you" reads
-    # identically to an empty store, when the truth is that the memories exist
-    # and the key is absent. On a passphrase-only install that is the DEFAULT
-    # state after every restart, so it has to be sayable.
+    # ⚠️ TOLD TO THE PERSON, NOT JUST TO `/health`. A reply saying "I don't
+    # remember much about you" reads identically to an empty store, when the
+    # truth is that the memories exist and the key is absent. On a
+    # passphrase-only install that is the state after every restart until it
+    # is unlocked, so it has to be sayable.
     #
     # ⚠️ A FACT IN A BLOCK, NOT AN INSTRUCTION. Composed here and labelled
     # `computed` so it reads as something Mati worked out about itself this
@@ -1184,21 +1091,18 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         # `ensure_priority` from it. ⚠️ A second module with the same
         # name and overwrote it, which broke the library silently.
         from . import budget_intake as _intake
-        # ⚠️ THE WRITE PATH, WHICH DID NOT EXIST. `asks_about_money` only ever
-        # injected a READ block, so "set a grocery budget of 400" was
-        # recognised, answered, and stored nothing — `budgets: []` after
-        # weeks. The user: *"the budgeting modules… appear to not function."*
-        # They functioned; no turn could reach them.
+        # ⚠️ THE WRITE PATH. A read block alone would recognise "set a grocery
+        # budget of 400", answer it, and store nothing.
         #
         # ⚠️ ACTED ON BEFORE THE BLOCK IS BUILT, so the block the model sees
         # already contains what was just recorded. The other order would have
         # Mati confirm a purchase and then read back a total without it.
         # ⚠️ THE MULTI-PART BUDGET IS TRIED FIRST, because `hears_money` is
         # built for one name / one amount / one period and MISREADS a real
-        # one. On the user's paragraph it produced a budget called "lunch that
-        # can cover from" for $0.00 a month — the 0 out of "from 0 to $50",
-        # a sentence fragment as the name, and the $40/person/day dinner, the
-        # two people and the three months all dropped. See `Mati/intake.py`.
+        # one: given a paragraph, it produces a budget called "lunch that can
+        # cover from" for $0.00 a month — the 0 out of "from 0 to $50", a
+        # sentence fragment as the name, and the per-person dinner, the number
+        # of people and the duration all dropped. See `Mati/intake.py`.
         _held = _intake.absorb(user_text, session=session)
         if _held is not None:
             _money_said = _intake.say(_held) or ""
@@ -1289,12 +1193,11 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     if context:
         messages.append({"role": "system", "content": "\n\n".join(context)})
     # ⚠️ THE MODEL IS NOT ASKED FOR A REPORT IT HAS ALREADY BEEN GIVEN. A
-    # prompt note saying "it is on screen, do not repeat it" was the first
-    # attempt and a 3B ignored it — , the reply contained
-    # the whole report a SECOND time, with the Quanta headline re-invented
-    # exactly as before. This project already knows an instruction is not a
-    # mechanism. So the trigger phrase is removed from what the model is
-    # answering, and what remains is the part that still needs an answer.
+    # prompt note saying "it is on screen, do not repeat it" does not stop a
+    # 3B repeating the whole report, headline re-invented and all — an
+    # instruction is not a mechanism. So the trigger phrase is removed from
+    # what the model is answering, and what remains is the part that still
+    # needs an answer.
     #
     # ⚠️ ONLY THE MODEL'S COPY. `user_text` is untouched everywhere else — the
     # episode, the imprint and the recall all still see what was actually
@@ -1316,13 +1219,12 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     # the way out, so what the user sees, what θ₀ consolidates, and what the
     # episode records are all the same text: otherwise Mati would remember
     # saying something it never said.
-    # ⚠️ A HABITUAL EXCHANGE IS ANSWERED WITHOUT ASKING THE MODEL. Measured
-    # : answers to the SAME question agreed at 0.06, where 1.00 is
-    # identical wording — "hello" asked five times got five answers with almost
-    # nothing in common. That is not variety, it is the absence of habit, and
-    # temperature cannot fix it: the model answers a different prompt each time
-    # because different memories surface. Consistency has to come from a stored
-    # response.
+    # ⚠️ A HABITUAL EXCHANGE IS ANSWERED WITHOUT ASKING THE MODEL. Answers to
+    # the SAME question have almost nothing in common from one time to the
+    # next — "hello" five times gets five unrelated replies. That is not
+    # variety, it is the absence of habit, and temperature cannot fix it: the
+    # model answers a different prompt each time because different memories
+    # surface. Consistency has to come from a stored response.
     #
     # ⚠️ FIXED-ANSWER TURNS ONLY. `rapport.match` returns None for anything
     # store-dependent — "how is your memory?", "what did you read" — and those
@@ -1333,7 +1235,7 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     # a real exchange that happened, it simply did not need generating.
     # ⚠️ THE REPORT GOES OUT VERBATIM, BEFORE ANYTHING IS GENERATED. It is
     # composed in code and every word of it is checkable; handing it to a 3B
-    # to retype is what invented four headlines. Emitting first also means the
+    # to retype is how headlines get invented. Emitting first also means the
     # person has it on screen during the generation that follows, rather than
     # after it.
     # ⚠️ THE MONEY CONFIRMATION GOES OUT VERBATIM, for the same reason the
@@ -1360,21 +1262,18 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     _settled = rapport.match(user_text)
     # ⚠️ A RECORDING TURN IS ALREADY ANSWERED, so it does not generate. The
     # confirmation is composed in code and every figure in it is checkable;
-    # the model's only possible contribution is chatter, and measured it was
-    # exactly that — "I will subtract the amount you spent", plus the PREVIOUS
-    # turn's confirmation echoed back out of history. Same shape as
-    # `report_only`, and it takes an 85s turn to under a second.
+    # the model's only possible contribution is chatter — "I will subtract the
+    # amount you spent", or the PREVIOUS turn's confirmation echoed back out of
+    # history. Same shape as `report_only`, and the turn takes under a second.
     #
     # ⚠️ NOT WHEN SOMETHING ELSE WAS ASKED. A question mark means there is a
     # question to answer alongside the recording, and the model still runs.
     # ⚠️ A COLLECTED BUDGET IS THE WHOLE ANSWER, AND LETTING THE MODEL SPEAK
-    # AFTER IT UNDOES THE POINT. Measured on the live server: the readback was
-    # correct, then the model continued "a typical coffee costs around $2-$3
-    # ... let's assume an average of $3... making breakfast $5.50 per person"
-    # — inventing the very figure the intake had just said it did not have,
-    # and answering Mati's own question on the person's behalf. Every number
-    # in the readback is arithmetic over what they actually said; nothing the
-    # model adds can be.
+    # AFTER IT UNDOES THE POINT. After a correct readback the model goes on to
+    # guess what a coffee costs — inventing the very figure the intake has just
+    # said it does not have, and answering Mati's own question on the person's
+    # behalf. Every number in the readback is arithmetic over what they
+    # actually said; nothing the model adds can be.
     if info.get("budget_intake") and _money_said:
         info["money_only"] = True
         reply, resp = _money_said, None
@@ -1389,10 +1288,10 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         info["clarify_only"] = True
         reply, resp = _clarify_said, None
     elif _continuity_said:
-        # ⚠️ ALWAYS THE WHOLE REPLY NOW. Emission and answering-alone are the
-        # same condition — see where `_continuity_said` is set. If it was
-        # composed, the model has nothing left to add and running it only
-        # invites a second, contradicting voice.
+        # ⚠️ ALWAYS THE WHOLE REPLY. Emission and answering-alone are the same
+        # condition — see where `_continuity_said` is set. If it was composed,
+        # the model has nothing left to add and running it only invites a
+        # second, contradicting voice.
         info["continuity_only"] = True
         reply, resp = _continuity_said, None
     elif _report_text and _report.is_only_request(user_text):
@@ -1418,28 +1317,14 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
             shown = clean.feed(chunk)
             if shown:
                 pieces.append(shown)
-                # ⚠️ WHEN MATI IS SPEAKING, THE VOICE SETS THE PACE. The
-                # sentence is shown as the voice REACHES it, not as the model
-                # produces it — otherwise the screen runs ahead at generation
-                # speed while `say` reads at ~175 wpm, and the two drift
-                # further apart with every sentence.
-                #
-                # ⚠️ AND IT FALLS BACK, ALWAYS. `_voice_stream` returns False
-                # when the voice is off or unavailable, and then the text is
-                # shown immediately as before. Text that depends on a
-                # subsystem being up is text that can go missing.
-                # ⚠️ SHOWN IMMEDIATELY. NEVER PACED BY THE SPEECH.
-                #
-                # Deferring this to the speech queue so the text
-                # appeared as the voice reached it. It LOSES TEXT, and the
-                # reason is a lifetime mismatch: `on_chunk`
-                # is `lambda p: self._sse("chunk", …)`, which writes a frame
-                # to the HTTP response. The handler returns when the turn
+                # ⚠️ SHOWN IMMEDIATELY, NEVER PACED BY THE SPEECH. Deferring the
+                # text to the speech queue, so it appeared as the voice reached
+                # it, LOSES TEXT, and the reason is a lifetime mismatch:
+                # `on_chunk` is `lambda p: self._sse("chunk", …)`, which writes a
+                # frame to the HTTP response. The handler returns when the turn
                 # returns; the speech pump keeps calling back for SECONDS
-                # afterwards, into a socket that is already closed. The voice
-                # went on talking and the words never arrived on screen —
-                # reported as "the voice is saying things that are not
-                # appearing in the printed response".
+                # afterwards, into a socket that is already closed — the voice
+                # goes on talking and the words never arrive on screen.
                 #
                 # ⚠️ TEXT ARRIVING EARLY IS A NUISANCE; TEXT NEVER ARRIVING IS
                 # DATA LOSS. Pacing belongs in the app, which owns its own
@@ -1521,10 +1406,9 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
             reply = "".join(pieces)
             # ⚠️ A TURN MUST NEVER RENDER AS NOTHING. The first pass is held
             # back entirely when Mati asks for a memory, so if the second pass
-            # also yields no visible text the person is shown an empty reply
-            # after waiting a minute — which is what "I can't see your answer"
-            # was. Two episodes one day were stored with an
-            # "I was asked:" and no "I said:" at all.
+            # also yields no visible text the person would be shown an empty
+            # reply after waiting a minute, and the episode would be stored
+            # with an "I was asked:" and no "I said:".
             if not reply.strip():
                 info['empty_second_pass'] = True
                 reply = ("I went looking for that and came back with nothing I "
@@ -1602,10 +1486,9 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     try:
         # ⚠️ THE LEXICAL SURFACING, NOT THE FIELD ONE. `named` was retrieved
         # at the top of this turn and is the same act — relevance bringing the
-        # memory up before anything judges it. The field channel measured 0.036
-        # against chance 0.009 on a validated harness; offering from it would
-        # be near-random connections carrying a citation, which reads as
-        # checked and is not.
+        # memory up before anything judges it. The field channel performs near
+        # chance; offering from it would be near-random connections carrying a
+        # citation, which reads as checked and is not.
         _offer = segue.choose(user_text, reply, surfaced=named)
         _line = segue.line(_offer)
         if _line:
@@ -1688,20 +1571,20 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     # reply the person never sees. Off unless `voice_on` is set, and
     # `speech.say` is detached and cannot raise into a turn — see that module.
     # ⚠️ ONLY A TURN A PERSON ASKED FOR MAY MAKE NOISE, and `speak` defaults
-    # to False so a new caller is silent until it says otherwise. This used to
-    # speak unconditionally from inside `turn()`, which meant EVERY caller
-    # spoke — reported as "I hear 'I have no memory of that'
-    # coming from my speakers at random moments".
+    # to False so a new caller is silent until it says otherwise. Speaking
+    # unconditionally from inside `turn()` would make EVERY caller speak — a
+    # probe's "I have no memory of that" coming from the speakers at random
+    # moments.
     #
     # ⚠️ A ROOM IS NOT A SCREEN. Text that appears unasked is ignorable; a
     # voice in a room is not, and the person may not be alone. So the default
     # is silence and the one caller that has a person waiting opts in.
     try:
         from . import speech as _sp
-        # ⚠️ A CONDITION, NOT AN EARLY RETURN. My first version returned here
-        # when `speak` was false — which skipped everything below it:
-        # consolidation and the episode write. Silencing the voice would have
-        # silently stopped Mati forming memories.
+        # ⚠️ A CONDITION, NOT AN EARLY RETURN. Returning here when `speak` is
+        # false would skip everything below it — consolidation and the episode
+        # write — so silencing the voice would silently stop Mati forming
+        # memories.
         #
         # ⚠️ AND ONLY IF STREAMING DID NOT ALREADY SAY IT. The sentences were
         # spoken as they arrived; saying the whole reply again here would read
@@ -1738,14 +1621,10 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     #    actually settled. Unsettled turns leave no memory, which keeps the
     #    ~1s/token imprint cost off most turns and matches how consolidation
     #    works in biology. Nothing from the LLM is ever written here.
-    # ⚠️ WRITE DOWN WHAT THE GATE DECIDED, pass or fail. Once, a
-    # rejected turn left no trace whatever — no row, no counter — and
-    # coherence was not kept on the episodes that passed either. So "is 0.7
-    # the right threshold" was not hard to answer, it was impossible: there
-    # was no record of what had been refused or by how much it missed.
-    #
-    # This changes no behaviour. The gate decides exactly what it decided
-    # before; the decision is merely observable now.
+    # ⚠️ WRITE DOWN WHAT THE GATE DECIDED, pass or fail. Without a record of
+    # what was refused, and by how much it missed, "is 0.7 the right
+    # threshold" is not hard to answer, it is impossible. This changes no
+    # behaviour; it only makes the decision observable.
     try:
         gatelog.record(coherence, coherence >= C.EPISODE_GATE_MIN,
                        C.EPISODE_GATE_MIN, reply_coh=reply_coh,

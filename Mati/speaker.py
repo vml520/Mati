@@ -3,24 +3,24 @@ Who is Mati talking to?
 
 ⚠️ THE GAP THIS FILLS. An episode records a body, a source and a timestamp, and
 **nothing about who spoke**. So every memory reads as though the owner said it.
-: four episodes mention "my AI assistant", and when asked who
-it was talking to Mati replied *"You are someone the user asked to talk to."*
+A few episodes that mention "my AI assistant" are enough for Mati, asked who it
+is talking to, to answer *"You are someone the user asked to talk to."*
 
-That was not a confabulation — it was correct recall of a real third party,
+That is not a confabulation — it is correct recall of a real third party,
 attached to a conversation that had no way to say which of them was typing.
-Both facts were true and Mati could not tell them apart, because the store
-gives it nothing to tell them apart with.
+Both facts are true and Mati cannot tell them apart, because the store gives
+it nothing to tell them apart with.
 
 Two things, and only two:
 
-  ASK, once, at the start of a conversation, when it does not already know.
+  TAKE a name the moment it is offered — never by asking for one (see below).
   RECORD, on every episode, who it was told it was speaking with.
 
 ⚠️ THIS IS NOT AUTHENTICATION AND MUST NOT BE READ AS ANY. Mati cannot verify
 a name — anyone can type one. What it gains is the ability to say "someone told
-me they were Anna" rather than silently filing Anna's words as the user's. That
-distinction is the whole value: an unverified attribution is still enormously
-better than a wrong one asserted as fact.
+me they were Anna" rather than silently filing Anna's words as the owner's.
+That distinction is the whole value: an unverified attribution is still
+enormously better than a wrong one asserted as fact.
 """
 
 from __future__ import annotations
@@ -93,28 +93,25 @@ def owner(db_path=None):
     return None
 
 
-# ⚠️ `ask_line` IS RETIRED — Mati does not ask who is there.
+# ⚠️ MATI DOES NOT ASK WHO IS THERE. Its assumption is that the person speaking
+# to it is the owner, and it is up to Mati to work out on its own whether that
+# is truly the case.
 #
-# The user: "Mati's assumption should always be that the peer will be
-# speaking to them. It is up to Mati to figure out on their own if that is
-# truly the case."
+# Opening a session by asking for a name greets the person who set it up as a
+# stranger, and it hands the work of identification to the human when the work
+# belongs here.
 #
-# The old function opened a session by asking for a name, once. It greeted the
-# person who built it as a stranger, and it handed the work of identification to
-# the human when the work belongs here. Removed rather than left unused, so it
-# cannot be wired back in without reading this.
-#
-# What remains is the half that was always right: `named_in` takes a name the
-# moment it is offered, and `attribute` marks a memory as somebody else's. The
-# harder problem — noticing unprompted that the person is NOT the owner — is
-# unsolved, and it is not solved by asking.
+# What there is: `named_in` takes a name the moment it is offered, and
+# `attribute` marks a memory as somebody else's. The harder problem — noticing
+# unprompted that the person is NOT the owner — is unsolved, and it is not
+# solved by asking.
 
 
 def attribute(body, speaker, known_owner=None):
     """Mark a memory's body with who said it, when it was not the owner.
 
-    The owner is the unmarked case on purpose: 258 episodes already exist
-    without a speaker and re-labelling all of them would be a claim the store
+    The owner is the unmarked case on purpose: episodes carry no speaker by
+    default, and re-labelling the existing ones would be a claim the store
     cannot support. What is worth saying in the text is the EXCEPTION — that
     this one came from somebody else.
     """

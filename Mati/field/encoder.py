@@ -1,8 +1,7 @@
 # Part of Mati's field — the phase-field substrate its memory is built on.
 #
-# ⚠️ THIS IS THE AUTHORITATIVE COPY. These modules began as a shared study
-# codebase and were split off so the field could change without anything
-# else moving under it. Nothing outside Mati imports them.
+# ⚠️ THIS IS THE AUTHORITATIVE COPY. Nothing outside Mati imports these
+# modules, so the field can change without anything else moving under it.
 #
 # ⚠️ KEEP THIS A COMMENT, NOT A DOCSTRING. A docstring here would sit
 # before `from __future__`, which is a SyntaxError that `ast.parse`
@@ -105,9 +104,9 @@ class LearnedBoundaryEncoder:
         encoding_dim=1  (default, backward compat) — scalar phi[k] shared
                        across the row's 8 boundary nodes (identity-in-phase).
         encoding_dim=NODES_PER_ROW  (=8) — pattern-8D: phi[k] is an 8-vector,
-                       node j in the row locks at θ₀ + phi[k, j]. Adopted
-                        after capacity probes proved baseline-1D
-                       resolves only ~15-25 tokens per row.
+                       node j in the row locks at θ₀ + phi[k, j]. The one to
+                       use: capacity probes show baseline-1D resolves only
+                       ~15-25 tokens per row.
 
         For encoding_dim>1: per-dimension stride-permuted init, each dim
         using a distinct coprime stride so token IDs decorrelate across

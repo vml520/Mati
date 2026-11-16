@@ -1,18 +1,17 @@
 """
 Podcasts — the one kind of audio that is meant to be kept.
 
-The user asked whether songs could be downloaded for an offline list. They cannot:
-the library is Apple Music `cloud status: subscription`, DRM streaming, and
-`download` is not in Music.app's scripting dictionary (see `dj.py`). Podcasts
-are the case that IS designed for it — an RSS `<enclosure>` is a file, published
-to be fetched and kept, and no terms are being bent by doing what the format
-exists for.
+Songs cannot be downloaded for an offline list: an Apple Music library is
+`cloud status: subscription`, DRM streaming, and `download` is not in
+Music.app's scripting dictionary (see `dj.py`). Podcasts are the case that IS
+designed for it — an RSS `<enclosure>` is a file, published to be fetched and
+kept, and no terms are being bent by doing what the format exists for.
 
-Verified , all free and keyless:
+All of it is free and keyless:
 
-    iTunes Search   ->  feedUrl for a show, no account, no key
-    the feed        ->  HTTP 200, "The Aztecs", enclosure audio/x-m4a 1.9 MB
-    playback        ->  Music.app `open location`, the same path radio uses
+    gpodder.net search  ->  the feed URL for a show, no account, no key
+    the feed            ->  episodes, each enclosure a file with a type and size
+    playback            ->  in this process, through the player radio uses
 
 ⚠️ SIZE IS STATED BEFORE ANYTHING IS FETCHED. An episode is tens of megabytes
 and this is someone's disk and possibly their tethered connection. Every
@@ -45,22 +44,17 @@ import xml.etree.ElementTree as ET
 from . import bridge
 from . import config as C
 
-# ⚠️ gpodder.net, NOT iTunes. The user: *"reconfigure the podcast
-# player without Apple Music or Apple Podcasts. Is there a way to pull from RSS
-# blogs instead?"*
-#
-# ⚠️ AND THE ANSWER IS THAT IT ALREADY DOES. A podcast IS an RSS feed with
-# `<enclosure>` audio — `episodes()` below has always parsed exactly that.
-# Apple Podcasts is a DIRECTORY over the same feeds, not a format, so this
-# swaps one index for another and removes a middleman rather than working
+# ⚠️ gpodder.net, NOT iTunes, and no Apple service anywhere in the path. A
+# podcast IS an RSS feed with `<enclosure>` audio — `episodes()` below parses
+# exactly that. Apple Podcasts is a DIRECTORY over the same feeds, not a
+# format, so using another index removes a middleman rather than working
 # around one.
 #
 # gpodder.net is keyless, open and community-run — the same shape as Radio
-# Browser, which this project already relies on. :
-# `search.json?q=` returns HTTP 200 with title, url, author, website and
-# subscriber counts, no account.
+# Browser, which this project already relies on. `search.json?q=` returns
+# title, url, author, website and subscriber counts, with no account.
 #
-# ⚠️ PodcastIndex WAS THE OTHER CANDIDATE AND IS OUT: it answers 401 without a
+# ⚠️ PodcastIndex is the other candidate and is out: it answers 401 without a
 # key, and a shared key in a public Apache-2.0 build is not a key.
 SEARCH_API = "https://gpodder.net/search.json"
 UA = C.USER_AGENT
@@ -72,10 +66,8 @@ NET_TIMEOUT = 25
 # free service on donated hosting, and "no published limit" is an absence of a
 # rule, not permission to hammer it.
 #
-# ⭐ IT ALSO BRINGS THIS MODULE INTO LINE WITH THE OTHERS. `places.py` leaves
-# 3s between Overpass calls and caches for an hour; `flipp.py` caches for an
-# hour. This module had neither, which was an inconsistency rather than a
-# decision — found while reviewing the services' terms for release.
+# ⭐ THE SAME DISCIPLINE AS THE OTHER SERVICES. `places.py` leaves 3s between
+# Overpass calls and caches for an hour; `flipp.py` caches for an hour.
 #
 # A podcast directory changes over days, not seconds, so an hour of cache
 # costs a user nothing and takes repeat questions off the network entirely.
@@ -133,8 +125,8 @@ def search(term, limit=5):
             data = json.loads(r.read().decode("utf-8", "replace"))
     except Exception:                                        # noqa: BLE001
         return []
-    # ⚠️ A LIST, NOT A DICT. iTunes wrapped results in {"results": [...]};
-    # gpodder returns the array itself, and `.get("results", [])` on a list
+    # ⚠️ A LIST, NOT A DICT. gpodder returns the array itself rather than
+    # wrapping it in {"results": [...]}, and `.get("results", [])` on a list
     # raises rather than returning nothing — a silent "no podcasts found".
     if not isinstance(data, list):
         return []
@@ -175,8 +167,8 @@ def episodes(feed_url, limit=10):
     ⚠️ Parsed with `xml.etree`, not a dependency, and a malformed feed is
     SKIPPED rather than repaired — the same rule the RSS design already sets.
     """
-    # ⚠️ AN UNREACHABLE FEED IS NOT AN EMPTY SHOW. Both used to return [],
-    # so "that podcast has no episodes" was said about a feed that was simply
+    # ⚠️ AN UNREACHABLE FEED IS NOT AN EMPTY SHOW. Returning [] for both would
+    # have Mati say "that podcast has no episodes" about a feed that is simply
     # down. Raising makes the caller choose what to say.
     try:
         raw = _fetch(feed_url)
@@ -296,28 +288,17 @@ def kept():
     return rows
 
 
-# ⚠️ `add_to_music` IS DELETED. It put a kept episode into Music.app so it
-# would appear in the offline list, and it carried a hard-won note — three of
-# four AppleScript coercion forms failed, one of them silently. All of that is
-# moot: nothing of Mati's goes into Music.app any more, and a kept episode is
-# a file on disk that `play()` opens directly with a file:// URL.
-#
-# Deleted rather than left unreachable — LESSONS 11, and the `setState`
-# removal that took six callers with it. It had no callers outside this file.
-
-
 def play(ep_or_path):
     """Play an episode — a kept file, or straight from the feed. (ok, message).
 
-    ⚠️ IN THIS PROCESS, NOT IN MUSIC.APP. Both branches used to go through
-    AppleScript: a kept file was handed to Music to open, and a stream went to
-    `dj.play_station`. The user: *"I dont want use Apple Music in any way."*
+    ⚠️ IN THIS PROCESS, NOT IN MUSIC.APP. Podcasts use no Apple Music path at
+    all: a kept file and a stream both go through `radio.play`.
 
-    ⚠️ AND IT INHERITS THREE FIXES BY MOVING. `radio.play` waits for
-    ReadyToPlay rather than assuming (the no-sound bug), it runs against the
-    main run loop that AVFoundation needs, and it is the player `/silence` and
-    the now-playing chip already control. An episode started through Music.app
-    could not be stopped by the stop button at all.
+    ⚠️ AND THAT IS THE RIGHT PLAYER FOR THREE REASONS. `radio.play` waits for
+    ReadyToPlay rather than assuming it (assuming it can mean no sound), it
+    runs against the main run loop that AVFoundation needs, and it is the
+    player `/silence` and the now-playing chip already control. An episode
+    started through Music.app could not be stopped by the stop button at all.
 
     ⚠️ A LOCAL FILE NEEDS A file:// URL. AVPlayer will not take a bare POSIX
     path, and the failure is the silent one — `URLWithString_` returns nil and

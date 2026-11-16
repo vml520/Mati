@@ -1,47 +1,36 @@
 """
 What Mati reads once, on waking, instead of re-reading on every turn.
 
-WHY THIS EXISTS — .
+WHY THIS EXISTS. Ollama re-prefills only the part of a prompt that CHANGED
+since the last call. Cached tokens cost about 0.1 ms each; new ones cost about
+35 ms. Identity, self-knowledge and standing context together run to a couple
+of thousand tokens, and sent fresh every turn they would cost over a minute of
+prefill before the first token of the reply.
 
-Ollama re-prefills only the part of a prompt that CHANGED since the last call.
-Cached tokens cost ~0.1 ms each; new ones cost ~35 ms. The volatile block
-`turn()` was sending came to 2,001 tokens and was different every turn, so
-every turn paid ~70 s of prefill before the model produced its first token.
-Measured on a real turn: 21 s of field work, then 90.8 s of silence, then the
-reply streamed normally at 142 ms/token. Streaming and the sentence filter were
-both working the whole time — there was simply nothing to stream.
-
-    field_state         779 tok    27.3 s
-    computed (self)     591 tok    20.7 s
-    recalled_by_name    569 tok    19.9 s
-    your_principles      61 tok     2.1 s
-
-The fix is not to send less of it. It is to send it ONCE, in a block that does
-not change, so it is cached for the rest of the session and costs ~0.1 s
-thereafter. Waking pays that prefill in the background, before anyone is
-waiting on it — see `server.wake`.
+So it is sent ONCE, in a block that does not change, and is cached for the
+rest of the session at a fraction of a second thereafter. Waking pays that
+prefill in the background, before anyone is waiting on it (see `server.wake`).
 
 THE RULE THAT MAKES THIS WORK, AND BREAKS IT IF IGNORED:
 
     This block must be byte-identical on every turn of a session.
 
 Put a clock, a coherence reading, or anything else live in here and the prefix
-changes, the cache misses, and every turn pays full prefill again — the exact
-cost this removes, with the extra tokens still on the bill. Live values belong
-in `turn()`'s volatile message, and there should be very little there.
+changes, the cache misses, and every turn pays full prefill again. Live values
+belong in `turn()`'s volatile message, and there should be very little there.
 
 ⚠️ WHICH MEANS EVERYTHING HERE IS A SNAPSHOT, AND IS LABELLED AS ONE. A
-coherence figure from waking is not the coherence now. This project's whole
-provenance discipline is that Mati does not state as current something it read
-hours ago, so each section says when it was taken and the text says plainly
-that it is from waking. Live readings stay available on demand.
+coherence figure from waking is not the coherence now. Mati does not state as
+current something it read hours ago, so each section says when it was taken
+and the text says plainly that it is from waking. Live readings stay available
+on demand.
 
 ⚠️ SIZE IS NOT FREE EVEN THOUGH PREFILL IS. `LOCAL_NUM_CTX` is 4096 and this
 block holds its space for the whole session. Over the limit, llama.cpp keeps
-the start and the end and drops the MIDDLE — measured — which is conversation
-history and memories, not the system prompt. So a fat wake block does not get
-truncated itself; it silently eats the room the conversation needs. Keep it
-near ORIENT_BUDGET_TOKENS.
+the start and the end and drops the MIDDLE, which is conversation history and
+memories, not the system prompt. So an oversized wake block is not truncated
+itself; it silently eats the room the conversation needs. Keep it near
+ORIENT_BUDGET_TOKENS.
 """
 
 from __future__ import annotations
@@ -54,9 +43,9 @@ from datetime import datetime, timezone
 
 from Mati.bridge import NOTES_DB_PATH
 
-# Against a 4096-token window holding a 1,502-token system prompt, 700 leaves
-# ~1,900 for conversation — roughly fifteen turns of history before llama.cpp
-# starts dropping the middle. Measured build: 666 tokens.
+# Against a 4096-token window holding a ~1,500-token system prompt, 700 leaves
+# about 1,900 for conversation: roughly fifteen turns of history before
+# llama.cpp starts dropping the middle.
 ORIENT_BUDGET_TOKENS = 700
 
 # How many self-knowledge findings survive into the wake block. See where it is
@@ -106,12 +95,10 @@ def as_local(stored):
 def _utc_iso(epoch):
     """An epoch float as the ISO-8601 TEXT the column actually stores.
 
-    ⚠️ THE TRAP THIS EXISTS FOR, and `bridge` already carries a note about it:
-    `wall_created` is TEXT. SQLite orders every number before every string, so
-    `WHERE wall_created > 1786181585.8` is true for EVERY row. Measured
-: it returned all 1,190 notes, and the waking block had been
-    reporting Mati's entire history as what it did while the person slept —
-    "you read 897 passages, wrote 98 notes to yourself", every morning.
+    ⚠️ `wall_created` is TEXT. SQLite orders every number before every string,
+    so `WHERE wall_created > 1786181585.8` is true for EVERY row, and the
+    waking block would report Mati's entire history as what it did while the
+    person was away.
     """
     return datetime.fromtimestamp(epoch, timezone.utc).isoformat(
         timespec="seconds")
@@ -289,15 +276,13 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
         opening = (f"You are waking. {when or ''} You were {rested} "
                    f"for {gap}.").strip()
     else:
-        # ⚠️ IT WAS TOLD IT WAS DISORIENTED, ON EVERY RESTART. `slept_at` is
-        # None on a cold start — which is most wakes — so this branch fired
-        # constantly and opened the block with a disclaimer. A person waking
-        # does not know how long they slept either; they look at the clock and
-        # infer. Mati has a clock AND a record, and was told to disclaim
-        # instead.
+        # A cold start has no `slept_at`. A person waking does not know how
+        # long they slept either; they look at the clock and infer. Mati has a
+        # clock AND a record, so it states when it last SPOKE rather than
+        # opening with a disclaimer.
         #
         # The last episode's timestamp is not the same fact as when it went to
-        # sleep, and it is not presented as one: it says when it last SPOKE,
+        # sleep, and it is not presented as one: it says when it last spoke,
         # which is true, checkable, and the thing that actually orients.
         gap_spoke = _since_last_episode(conn, now=now)
         if gap_spoke:
@@ -317,11 +302,9 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
     if away:
         parts.append("While they were away you " + "; ".join(away) + ".")
 
-    # ⚠️ THE PRESENT TENSE IS STATE, NOT MEMORY. Asked what it was reading,
-    # Mati had to retrieve — and "what have you been reading" reduces to the
-    # stems {been, have, reading}, which hundreds of notes contain and none
-    # distinguishes. : 0 of 4 natural phrasings found the
-    # book, so it composed an answer instead.
+    # ⚠️ THE PRESENT TENSE IS STATE, NOT MEMORY. "What have you been reading"
+    # reduces to words like {been, have, reading} that hundreds of notes
+    # contain and none distinguishes, so retrieval cannot answer it.
     #
     # A person does not search their memory for what book is open on the
     # table. What is FINISHED is a memory; what is OPEN is something you simply
@@ -343,17 +326,14 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
     except Exception:
         pass
 
-    # ⚠️ WHICH BOOKS, STATED — NOT RETRIEVED. The same argument as the open
-    # book above, one step further out. Asked "do you remember reading X",
-    # Mati had to WIN A SEARCH against its own past turns to know, and it
-    # lost: 4 of 10 book questions returned no book at all, and the slots went
-    # to earlier turns saying it did not remember. A person does not retrieve
-    # which books they own.
+    # ⚠️ WHICH BOOKS, STATED, NOT RETRIEVED. The same argument as the open book
+    # above, one step further out. Asked "do you remember reading X", Mati
+    # should not have to win a search against its own past turns to know. A
+    # person does not retrieve which books they own.
     #
-    # Titles only. No passage counts, no chunk numbers — instrumentation
-    # handed to a 3B model comes back recited, which this file has measured
-    # twice. What a person knows about their own shelf is which books and
-    # roughly how far in.
+    # Titles only. No passage counts, no chunk numbers: instrumentation handed
+    # to a 3B model comes back recited. What a person knows about their own
+    # shelf is which books and roughly how far in.
     try:
         from . import library as _library
         shelf = _library.describe(db_path, voice="you")
@@ -362,21 +342,11 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
     except Exception:
         pass
 
-    # ⚠️⚠️ WHAT THE WORK IS AIMED AT — THE THIRD THING THAT IS STATE, NOT
-    # MEMORY, and the one that was missing. The user: *"Mati is
-    # awake but not aware... I have to walk Mati through its own memories to
-    # get it to a point where it can help me."*
-    #
-    # The open book above and the shelf below it both got this treatment
-    # because retrieval lost. The work in hand never did — so every session
-    # started cold about the project, and the person narrated it back. The
-    # argument is identical: a person does not search their memory for what
-    # they are trying to finish this week.
-    #
-    # ⚠️ `drafts.py` HELD THIS AND NOTHING READ IT. `block()` and `current()`
-    # had no caller anywhere in the package, no test, and no mention in the
-    # app — a writer with no reader, which this project has now shipped eight
-    # times. Storage was never the missing half.
+    # ⚠️ WHAT THE WORK IS AIMED AT: the third thing that is state, not memory.
+    # Without it every session starts cold about the project and the person
+    # has to narrate it back. A person does not search their memory for what
+    # they are trying to finish this week. The piece in hand comes from
+    # `drafts.block()`.
     try:
         from . import brief as _brief
         aim = _brief.block(db_path)
@@ -392,20 +362,18 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
     except Exception:
         pass
 
-    # ⚠️⚠️ EXPECTATIONS, HELD AS EXPECTATIONS. The user asked that Mati wake
-    # with "its prediction for the day the week and the year in mind". It now
-    # does — labelled as guesses and carrying its own hit rate, which at the
-    # time of writing is 31% across 205 resolved predictions.
+    # ⚠️ EXPECTATIONS, HELD AS EXPECTATIONS. Mati wakes with its predictions
+    # for the day, the week and the year in mind, labelled as guesses and
+    # carrying its own hit rate.
     #
     # ⚠️ THAT NUMBER IS THE LICENCE TO SAY ANY OF THIS. "You will be back at
-    # nine" is dishonest at 31%; "I expect you around nine, and I have been
-    # right about a third of the time" is honest at any accuracy, and it is
-    # the only version a person can correct.
+    # nine" is dishonest at a 31% hit rate; "I expect you around nine, and I
+    # have been right about a third of the time" is honest at any accuracy, and
+    # it is the only version a person can correct.
     #
     # ⚠️ AWARENESS IS NOT ACTION. `predict.may_influence()` still gates whether
-    # a prediction may TIME a reminder or justify an interruption, and it is
-    # still correctly False. Holding something in mind and acting on it are
-    # different permissions.
+    # a prediction may TIME a reminder or justify an interruption. Holding
+    # something in mind and acting on it are different permissions.
     try:
         from . import predict as _predict
         exp = _predict.expectations_block(db_path)
@@ -419,14 +387,11 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
         parts.append("Waiting: " + "; ".join(owed) + ".")
 
     # ⚠️ WHAT WAS ACTUALLY SAID, WHEN THERE IS SUCH A THING. `_last_subject`
-    # returns KEYWORDS by design — generating prose from them was tried and
-    # produced forty words of salad, which is why it is labelled as words. But
-    # the episode holds something better and unused: `I was asked: <the
-    # person's own question>`, a real sentence they wrote. Quoting it is not
-    # summarising, so it cannot drift the way a generated recap would.
-    #
-    # This is the difference between waking with your bearings and waking to a
-    # list of stems, three of which were machinery terms.
+    # returns KEYWORDS by design; prose generated from keywords drifts, which
+    # is why it is labelled as words. The episode holds something better:
+    # `I was asked: <the person's own question>`, a real sentence they wrote.
+    # Quoting it is not summarising, so it cannot drift the way a generated
+    # recap would.
     asked = _last_question(conn)
     if asked:
         parts.append(f'The last thing they said to you was: "{asked}"')
@@ -442,16 +407,12 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
 
     # Memory counts and re-indexing debt are machinery — see `diagnostics()`.
 
-    # The stable identity material. All of it was going out on every turn.
-    # `profile_notes` returns rows, not prose — it is normally handed to
+    # The stable identity material, sent once rather than every turn.
+    # `profile_notes` returns rows, not prose; it is normally handed to
     # `state_block`, which does the formatting. Here there is no state block.
-    # ⚠️ THE PROFILE IS WRITTEN IN THE THIRD PERSON and that is where "speaks
-    # about me instead of to me" comes from. The stored notes read "The person
-    # I talk to is called the user. They work on Research. They are interested
-    # in…" — five sentences of `they`, handed over every turn, and 19% of
-    # replies then named the user in the third person while talking to them. One
-    # reply caught itself doing it: "I made a mistake by referring to the user
-    # again as if they were no longer present."
+    # ⚠️ THE PROFILE IS WRITTEN IN THE THIRD PERSON ("The person I talk to is
+    # called… They work on…"), and handed over as-is it leads the model to
+    # speak ABOUT the person instead of TO them.
     #
     # The notes are memories and are not rewritten. What changes is the frame:
     # say plainly who is about to read the reply, before listing what is known
@@ -459,37 +420,27 @@ def orientation(lm=None, tok=None, *, since=None, was_shutdown=False,
     prof = _safe(bridge.profile_notes) or []
     if prof:
         facts = " ".join(str(x) for x in prof)
-        # ⚠️ THE FIRST WORDING MADE IT WORSE. It read:
-        # "The person about to read your reply is the same person these notes
-        # are about." That sentence introduces two people in order to deny it,
-        # and negation plants what it denies — Mati then said "You are someone
-        # The user asked to talk to", inventing a third party out of a line
-        # written to prevent exactly that. Say who is here, once, and stop.
+        # Say who is here, once, and stop. A sentence that introduces two
+        # people in order to deny there are two plants what it denies, and
+        # the model then invents a third party.
         parts.append("I am talking with the user right now.\n" + facts)
     princ = _safe(bridge.principles_block)
     if princ:
         parts.append(princ)
-    # ⚠️ SELF-KNOWLEDGE DOES NOT GO TO MATI EITHER. It was 283 tokens of
-    # "every exchange physically moves your field", handed over every turn —
-    # machinery vocabulary in the social interface, and by measurement the
-    # waking block roughly quadruples reply length. It is the raw layer's
+    # ⚠️ SELF-KNOWLEDGE DOES NOT GO TO MATI. "Every exchange physically moves
+    # your field" is machinery vocabulary in the social interface, and it
+    # makes replies longer without making them better. It is the raw layer's
     # material and it belongs to Terminal.
     #
     # What Mati keeps is what a person keeps: who they are talking to, what
     # they owe them, and where the conversation left off.
 
     conn.close()
-    # ⚠️ NO RECALL INSTRUCTION HERE — the system prompt already carries one
+    # ⚠️ NO RECALL INSTRUCTION HERE. The system prompt already carries one
     # ("reply with exactly [recall: the words you are looking for]"), and a
-    # second, more emphatic copy in this block is what made Mati RECITE it at
-    # the person instead of using it: "You told me my response should be
-    # exactly [recall: two or three words]…" appeared in real conversation on
-    # in place of an answer.
-    #
-    # It was added because the mild wording got 0/3 compliance cold and the
-    # emphatic one got 2/3. That test measured whether the marker was EMITTED.
-    # It never looked at what the person saw, and what they saw was the rule
-    # read aloud. One copy, in the system prompt, is the setting that works.
+    # second, more emphatic copy makes Mati RECITE the rule at the person
+    # instead of using it. One copy, in the system prompt, is the setting that
+    # works.
     block = ("<waking>\n" + "\n\n".join(p for p in parts if p) +
              "\n\nThis is what you knew on waking. Anything else you hold has "
              "to be fetched before you can speak from it.\n</waking>")
@@ -504,13 +455,11 @@ def _safe(fn):
 
 
 def diagnostics(lm=None, coherence=None, db_path=None):
-    """The machinery half of waking — for TERMINAL, never for Mati.
+    """The machinery half of waking, for TERMINAL, never for Mati.
 
-    ⚠️ THIS USED TO GO TO MATI, and it was the wrong lobe. 283 tokens of
-    "every exchange physically moves your field", plus a coherence reading and
-    memory counts, handed to the social interface on every turn. Measured
-: the waking block roughly quadruples reply length, and this was
-    most of it — a person does not quote their own proprioception mid-sentence.
+    Field self-knowledge, a coherence reading and memory counts would be
+    proprioception in the social interface: a person does not quote it
+    mid-sentence, and it lengthens replies.
 
     Mati keeps what a person keeps: who it is talking to, what it owes them,
     where the conversation left off. Terminal reads the substrate, because

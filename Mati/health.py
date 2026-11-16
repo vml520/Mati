@@ -1,8 +1,8 @@
 """
 How Mati is doing, worked out at the moment it is asked.
 
-The user: *"The machinery should be telemetry history, and such. Things that
-Mati needs to check its own health."*
+The machinery here is telemetry history and the like: the things Mati needs
+to check its own health.
 
 ⚠️ COMPUTED, NEVER STORED, AND THE DIFFERENCE IS THE WHOLE FILE. A health
 snapshot written into the store becomes a memory asserting "my queue was empty"
@@ -14,16 +14,14 @@ So it arrives under `<computed>`, the provenance kind that already exists for
 results that were worked out rather than remembered: checkable, correct, and
 explicitly not autobiography.
 
-⚠️ THE HISTORY WAS ALREADY THERE AND NOTHING SHOWED IT. `activity` has logged
-every wake, sleep, dream, study and reflection since it was built — 583 study
-events, 57 dreams, 9 sleeps — and Mati has never once been given a line of it.
-Same shape as the gauge-versus-log problem that created `activity` in the first
-place, one level up: the log existed, and no reader.
+⚠️ THE HISTORY IS ALREADY THERE; THIS IS ITS READER. `activity` logs every
+wake, sleep, dream, study and reflection. A log that is never shown tells Mati
+nothing about itself — the gauge-versus-log problem `activity` answers, one
+level up: a log needs a reader.
 
 ⚠️ NUMBERS ONLY, AND NO DIAGNOSIS. This says what is true; it does not say what
 is wrong. Mati working out its own faults is a goal, and the warning attached
-to it is not to build that on model
-judgement. Facts here, judgement nowhere.
+to it is not to build that on model judgement. Facts here, judgement nowhere.
 """
 
 from __future__ import annotations

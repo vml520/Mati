@@ -1,44 +1,30 @@
 """
-Playing music: the library, internet radio, and a record of what played.
+Music: requests, a record of what played, and ranking by count.
 
-The user: *"the best way to create a Music DJ is by taking requests and ranking by
-count. Otherwise just play radio by genre."* And the shape it should have:
+The design: take requests and rank by how often something was asked for;
+otherwise play radio by genre. And the shape a request should have:
 
     "Mati play that music station from Saturday night"
     "Sure thing. They played one of your favourite songs, 'Not Like Us'.
      I love that song. Here you go."   <plays station>
 
-⚠️ RANKING IS ARITHMETIC, NOT JUDGEMENT. `COUNT(*)` over what was asked for,
-and `played count` from the library. Nothing here asks a model what the person
-would like — that is the one thing a 3B must not be doing between a person and
-their music.
+⚠️ RANKING IS ARITHMETIC, NOT JUDGEMENT. `COUNT(*)` over what was asked for.
+Nothing here asks a model what the person would like; that is the one thing a
+3B must not be doing between a person and their music.
 
-⚠️ PLAYBACK GOES THROUGH Music.app, WHICH IS THE WHOLE ARGUMENT FOR IT.
-Verified : `open location` on a radio stream returns `player state:
-playing`. Doing it this way inherits system volume, the Now Playing widget,
-Control Centre, AirPlay and the headphone controls. An <audio> element in the
-app would get none of that and would fight the system for the output.
+⚠️ GENRE RADIO PLAYS IN-PROCESS, through `radio.py`, and opens no
+application. The remaining Music.app scripting in this module (replaying a
+recorded stream, the library readers below) launches Music only when asked,
+and closes what it opened (see "opening an app means being able to close it").
 
-⚠️ AND PLAYBACK IS THE FIRST IRREVERSIBLE THING MATI DOES. Every other action
-is internal or undoable; starting audio is audible, and it can happen while
-someone is on a call. Unasked playback goes through the same per-kind consent
-gate as an interruption. Asked-for playback does not — being told to play
-something IS the permission.
+⚠️ PLAYBACK IS AUDIBLE AND CAN HAPPEN WHILE SOMEONE IS ON A CALL. Unasked
+playback goes through the same per-kind consent gate as an interruption.
+Asked-for playback does not: being told to play something IS the permission.
 
-⚠️ MEASURED ON THIS MACHINE, and one reading was wrong first:
-
-    tracks           6,498  (⚠️ a probe can read 0 here — Music.app may
-                             not have finished loading its library)
-    kind             Apple Music AAC audio file
-    cloud status     subscription
-    top played       Ride On 9x, Daydreamer 8x, Best for Last 5x
-
-So play-count ranking works natively. ⚠️ But those are SUBSCRIPTION tracks —
-DRM streaming, not files. Making them available offline is Apple Music's own
-feature inside Music.app, and `download` is not in the scripting dictionary
-(`sdef` lists no such command; invoking it produced neither error nor effect).
-So `download_for_offline` is NOT implemented here, and the reason is recorded
-rather than left as a gap someone fills in badly later.
+⚠️ LIBRARY FACTS. Music.app may answer 0 tracks while it is still loading
+its library, so a count is only trusted once `_library_ready()` says so.
+Subscription tracks are DRM streams, not files, and Music.app's scripting
+dictionary has no `download` command, so offline download is not offered.
 """
 
 from __future__ import annotations
@@ -131,10 +117,10 @@ def now_playing():
 def stop(close=True):
     """Stop playback, and by default CLOSE whatever Mati opened to do it.
 
-    ⚠️ `close=True` is the default because of the rule the user set: opening an
-    application on someone's behalf is only acceptable if it can be handed
-    back. Stopping the audio but leaving Music sitting in the Dock is taking
-    the screen and not returning it.
+    ⚠️ `close=True` is the default: opening an application on someone's
+    behalf is only acceptable if it can be handed back. Stopping the audio but
+    leaving Music sitting in the Dock is taking the screen and not returning
+    it.
 
     ⚠️ QuickTime is stopped too. "Stop the movie" reaches here, and a video is
     the case where a whole window is covering what the person was doing.
@@ -157,11 +143,10 @@ def stop(close=True):
 def library_size():
     """How many tracks Music.app holds, or None if it could not be asked.
 
-    ⚠️ None, NOT ZERO. This returned 0 on failure and 0 is a real answer — it
-    is why the library was reported as EMPTY on  when it held 6,498
-    tracks: Music.app had not finished loading and the failure was
-    indistinguishable from an empty library. A caller must be able to tell
-    "you have no music" from "I could not look".
+    ⚠️ None, NOT ZERO. 0 is a real answer, and a Music.app that has not
+    finished loading would otherwise be indistinguishable from an empty
+    library. A caller must be able to tell "you have no music" from "I could
+    not look".
     """
     out = _osa(["on run argv",
                 'tell application "Music" to return (count of tracks of library playlist 1) as string',
@@ -263,22 +248,20 @@ def taste():
 def import_taste(limit=12, force=False):
     """Read genres from the music library ONCE, at setup. (ok, message).
 
-    the user: *"I dont want use Apple Music in any way"* — and, in
-    the same breath, *"I only want Mati collecting user music data once for
-    setup purposes only."* So this is the single surviving reader, it is not
-    reachable from `media`, and it refuses to run twice.
+    The single permitted read of the person's music data, for setup only. It
+    is not reachable from `media`, and it refuses to run twice.
 
     ⚠️ GENRES ONLY. Not titles, not artists, not play counts, not ratings.
     A genre list is enough to suggest a first set of presets, and it is the
-    least that will do that — "what you listen to" is a profile, "you have
+    least that will do that: "what you listen to" is a profile, "you have
     jazz in your library" is a dial position.
 
-    ⚠️ IT GOES TO SETTINGS, NOT THE FIELD. The precedent is
-    the weather place: a personal fact lives in settings because a field
-    cannot forget. `forget_taste()` is why that matters.
+    ⚠️ IT GOES TO SETTINGS, NOT THE FIELD. A personal fact lives in settings
+    because a field cannot forget (the same rule as the weather place).
+    `forget_taste()` is why that matters.
 
     ⚠️ REFUSES TO RUN TWICE unless explicitly forced, and records WHEN rather
-    than just a flag — a date is auditable and a boolean is not.
+    than just a flag: a date is auditable and a boolean is not.
     """
     s = C._settings()
     if s.get(TASTE_AT) and not force:
@@ -287,13 +270,10 @@ def import_taste(limit=12, force=False):
     if not available():
         return False, "the music library is not available on this machine"
 
-    # ⚠️ A COLD MUSIC.APP ANSWERS 0, NOT AN ERROR — and this is a ONE-SHOT.
-    # The first draft of this function would have marked the import DONE on an
-    # empty read, reasoning that "a library that reads as empty is an answer".
-    # It is not: `_library_ready` exists because the very first call is the one
-    # that LAUNCHES Music, and it returned 0 against a real 41. On a once-only
-    # import that mistake is permanent — the genres would be recorded as "none"
-    # and never asked for again.
+    # ⚠️ A COLD MUSIC.APP ANSWERS 0, NOT AN ERROR, and this is a ONE-SHOT. The
+    # first call may be the one that LAUNCHES Music and read 0 against a real
+    # library. Marking the import done on that read would record the genres
+    # as "none" permanently and never ask again.
     if not _library_ready():
         return False, ("your music library is not answering yet — Music needs "
                        "to be open. Try again in a moment.")
@@ -380,44 +360,35 @@ def stations(genre, limit=5):
 
 # ── playlists and reviews ────────────────────────────────────────────────────
 #
-# The user: *"The playlist/suggestion/review should be available in the
-# respective media host. If we use the data from Apple Music for playlist and
-# reviews…"* — so they live here, in the module that already reads the
-# library, rather than in a table of their own. Measured from Music.app's own
-# dictionary (45,766 bytes, read directly because `sdef` needs Xcode):
+# Playlists and ratings live in the media host, so they are read here, in the
+# module that already reads the library, rather than in a table of their own.
+# Music.app's scripting dictionary covers:
 #
 #     user playlist / library playlist / folder playlist   all scriptable
 #     make, duplicate, add                                 all present
 #     rating, rating kind, played count, disliked          all readable
 #
-# ⚠️ AND `rating kind` IS THE WHOLE DESIGN. Its enumeration is exactly two
-# values: `user` and `computed`. A COMPUTED rating is Apple's inference from
-# play counts — it is not an opinion, and reporting it as one would be a
-# provenance lie of the worst kind, because it would put words in the person's
-# mouth about their own taste. `reviews()` returns ONLY `user` ratings, and
-# `rating_of` always says which kind it found.
+# ⚠️ `rating kind` IS THE WHOLE DESIGN. Its enumeration is exactly two values:
+# `user` and `computed`. A COMPUTED rating is Apple's inference from play
+# counts. It is not an opinion, and reporting it as one would put words in the
+# person's mouth about their own taste. `reviews()` returns ONLY `user`
+# ratings, and `rating_of` always says which kind it found.
 #
-# ⚠️ NO FRIENDS API EXISTS. The dictionary has zero matches for friend,
-# follower or social, so the "friends lists for suggestions" half of the user's
-# idea cannot come from here. A SHARED playlist is still a playlist, so that
-# is the reachable version — and it is left for when suggestions are built.
+# ⚠️ NO FRIENDS API EXISTS: the dictionary has nothing for friends, followers
+# or social. A SHARED playlist is still a playlist, so that is the reachable
+# version.
 #
 # ⚠️ READING REQUIRES MUSIC.APP TO BE RUNNING, which means these calls can
-# launch it. `_note_launch` records that, so `close_player` can put it back —
-# the rule the user set about opening applications applies to reads too.
+# launch it. `_note_launch` records that, so `close_player` can put it back:
+# the rule about opening applications applies to reads too.
 
 def _library_ready():
     """Is Music.app actually able to answer about the library yet?
 
-    ⚠️ A COLD MUSIC.APP ANSWERS 0, NOT AN ERROR, and that is how this bit me:
-    the very first `playlists()` call was the one that LAUNCHED Music, and it
-    returned 0 against a real 41. Nothing was wrong with the query — asking
-    too early is indistinguishable from an empty library.
-
-    `library_size()` already carries this scar: it "returned 0 on failure and
-    0 is a real answer — it is why the library was reported as EMPTY on
-     when it held 6,498 tracks". So it is the readiness signal, and
-    a caller that cannot get a real count must say so rather than say "none".
+    ⚠️ A COLD MUSIC.APP ANSWERS 0, NOT AN ERROR. The call that launches Music
+    can read 0 against a real library; asking too early is indistinguishable
+    from an empty library. `library_size()` is the readiness signal, and a
+    caller that cannot get a real count must say so rather than say "none".
     """
     n = library_size()
     return bool(n)
@@ -445,8 +416,7 @@ def playlists(limit=30):
     Apple's containers, not lists the person made.
     """
     _note_launch("Music")
-    # ⚠️ None means "could not ask", [] means "none exist". Conflating them is
-    # what reported 0 playlists against a real 41.
+    # ⚠️ None means "could not ask", [] means "none exist".
     if not _library_ready():
         return None
     out = _osa(["on run argv",
@@ -690,18 +660,17 @@ def reviews(limit=20):
 
 # ── opening an app means being able to close it ──────────────────────────────
 #
-# The user: *"If I request a media play it should not open Apple Music to do it,
-# unless it can also quit the application when it's done."* That is the right
-# rule and it is now enforced here.
+# A media request may open Music only if Mati can also quit it when it is
+# done.
 #
 # ⚠️ ONLY WHAT MATI OPENED. If Music was already running when Mati arrived,
-# the person opened it and it is not Mati's to close — they may have a queue,
+# the person opened it and it is not Mati's to close: they may have a queue,
 # a playlist, a window arrangement. So the state is recorded BEFORE launching
 # and only a launch Mati caused is ever undone.
 #
-# ⚠️ Measured: Music.app has NO scriptable mini player. The MiniPlayer is a UI
-# window, not a property, so "use the small one instead" is not available.
-# Closing afterwards is the honest alternative.
+# Music.app's MiniPlayer is a UI window, not a scriptable property, so "use
+# the small one instead" is not available. Closing afterwards is the honest
+# alternative.
 _OURS = set()
 
 
@@ -777,11 +746,10 @@ def play_station(name, url, db_path=None):
              "end run"], url, timeout=25) is None:
         return False
     # ⚠️ VERIFY THAT IT IS ACTUALLY PLAYING. The command not erroring is not
-    # the same as sound coming out: , a 320k MP3 stream
-    # accepted `open location` without complaint and sat at `stopped`. A
-    # station that silently fails to buffer would otherwise be reported as
-    # playing AND written into the history as though it had — poisoning
-    # "what played on Saturday night" with something nobody heard.
+    # the same as sound coming out: a stream can accept `open location`
+    # without complaint and sit at `stopped`. Reporting it as playing would
+    # also write it into the history as though it had played, poisoning "what
+    # played on Saturday night" with something nobody heard.
     for _ in range(int(START_TIMEOUT / 0.5)):
         time.sleep(0.5)
         np = now_playing()
@@ -833,18 +801,17 @@ def ensure(db_path=None):
 def remember_play(kind, name, detail=None, db_path=None):
     """⚠️ THIS IS WHAT MAKES "that station from Saturday night" ANSWERABLE.
 
-    Without a record of what played and when, the request in the user's own
-    example cannot be resolved at all — and neither can ranking by count.
+    Without a record of what played and when, that request cannot be resolved
+    at all, and neither can ranking by count.
 
     Name and detail are SEALED: what someone listens to is as personal as a
     note body. The time stays clear so the history can be searched by when.
 
     ⚠️ RECORDING MUST NEVER BREAK PLAYING. `vault.seal` raises when the vault
-    is locked, and this runs AFTER playback has already started — so a locked
-    vault meant the music came on and then the turn died with a traceback.
-    The person heard it working and was told it failed, which is the worst
-    shape a bug can take. The write is now best-effort: losing one line of
-    listening history is a small loss, and it is not worth the turn.
+    is locked, and this runs AFTER playback has already started, so a failure
+    here would turn music that is playing into a turn that reports an error.
+    The write is best-effort: losing one line of listening history is a small
+    loss, and it is not worth the turn.
     """
     try:
         from . import vault
@@ -916,8 +883,8 @@ def history(limit=20, db_path=None):
 
 
 # ⚠️ LOCAL DAYS, not UTC. "Saturday night" is a local idea, and matching on the
-# UTC date would put an evening play on the following day — the same fault
-# already fixed twice in this codebase.
+# UTC date would put an evening play on the following day — an easy fault
+# anywhere a day is derived from a timestamp.
 _WEEKDAYS = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
              "friday": 4, "saturday": 5, "sunday": 6}
 
@@ -958,9 +925,9 @@ def what_played(when_words, db_path=None):
         on_date = today
 
     # ⚠️ PART OF DAY, AND IT MUST OUTRANK THE `evening` FLAG. "this morning"
-    # contains neither "night" nor "evening", but "this evening" does — and
-    # without explicit hours the old flag would accept any play after 17:00 on
-    # ANY day for a question that named today.
+    # contains neither "night" nor "evening", but "this evening" does, and
+    # without explicit hours an evening flag would accept any play after 17:00
+    # on ANY day for a question that named today.
     if "morning" in words:
         hours = (0, 12)
     elif "afternoon" in words:
@@ -1061,18 +1028,16 @@ _GENRE = re.compile(
 _BY = re.compile(r"\bby\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,3})")
 
 
-# ⚠️ WORDS THE MUSIC PATH MUST NOT CLAIM. "play me a movie" used to return
-# {'kind': 'track', 'what': 'a movie'} and send Apple Music hunting for a SONG
-# called "a movie" — opening a whole application to fail at a request it was
-# never the right answer to. Video belongs to `archive_org`, and `hears_request`
-# now declines rather than guessing.
+# ⚠️ WORDS THE MUSIC PATH MUST NOT CLAIM. "play me a movie" is not a request
+# for a SONG called "a movie". Video belongs to `archive_org`, and
+# `hears_request` declines rather than guessing.
 _VIDEO = re.compile(r"\b(movie|movies|film|films|video|videos|documentary|"
                     r"documentaries|episode of|show|series|pel[ií]cula|"
                     r"pel[ií]culas|cine)\b", re.I)
 
 
 def wants_video(text):
-    """Is this about moving pictures rather than music? ⚠️ Used to DECLINE."""
+    """Is this about moving pictures rather than music? If so, DECLINE."""
     return bool(_VIDEO.search(text or ""))
 
 
@@ -1164,12 +1129,9 @@ def answer_request(req, db_path=None):
         return f"I have {it['title']} from {it['feed']}, but it will not play."
 
     if kind == "station":
-        # ⚠️ RADIO PLAYS IN-PROCESS NOW, AND NO APPLICATION OPENS. The user:
-        # "I'd rather not open Apple Music… keep this as simple as possible."
-        # `radio.py` holds an AVPlayer inside the server, so there is no
-        # window to take over the screen and nothing to quit afterwards.
-        # Apple Music is still READ for the library — that is a query, not a
-        # takeover — it is just no longer how anything is played.
+        # ⚠️ RADIO PLAYS IN-PROCESS, AND NO APPLICATION OPENS. `radio.py`
+        # holds an AVPlayer inside the server, so there is no window to take
+        # over the screen and nothing to quit afterwards.
         from . import radio
         try:
             found = radio.by_genre(req["genre"], limit=4)
@@ -1181,18 +1143,11 @@ def answer_request(req, db_path=None):
                 remember_play(kind="station", name=st["name"],
                               detail=st["url"], db_path=db_path)
                 return f"{msg}."
-        # ⚠️ TWO DIFFERENT FAILURES, AND BOTH NOW OFFER THE NEXT MOVE.
-        # The user: *"Have radio and dj ask too."* Stations that exist and
-        # will not start is a true network fact and useless on its own — the
-        # person is holding a dead end they cannot act on. Nothing matching
-        # the words is Mati having misread them, which `media._ask_instead`
-        # asks about.
-        #
-        # ⚠️ AND THIS WAS CLAIMED FIXED ONCE WHEN IT WAS NOT. Commit 8c6a740
-        # describes this change in its message; the patch asserted against
-        # text that did not match, the failure was misread as belonging to
-        # `radio.py`, and dj.py was never in the commit at all. The message
-        # is wrong and this is the real change.
+        # ⚠️ TWO DIFFERENT FAILURES, AND BOTH OFFER THE NEXT MOVE. Stations
+        # that exist and will not start is a true network fact and useless on
+        # its own: the person is holding a dead end they cannot act on.
+        # Nothing matching the words is Mati having misread them, which
+        # `media._ask_instead` asks about.
         if found:
             return (f"I found {len(found)} {req['genre']} stations and none "
                     f"of them would start — shall I look for something near "

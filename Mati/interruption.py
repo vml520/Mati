@@ -1,37 +1,34 @@
 """
 Being cut off mid-sentence, and remembering that it happened.
 
-The user: *"The only interruption I'm talking about is during a conversation, as
-it occurs naturally when humans speak — and yes it does cause temporary memory
-loss, but we're able to rebuild the memory from what we do remember. In this
-case we have to be better, so the interruption will be recorded and the
-following prompt will be appended to the previous prompt as an interruption."*
+The only interruption meant here is the one that occurs naturally in
+conversation. It does cost people a little of the thread, and they rebuild it
+from what they do remember. Mati has to do better than that: the interruption
+is recorded, and the prompt that follows is appended to the previous one AS an
+interruption.
 
 Nothing here touches the field, the vault or the worker. An interruption
 abandons a REPLY; it never abandons a write. Once θ₀ has started moving it
-finishes — that invariant is older than this file and this file does not get
-to bend it.
+finishes, and nothing in this file bends that.
 
 ⚠️ **THE ALTERNATIVE IS TWO EPISODES, AND THAT IS THE FAILURE.** If the
 abandoned exchange and the correction are stored separately, recall can surface
 the abandoned half ALONE, with nothing attached saying it was abandoned — and
 Mati then treats a cut-off wrong answer as something it said and meant. That is
-the error-amplification path this project has already paid for twice.
-Appending keeps it one memory that cannot
-come apart.
+the error-amplification path: a flawed answer, replayed into later turns.
+Appending keeps it one memory that cannot come apart.
 
 ⚠️ **PARTS ARE A LIST, NOT A PAIR.** You can interrupt an interruption. A
 "previous + current" model either flattens the middle or drops it, and which one
-it does is invisible afterwards. Cheap now, painful to retrofit.
+it does is invisible afterwards.
 
 ⚠️ **PARTS STAY SEPARATE, AND THERE IS NO CLASSIFIER.** Sometimes what you type
 is not a continuation at all — you cut Mati off to ask what time it is.
 Concatenating that into the previous prompt corrupts the address of both. The
-temptation is to detect which case it is; the question-filter study died
-at its controls doing exactly that kind of judgement. So this never decides:
-every interruption is recorded as one, the parts are kept individually
-addressable, and a wrong guess costs a slightly odd combined address instead of
-a destroyed memory.
+temptation is to detect which case it is, and classifying turns by judgement
+does not hold up. So this never decides: every interruption is recorded as one,
+the parts are kept individually addressable, and a wrong guess costs a slightly
+odd combined address instead of a destroyed memory.
 
 ⚠️ **WHAT WAS SAID IS KEPT; WHAT WAS COMING IS NOT.** The partial reply is real
 — Mati said it and the person read it, and they may refer back to it. So it is
@@ -40,13 +37,13 @@ wrong: it got cut off precisely because it was going somewhere unwanted.
 Unmarked, it is poison. Whatever Mati was *about* to say never happened and is
 discarded.
 
-⚠️ **`cut_at` IS NOT A FAILURE SIGNAL.** I first called an interruption a
-labelled negative and that is too strong. Cut off at word 5 means the topic was
-wrong; cut off at word 200 can mean the answer went astray OR that the person
-already had what they needed and moved on — which is satisfaction, not a miss.
-The position separates them and costs nothing to record. Anything downstream
-that treats every interruption as a miss will learn that answering well enough
-to be cut short is a fault.
+⚠️ **`cut_at` IS NOT A FAILURE SIGNAL.** Calling an interruption a labelled
+negative is too strong. Cut off at word 5 means the topic was wrong; cut off at
+word 200 can mean the answer went astray OR that the person already had what
+they needed and moved on — which is satisfaction, not a miss. The position
+separates them and costs nothing to record. Anything downstream that treats
+every interruption as a miss will learn that answering well enough to be cut
+short is a fault.
 """
 
 from __future__ import annotations
@@ -144,7 +141,7 @@ class Exchange:
 
         Written in the second person because it is addressed to Mati, and
         naming the person's turn explicitly so it cannot be re-aimed: a bare
-        "you" in a block like this comes back out as a claim about the USER
+        "you" in a block like this comes back out as a claim about the person.
         """
         if not self.interrupted:
             return None

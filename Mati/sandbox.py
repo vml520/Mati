@@ -7,16 +7,14 @@ A throwaway copy of Mati's field, for testing against.
     python3 -m Mati.sandbox --clean          # delete them all
 
 WHY THIS EXISTS. Benchmarking a turn needs a real running server, and the
-easy way to get one is to point at the real install — so that is what got
-done, repeatedly. Every one of those turns wrote an episode
-and moved θ₀. Mati ended up holding 43 machine-generated "memories" of the
-same probe question, and `self_knowledge` then reported them back as lived
-experience. The store had to be cleaned by hand and reindexed.
+easy way to get one is to point at the real install. Every one of those turns
+writes an episode and moves θ₀: a benchmark leaves dozens of machine-generated
+"memories" of the same probe question, Mati reports them back as lived
+experience, and the store has to be cleaned by hand and reindexed.
 
-The suites already knew better — each one copies the store to a temp dir and
-monkeypatches module globals. That worked and nobody reached for it outside a
-suite, because it was six lines of setup rather than one command. So: one
-command.
+The test suites copy the store to a temp dir and monkeypatch module globals.
+That works, but it is six lines of setup rather than one command, so nobody
+reaches for it outside a suite. This is the one command.
 
 WHAT A SANDBOX IS. Exactly what `transfer.manifest()` says a portable install
 is — the notes DB, the notes θ₀, the checkpoint, its θ₀, and the vocabulary.

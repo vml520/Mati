@@ -2,17 +2,17 @@
 Getting there. Routes, spoken if asked, handed off for the actual driving.
 
 ⚠️ THE HONEST ANSWER TO "DOES MAPKIT DO TURN-BY-TURN": NO, AND NOTHING DOES.
-Measured  — `MKNavigation`, `MKNavigationSession`, `MKGuidance` and
-`MKTurnByTurn` are ALL ABSENT from MapKit. Apple ships live, position-triggered
-guidance in Maps.app and exposes no API for it. What `MKDirections` gives is
-the whole route AT ONCE:
+`MKNavigation`, `MKNavigationSession`, `MKGuidance` and `MKTurnByTurn` are ALL
+ABSENT from MapKit. Apple ships live, position-triggered guidance in Maps.app
+and exposes no API for it. What `MKDirections` gives is the whole route AT
+ONCE:
 
     MKRoute       distance, expectedTravelTime, name, polyline, advisoryNotices
     MKRouteStep   instructions ("Turn right onto W Cesar Chavez St"), distance
 
 A MANIFEST IS THE WHOLE SCOPE HERE, and that is a decision rather than a
-shortfall. The user: live guidance belongs to a future phone app;
-this module answers questions and lays out the turns, MapQuest-style.
+shortfall. Live guidance belongs to a future phone app; this module answers
+questions and lays out the turns, MapQuest-style.
 
 ⚠️ SO THERE IS NO LOCATION TRACKING IN MATI AT ALL, and that is worth
 stating because it is load-bearing for the privacy claim rather than
@@ -33,11 +33,10 @@ So the division, for this release:
                  SPEAK them, because it does have a voice (see below)
     Maps.app     does the actual navigation, if the person wants to drive it
 
-⚠️ "NO VOICE" WAS A WRONG PREMISE. `/usr/bin/say` ships with macOS, has 177
-voices installed on this machine, is fully offline, needs no account and costs
-nothing. Mati has simply never used it. It is OFF by default here anyway —
-software that starts talking unprompted is worse than software that does not
-talk at all.
+⚠️ THE VOICE IS ALREADY ON THE MACHINE. `/usr/bin/say` ships with macOS, comes
+with many voices, is fully offline, needs no account and costs nothing. It is
+OFF by default here anyway — software that starts talking unprompted is worse
+than software that does not talk at all.
 
 ⚠️ MKLocalSearch IS NOT USED, and `places.py` explains why: its region
 argument is silently ignored. Routing honours coordinates; search does not.

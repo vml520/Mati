@@ -1,28 +1,26 @@
 """
 Collecting a budget that arrives in pieces, across turns, in ordinary English.
 
-    python3 -m Mati.intake "dinner at $40 per person per day for two, 3 months"
+    python3 -m Mati.budget_intake "dinner at $40 per person per day for two, 3 months"
 
-⚠️ WHY THIS EXISTS. The user wrote a complete, detailed budget in one paragraph:
+⚠️ WHY THIS EXISTS. People describe a budget the way they think about it — all
+at once, in a paragraph:
 
     "Let's breakdown meal costs. I would like to spend enough to buy a coffee
      and a baked item for breakfast everyday per person. I would like to have
      a rolling budget for lunch that can cover from 0 to $50 group spending a
      day. Dinner should be the big one at $40 per person per day. The budget
-     is for two people, myself and my wife. It should span three months after
-     arrival in Mexico."
+     is for two people. It should span three months."
 
 `accountant.hears_money` is built for *"set a grocery budget of 400 a month"* —
-one name, one amount, one period. On the paragraph above it returned a budget
-named **"lunch that can cover from"** for **$0.00 a month**: it took the `0`
-out of "from 0 to $50", used a sentence fragment as the name, and dropped the
-$40/person/day dinner, the two people and the three months entirely. It never
-actually ran, because `media` won the turn on the word "enough" — so the
-wrong answer was never even seen.
+one name, one amount, one period. On the paragraph above it would return a
+budget named **"lunch that can cover from"** for **$0.00 a month**: the `0`
+taken out of "from 0 to $50", a sentence fragment used as the name, and the
+$40/person/day dinner, the two people and the three months dropped entirely.
 
-⚠️ AND THE POINT IS LARGER THAN BUDGETS. The user: *"We should avoid having to
-force the user to learn patterned speech as commands. Mati should understand
-if we need a service or conversation from the language itself."*
+⚠️ AND THE POINT IS LARGER THAN BUDGETS. Nobody should have to learn patterned
+speech as commands. Whether a service or conversation is wanted should be
+understood from the language itself.
 
 So the trigger here is NOT a command phrase. It is the SHAPE of the language:
 several amounts, with units and periods, and a count of people. That shape is
@@ -33,10 +31,9 @@ what they are doing.
 
 ⚠️ WHAT IT DOES NOT DO: guess an amount. "a coffee and a baked item for
 breakfast everyday per person" names an item with NO figure, and inventing one
-would be the confabulation this project keeps finding. It is collected as a
-known-unknown and asked about — the setup principle: work with partial data,
-ask for the one
-missing thing when it blocks something.
+would be confabulation. It is collected as a known-unknown and asked about —
+the setup principle: work with partial data, ask for the one missing thing
+when it blocks something.
 """
 
 from __future__ import annotations
@@ -90,16 +87,16 @@ _ITEM = re.compile(
     r"clothing|household|pets?|car|fuel|gas|petrol)\b", re.I)
 
 # ⚠️ A CLAUSE CAN NAME SEVERAL OF THESE, AND THE FIRST ONE IS NOT THE SUBJECT.
-# Measured on the user's own sentence: "a coffee and a baked item for BREAKFAST
-# everyday per person" matched `coffee` because it appears earlier — so the
-# budget grew a "coffee" line and no "breakfast" line, for the same money.
-# A meal is what is being budgeted; a coffee is what it is spent on.
+# In "a coffee and a baked item for BREAKFAST everyday per person", taking the
+# first match gives `coffee` — so the budget would grow a "coffee" line and no
+# "breakfast" line, for the same money. A meal is what is being budgeted; a
+# coffee is what it is spent on.
 _MEALS = {"breakfast", "lunch", "dinner", "supper", "brunch"}
 
 # Headings, not lines. "Let's break down MEAL costs" opens the subject; it is
-# not a line item called "meal" — and it arrived with no figure, so it sat in
-# the budget as a permanent unanswerable gap ("I still need what you want to
-# allow for meal") while the real lines were already complete.
+# not a line item called "meal" — and it comes with no figure, so as a line it
+# would sit in the budget as a permanent unanswerable gap ("I still need what
+# you want to allow for meal") while the real lines are already complete.
 _GENERIC = {"meal", "meals", "food", "costs", "cost"}
 
 
@@ -217,11 +214,10 @@ _ASKS_BUDGET = re.compile(
 def looks_like_budget(text):
     """Is this message a budget being described? From its SHAPE, not a phrase.
 
-    ⚠️ NO COMMAND WORD IS REQUIRED, which is the whole point. The user: *"avoid
-    having to force the user to learn patterned speech as commands."* Several
-    named items with amounts, periods, a count of people or a span — that
-    shape is a budget whether the sentence opens "set a budget", "let's break
-    down", or neither.
+    ⚠️ NO COMMAND WORD IS REQUIRED, which is the whole point: nobody should
+    have to learn patterned speech as commands. Several named items with
+    amounts, periods, a count of people or a span — that shape is a budget
+    whether the sentence opens "set a budget", "let's break down", or neither.
 
     ⚠️ AND IT IS DELIBERATELY NOT A SINGLE KEYWORD. "the budget is tight this
     month" names no items and no figures and is conversation.
@@ -236,11 +232,11 @@ def looks_like_budget(text):
         bool(span_days(t)),
         bool(re.search(r"\bbudget(?:s|ing)?\b", t, re.I)),
     ))
-    # ⚠️ AN EXPLICIT REQUEST OPENS ONE WITH NOTHING IN IT. The user's first turn
-    # was "help me create a budget for moving to Mexico when I retire" — no
-    # figures, no items, and it is unmistakably a request for this service.
-    # Requiring items meant the opening turn was not recognised and the detail
-    # that followed had to carry every signal by itself.
+    # ⚠️ AN EXPLICIT REQUEST OPENS ONE WITH NOTHING IN IT. "help me create a
+    # budget for my move" has no figures and no items, and it is unmistakably a
+    # request for this service. Requiring items would leave the opening turn
+    # unrecognised and make the detail that follows carry every signal by
+    # itself.
     if _ASKS_BUDGET.search(t):
         return True
     # Otherwise two independent signals, so a single stray number or the bare
@@ -250,10 +246,10 @@ def looks_like_budget(text):
 
 # ── held across turns ────────────────────────────────────────────────────────
 # ⚠️ A BUDGET ARRIVES IN PIECES AND THE PIECES DO NOT REANNOUNCE THEMSELVES.
-# The user opened with "help me create a budget for moving to Mexico", then sent
-# the meal detail as a separate message. Treating each turn independently is
-# why the second one had to carry every signal by itself. Once a budget is
-# open, later turns extend it without needing any keyword.
+# "Help me create a budget for my move" comes first, and the meal detail
+# follows as a separate message. Treated independently, the second would have
+# to carry every signal by itself. Once a budget is open, later turns extend it
+# without needing any keyword.
 _OPEN = {}
 
 

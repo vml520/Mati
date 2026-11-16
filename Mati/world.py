@@ -1,26 +1,21 @@
 """
 Reading the world — RSS, including the audio and video in it.
 
-The user: *"I want to make sure that Mati's responses include audio and video
-references from its RSS feeds, in addition to servicing."*
-
-So a world item is not only text. When a feed carries an `<enclosure>` or a
-`<media:content>`, that file travels WITH the note — and a reply that draws on
+A world item is not only text. When a feed carries an `<enclosure>` or a
+`<media:content>`, that file travels WITH the note — so a reply that draws on
 the item can say "there is an episode about that" and then play it, rather than
 paraphrasing something the person cannot reach.
 
-⚠️ NOTHING IS CONFIGURED OUT OF THE BOX, and that is what keeps the README
-claim true. `Mati/README.md` says Mati makes no outbound network connections;
-with no feed configured it still makes none. Adding one is the person's act,
-and the user's wording for what it becomes is: *"minimal RSS connections with no
-personal information is ever used."* Both halves are enforced here — a bounded
-number of fetches, and a request that carries a feed URL and nothing else.
+⚠️ NOTHING IS CONFIGURED OUT OF THE BOX. With no feed subscribed, this makes no
+connection at all; adding one is the person's act. What it becomes then is
+minimal RSS connections with no personal information ever used, and both
+halves are enforced here — a bounded number of fetches, and a request that
+carries a feed URL and nothing else.
 
-⚠️ CONSCIOUS-LAYER MATERIAL, NOT THE FIELD'S. The user: *"The RSS feed is not the
-same as the field prediction. This one is verbatim and a lookup."* So world
-items are archived from birth, lexical-only, never imprinted. θ₀ is not
-deformed by the news, and the volume bound is affordable
-precisely because the field is not involved.
+⚠️ CONSCIOUS-LAYER MATERIAL, NOT THE FIELD'S. A feed is verbatim and a lookup,
+not a field prediction. So world items are archived from birth, lexical-only,
+never imprinted. θ₀ is not deformed by the news, and the volume bound is
+affordable precisely because the field is not involved.
 
 ⚠️ AND IT IS THE WEAKEST THING MATI HOLDS. Weaker than a book the person
 chose, because nobody vetted it. The provenance label says where it came from
@@ -45,10 +40,9 @@ SOURCE = "world"
 UA = C.USER_AGENT
 NET_TIMEOUT = 20
 
-# ⚠️ THE BOUND IS THE DESIGN, not a tuning knob. Measured  the store
-# grows ~104 notes/day, mostly one book read once. Two active news feeds
-# unbounded is ~25,000 notes a year and the record of a person becomes a stale
-# news archive with a diary attached.
+# ⚠️ THE BOUND IS THE DESIGN, not a tuning knob. A couple of active news feeds,
+# unbounded, would add tens of thousands of notes a year, and the record of a
+# person would become a stale news archive with a diary attached.
 MAX_PER_DAY = 40
 EXPIRE_DAYS = 30
 
@@ -78,12 +72,11 @@ def feeds():
 def is_public_url(url):
     """(ok, why) — is this an address out in the world? ⚠️ THE SSRF GUARD.
 
-    ⚠️ THIS LIVES ON ITS OWN BECAUSE `subscribe` IS NO LONGER THE ONLY DOOR.
-    It used to be, and the check was inlined there. `discover_feed` then
-    started FETCHING a pasted URL before `subscribe` ever saw it, so
-    `http://127.0.0.1:8756/` was retrieved by Mati from itself — the guard
-    was still in the codebase and no longer on the path. Any new function
-    that fetches a URL from outside calls this FIRST.
+    ⚠️ ITS OWN FUNCTION BECAUSE `subscribe` IS NOT THE ONLY DOOR.
+    `discover_feed` FETCHES a pasted URL before `subscribe` ever sees it, and
+    a guard inlined in `subscribe` would let `http://127.0.0.1:8756/` be
+    retrieved by Mati from itself. Any function that fetches a URL from
+    outside calls this FIRST.
     """
     u = urllib.parse.urlparse(url or "")
     if u.scheme not in ("http", "https") or not u.hostname:
@@ -127,7 +120,7 @@ def subscribe(url, name=None):
 # ⚠️ AUTODISCOVERY IS THE STANDARD, AND IT IS WHAT MAKES THIS GENERAL. A page
 # that publishes a feed says so in its own <head>:
 #     <link rel="alternate" type="application/rss+xml" href="...">
-# Measured  — every shopping page tried carried one:
+# Shopping pages commonly carry one:
 #     allbirds.com/collections/mens-shoes  -> /collections/mens.atom
 #     slickdeals.net/deals/                -> /newsearch.php?mode=frontpage…
 #     dealnews.com/                        -> /?rss=1
@@ -137,8 +130,8 @@ _FEED_LINK = re.compile(
     re.I | re.S)
 _HREF = re.compile(r"""href\s*=\s*["']([^"']+)["']""", re.I)
 
-# ⚠️ Measured: allbirds' and slickdeals' <head> both exceed 200 KB. This is the
-# hard stop for a page that never closes its head at all.
+# ⚠️ Some shop pages' <head> exceeds 200 KB. This is the hard stop for a page
+# that never closes its head at all.
 HEAD_CEILING = 2_000_000
 
 # Platform patterns, tried only when a page advertises nothing. These are
@@ -232,9 +225,8 @@ def preview(page_url, timeout=NET_TIMEOUT):
 
     The ordinary link-preview mechanism — one fetch of a URL the person was
     already handed, exactly what Messages and Slack do. It is not scraping a
-    search page and it touches nothing that blocks.
+    search page and it touches nothing that blocks. A real listing gives:
 
-    Measured  against a real listing:
         og:title        Motley Crue: From the Beginning Vinyl: $18
         og:description  It's $17 under list price.
         og:image        https://d.dlnws.com/…product-trimmed.png
@@ -305,7 +297,7 @@ def _media_of(item):
 
     ⚠️ TWO PLACES TO LOOK. Podcasts use `<enclosure>`; YouTube and many video
     feeds use `<media:content>`. Checking only the first would silently make
-    every video feed text-only, which is exactly what the user asked to avoid.
+    every video feed text-only.
     """
     enc = item.find("enclosure")
     if enc is not None and enc.get("url"):
@@ -411,8 +403,8 @@ def _interests(db_path=None):
             continue
         for part in re.split(r"[,;]| and ", m.group(1)):
             part = part.strip(" .").lower()
-            # ⚠️ TWO CHARACTERS IS NOW SAFE because `_matches` uses word
-            # boundaries. The old floor of three silently discarded "AI".
+            # ⚠️ TWO CHARACTERS IS SAFE because `_matches` uses word
+            # boundaries, so "AI" is kept.
             if len(part) >= 2:
                 # An abbreviation cannot match the words it stands for, so the
                 # expansion goes in beside it — "AI" alone would never have
@@ -427,15 +419,13 @@ def _interests(db_path=None):
 
 
 # ⚠️ WORD BOUNDARIES, NOT SUBSTRINGS, AND THAT IS WHAT MAKES SHORT INTERESTS
-# SAFE. `any(w in hay...)` meant "ai" would have matched said, rain, chair,
-# available and again — so `_interests` dropped anything under three
-# characters to protect against it. The guard was on the wrong side: it made
-# **AI**, a stated interest in the user's own profile, permanently unmatchable.
-# : "New AI model beats humans at protein folding" did not
-# match, and neither did "Artificial intelligence advances".
+# SAFE. With a substring test "ai" would match said, rain, chair, available and
+# again — and dropping anything under three characters to protect against that
+# would make **AI**, a common stated interest, permanently unmatchable: "New AI
+# model beats humans at protein folding" would not match.
 #
-# A trailing `\w*` keeps the stem behaviour the substring test gave for free —
-# "genetic" still finds "genetics" — while "ai" now only matches the word.
+# A trailing `\w*` keeps the stem behaviour a substring test gives for free —
+# "genetic" still finds "genetics" — while "ai" only matches the word.
 def _boundary(word):
     return re.compile(r"\b" + re.escape(word) + r"\w*", re.I)
 
@@ -497,10 +487,9 @@ def ingest(items, db_path=None, verbose=False):
             if not _matches(it, interests):
                 continue
             src = f"{SOURCE}:{it['feed']}"
-            # ⚠️ CLEANED BEFORE IT BECOMES A MEMORY. A feed title used to go
-            # in verbatim, so a hostile item was not a one-turn attack — it
-            # was stored and could resurface unbidden for weeks. See
-            # `untrusted.py` for the three breaks that were demonstrated.
+            # ⚠️ CLEANED BEFORE IT BECOMES A MEMORY. Stored verbatim, a hostile
+            # feed title would not be a one-turn attack — it could resurface
+            # unbidden for weeks. See `untrusted.py`.
             from . import untrusted
             body = untrusted.clean(it["title"])
             if it["summary"]:
@@ -613,14 +602,13 @@ def playable(query, k=3, db_path=None):
 
 # ── being asked for the news ─────────────────────────────────────────────────
 
-# ⚠️ THIS MODULE HAD NO RECOGNISER, and that is the whole bug the user hit.
-# They asked "Is there any news for me?" and Mati said "Of course. Let me put
-# that together." — then nothing happened, because nothing routed the
-# question. `report.asks_for_report` returns False for "news", `world.block`
-# returns "" when no stored item matches, and no code ran at all. The model
-# filled the silence with a promise because nothing contradicted it.
+# ⚠️ A FRONT DOOR FOR THE NEWS. Without a recogniser, "Is there any news for
+# me?" routes nowhere: `report.asks_for_report` returns False for "news",
+# `world.block` returns "" when no stored item matches, and no code runs at all
+# — so the model fills the silence with a promise ("Of course. Let me put that
+# together") because nothing contradicts it.
 #
-# ⚠️ THE SAME SHAPE AS radio AND podcast: a capability with no front door can
+# ⚠️ THE SAME RULE AS radio AND podcast: a capability with no front door can
 # only be reached by a terminal command, never by asking.
 _ASKS_NEWS = (
     "any news", "the news", "what's new", "whats new", "news for me",
@@ -630,18 +618,15 @@ _ASKS_NEWS = (
 )
 
 
-# ⚠️ A SUBSTRING LIST CANNOT SEE AN ADJECTIVE, and that is how the exact
-# question the user asked was missed. "any news" is in the list above; they said
-# *"Have you heard any interesting news?"* — so the literal "any news" is not
-# present and the whole news path stayed shut. Mati then answered from
-# ordinary notes with "I haven't come across anything particularly
-# interesting", which is a worse failure than silence: it sounded like an
-# answer about the news.
+# ⚠️ A SUBSTRING LIST CANNOT SEE AN ADJECTIVE. "any news" is in the list above;
+# "Have you heard any interesting news?" does not contain the literal "any
+# news", and answered from ordinary notes it comes back as "I haven't come
+# across anything particularly interesting" — worse than silence, because it
+# sounds like an answer about the news.
 #
-# ⚠️ STILL NOT A CLASSIFIER. The project's rule stands — the one time
-# questions were classified by judgement the study died at its controls. This
-# is the same literal vocabulary with up to two words allowed between the
-# parts, which is what "interesting" needed.
+# ⚠️ STILL NOT A CLASSIFIER. Classifying questions by judgement does not hold
+# up; this is the same literal vocabulary with up to two words allowed between
+# the parts, which is what "interesting" needs.
 _NEWS_RE = re.compile(
     r"\bany(?:thing)?\s+(?:\w+\s+){0,2}news\b"
     r"|\bheard\s+(?:any(?:thing)?\s+)?(?:\w+\s+){0,2}(?:news|interesting)\b"
@@ -660,13 +645,12 @@ def recent(k=8, topic=None, db_path=None):
 
     `playable` answers "which stored item can Mati actually PLAY", so it
     filters to items carrying an audio or video file. A news article has no
-    enclosure, so it can never pass that filter — and `news_block` was calling
-    it, which is why 19 stored items reported as "nothing stored that
-    matches".
+    enclosure, so it can never pass that filter, and asked through it every
+    stored item would report as "nothing stored that matches".
 
-    ⚠️ It was also passing the QUESTION as a search query, so "any news" was
-    being looked up as a phrase. A general request has no topic; it wants the
-    latest. A topic is optional and narrows it.
+    ⚠️ A general request has no topic; it wants the latest. The QUESTION is not
+    a search query — "any news" looked up as a phrase finds nothing. A topic is
+    optional and narrows it.
     """
     from . import vault
     conn = sqlite3.connect(
@@ -704,9 +688,9 @@ def news_block(text_in=None, db_path=None):
 
     ⚠️ THE EMPTY CASE IS THE IMPORTANT ONE. With no feed subscribed there is
     no news, and the honest answer says so and says what would change it — a
-    promise to "put it together" is exactly what happened before and it was
-    false. This block is `<computed>` because it is worked out from the
-    subscription list and the store, not remembered.
+    promise to "put it together" would be false. This block is `<computed>`
+    because it is worked out from the subscription list and the store, not
+    remembered.
     """
     have = feeds()
     # ⚠️ `recent`, not `playable` — see that function. A general news request

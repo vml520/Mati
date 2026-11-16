@@ -4,45 +4,40 @@ Build the field that ships: baseline θ₀ + the charter, and nothing else.
     python3 -m Mati.make_ship_field            # build into .cache/ship/
     python3 -m Mati.make_ship_field --check    # report, build nothing
 
-⚠️ NOT THE USER'S FIELD. Their notes θ₀ is **1.6125 rad** from the baseline and
-wears their conversations; shipping it would ship their shape. This starts from
+⚠️ NOT A PERSON'S FIELD. A notes θ₀ that has been talked to wears that
+person's conversations; shipping it would ship their shape. This starts from
 `config.CKPT_THETA0` — the trained checkpoint, which a fresh install already
-falls back to — and shapes it with one document.
+falls back to.
 
-⚠️ AND NOT "GENERAL KNOWLEDGE", WHICH WAS ASKED FOR AND IS MEASURED USELESS.
-Field addressing scores 4/111 = 0.036 against lexical's 93/111 = 0.838 on
-identical cues, and the field-as-database reading is refuted on
-arithmetic: θ₀ is ~13 KB while the text it indexes is larger. The field is the
-INDEX, not the store. Imprinting an encyclopaedia would move θ₀ a long way and
-leave Mati exactly as informed as before.
+⚠️ AND NOT "GENERAL KNOWLEDGE". Field addressing scores 4/111 = 0.036 against
+lexical's 93/111 = 0.838 on identical cues, and θ₀ is smaller than the text it
+indexes: the field is the INDEX, not the store. Imprinting an encyclopaedia
+would move θ₀ a long way and leave Mati exactly as informed as before.
 
-WHAT THIS IS FOR, in the user's words: *"otherwise the assistant will have no
-field memory to recall during a turn."* That is the real problem and it is not
-about θ₀ at all — **the field surfaces NOTES**. A shipped store with nothing
+WHAT THIS IS FOR: otherwise the assistant has no field memory to recall
+during a turn. **The field surfaces NOTES**, and a shipped store with nothing
 in it means `memories_recalled: 0` on every turn of a fresh install, for as
 long as it takes the person to fill it.
 
-⚠️ THE MECHANISM WAS ALREADY BUILT AND EMPTY. `bridge.charter_chunks()` reads
-`source LIKE 'studied:charter:%'` and returns `[]` today;
-charter injection hands the charter over whole on identity
-turns; the provenance label is already written —
+The rest is already in place: `bridge.charter_chunks()` reads
+`source LIKE 'studied:charter:%'`, charter injection hands the charter over
+whole on identity turns, and the provenance label is written —
 
     "THIS IS MY OWN CHARTER — what I hold myself to. Speak it as mine. I did
      not live it as an event, so never say I remember it happening."
 
-The loader, the trigger and the label all exist. Nothing ever populated them.
+This populates them.
 
-⚠️ STUDIED FOR RECALL, NEVER FOR ENFORCEMENT. `PRINCIPLES.md`'s own second
-paragraph: *"They are enforced in code. They are not held in the field."*
-Measured  — the field has no opinion about a principle versus its
-opposite, against a 0.0009 noise floor. This makes the charter RECALLABLE and
-shapes θ₀ with identity material. It does not make Mati principled; `admit.py`
-and the named rules do that, and they are what the tests prove.
+⚠️ STORED FOR RECALL, NEVER FOR ENFORCEMENT. The principles are enforced in
+code, not held in the field (`PRINCIPLES.md`): the field has no opinion about
+a principle versus its opposite. This makes the charter RECALLABLE. It does
+not make Mati principled; `admit.py` and the named rules do that, and they are
+what the tests prove.
 
 ⚠️ THREE FILES, ONE MATCHED SET, VERSIONED TOGETHER:
 
     mati_notes.db                     the charter, as studied: notes
-    mati_notes_theta0.npz             θ₀ after imprinting them
+    mati_notes_theta0.npz             θ₀ the notes are addressed against
     mati_notes_theta0_address.npz     the space those notes are filed in
 
 Their addresses are computed against THIS θ₀. Ship any one of them without the
@@ -104,26 +99,24 @@ def check(db_path=None):
 def write_charter_verbatim(lm, tok, text, origin, db_path, verbose=True):
     """Store the charter AS WRITTEN, addressed but never imprinted.
 
-    ⚠️ `study.enqueue` + `study.study` DO TWO THINGS THE MEASUREMENTS SAY NOT
-    TO. First, `learning.py` stores what a 3B *learned* from a chunk, not the
-    chunk — right for a book, wrong for a charter, which the provenance label
-    has Mati speak as ITS OWN. Measured: a 2,762-char charter became 452
-    chars of paraphrase, "I am Mati. I am a personal AI that runs entirely on
-    one person's own computer" rewritten into the model's words.
+    ⚠️ `study.enqueue` + `study.study` WOULD DO TWO THINGS WRONG HERE. First,
+    `learning.py` stores what a 3B *learned* from a chunk, not the chunk —
+    right for a book, wrong for a charter, which the provenance label has Mati
+    speak as ITS OWN. A charter studied that way comes out as paraphrase: "I am
+    Mati. I am a personal AI that runs entirely on one person's own computer"
+    rewritten into the model's words, and the memory and privacy principles
+    rewritten into false claims.
 
-    ⚠️ Second, studying IMPRINTS θ₀, and that is what broke the shipped field:
-
-        24 chunks   coherence 0.587-0.682   0/12 above the episode gate
-         6 chunks   coherence 0.498-0.895   7/12
-
-    A fresh install built the first way would reject EVERY episode and form no
-    memories at all, silently, for ever.
+    ⚠️ Second, studying IMPRINTS θ₀. A few thousand words of one voice imprinted
+    into a cold field push settling coherence below the episode gate on every
+    turn, so a fresh install would reject EVERY episode and form no memories at
+    all, silently, for ever.
 
     ⭐ SO THIS WRITES ROWS AND LEAVES θ₀ ALONE. The charter does not reach
     Mati by field recall — `bridge.charter_chunks()` hands it over WHOLE on
     identity turns, no addressing involved. It only has to be PRESENT. The
-    shipped θ₀ stays the untouched trained baseline, which is what
-    `test_coldstart` already proves and what keeps the gate working.
+    shipped θ₀ stays the untouched trained baseline, which keeps the gate
+    working.
 
     ⚠️ `feat` is still computed, so the rows are reachable by recall too — it
     costs nothing and a stored note with no address is unfindable by anything.
@@ -158,11 +151,8 @@ def write_charter_verbatim(lm, tok, text, origin, db_path, verbose=True):
 def personal_rows(db_path):
     """How many of Mati's own private reflections are in this store.
 
-    ⭐ THE FLAG'S FIRST REAL READER, added to close that gap.
-    `personal_only` had a writer (`reflect._mark_personal`) and no reader at
-    all anywhere in the codebase — the same write-only shape as the verbatim
-    search, which stored faithfully and was searchable by nothing until
-    somebody measured it.
+    ⭐ THE READER THAT GIVES `personal_only` ITS MEANING. The flag is written by
+    `reflect._mark_personal`; this is what refuses a store that carries it.
     """
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -180,12 +170,10 @@ def personal_rows(db_path):
 def assert_impersonal(db_path):
     """Refuse to call a store shippable if Mati's self-talk is in it.
 
-    ⚠️ THIS WAS TRUE BY ACCIDENT AND IS NOW TRUE BY CHECK. The old reasoning
-    was "the shipped field never copies these rows because a build is from
-    scratch" — which is correct today and is a property of HOW the build
-    happens, not of what it produces. Make the build incremental, or merge a
-    store, or seed from a copy, and Mati's private reflections land in a
-    public artifact with nothing to say so.
+    ⚠️ TRUE BY CHECK, NOT BY ACCIDENT. "A build is from scratch" is a property
+    of HOW the build happens, not of what it produces. Make the build
+    incremental, or merge a store, or seed from a copy, and Mati's private
+    reflections would land in a public artifact with nothing to say so.
 
     ⚠️ IT RAISES. A warning printed at the end of a six-minute build is a
     warning nobody sees; the whole point is that this artifact gets published.
@@ -236,10 +224,8 @@ def self_check(lm, tok, db_path, verbose=True):
     import sqlite3 as _sq
     # ⚠️ IMPORTED HERE BECAUSE THIS MODULE HAS NO MODULE-LEVEL `bridge`.
     # `build()` does `from . import bridge, …` inside itself, so a new function
-    # referencing `bridge` compiles fine and raises NameError on first call —
-    # which is what happened, and the loop's `except` reported it only under
-    # `verbose`. The fifth scope error of this shape in this codebase: it
-    # parses, it does not run.
+    # referencing `bridge` would compile fine and raise NameError on first
+    # call — and the loop's `except` reports only under `verbose`.
     from . import bridge
 
     conn = _sq.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -299,13 +285,12 @@ def self_check(lm, tok, db_path, verbose=True):
 # committed rows in `-wal` that are not yet in the `.db`, so whoever packages
 # this directory and copies `mati_notes.db` alone gets a store that looks
 # fine and is quietly older — possibly missing the self-check rows, which are
-# written last. `build()` ended without checkpointing: the `finally` only
-# restored globals.
+# written last.
 #
-# ⚠️ IT WAS SURVIVING ON TIMING, NOT CORRECTNESS. `-wal` happened to be 0
-# bytes because each connection checkpointed as it closed. That is luck, and
-# `backup.py` already carries this lesson — *"leaving a newer log beside an
-# older database is the same bug pointing the other way"*.
+# ⚠️ AN EMPTY `-wal` IS TIMING, NOT CORRECTNESS: it is empty only because each
+# connection happened to checkpoint as it closed. `backup.py` carries the same
+# lesson — *"leaving a newer log beside an older database is the same bug
+# pointing the other way"*.
 
 
 def seal_db(db_path, verbose=False):
@@ -313,19 +298,19 @@ def seal_db(db_path, verbose=False):
 
     Idempotent, so it can be run against an already-built artefact.
 
-    ⚠️⚠️ CHECKPOINTING ALONE WAS NOT ENOUGH, AND MADE THINGS WORSE. Folding
-    the log in left the database still in WAL *mode* — the pragma lives in the
-    file header — and a WAL database cannot be opened READ-ONLY unless its
-    `-shm` index already exists. Sealing removes `-shm`. Measured on the real
-    v1 artefact, immediately after a successful checkpoint:
+    ⚠️⚠️ CHECKPOINTING ALONE IS NOT ENOUGH, AND MAKES THINGS WORSE. Folding
+    the log in leaves the database still in WAL *mode* — the pragma lives in
+    the file header — and a WAL database cannot be opened READ-ONLY unless its
+    `-shm` index already exists. Sealing removes `-shm`, so immediately after
+    a successful checkpoint:
 
         PRAGMA journal_mode  -> wal
         sqlite3 file:...?mode=ro  -> "unable to open database file"
 
-    `check()` opens `mode=ro`, so `--check` reported `readable: False` on a
-    database that was perfectly intact — and reported True again as soon as
-    anything opened it read-write and recreated `-shm`. A shipped artefact
-    whose readability depends on a scratch file is not sealed.
+    `check()` opens `mode=ro`, so `--check` would report `readable: False` on a
+    database that is perfectly intact — and True again as soon as anything
+    opened it read-write and recreated `-shm`. A shipped artefact whose
+    readability depends on a scratch file is not sealed.
 
     ⚠️ SO THE JOURNAL MODE IS CHANGED, NOT JUST EMPTIED. `DELETE` is the
     rollback journal, persists in the header, and needs no sidecar. The
@@ -366,8 +351,7 @@ def seal_db(db_path, verbose=False):
                 print(f"    removed {os.path.basename(f)} ({why})")
 
     # ⭐ THE SUCCESS CRITERION IS A READ-ONLY OPEN, not the absence of files.
-    # That is the property a packager, a zip, and `check()` all depend on, and
-    # it is the one the first version silently broke.
+    # That is the property a packager, a zip, and `check()` all depend on.
     try:
         ro = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
@@ -400,20 +384,11 @@ def build(out_dir, verbose=True, max_chunks=None):
     # address space and WRITES it when none is there, so a load before this
     # line would seed the real cache from a build.
     # ⚠️⚠️ `field.notes` HAS ITS OWN GLOBAL AND `save_field` READS THAT ONE.
-    # Redirecting only bridge's copy is what made the first build WRITE OVER
-    # THE USER'S PRODUCTION θ₀ — seven times, once per study batch, while the
-    # build directory's own theta file stayed 0 bytes. The log said
-    # "Notes θ₀ saved → .cache/mati_notes_theta0.npz" each time, unread until
-    # read it until the build finished.
-    #
-    # Recovered exactly from `mati_notes_theta0_address.npz`, the frozen
-    # address space, which is a verbatim snapshot of their θ₀ at the last
-    # promote and which this build never touched. 0 stale of 97 afterwards.
-    #
-    # `test_server` already carried the warning — "mati_notes.save_field
-    # reads its own module global at call time... N.NOTES_THETA0_PATH = theta
-    # # save_field reads this one". It is now enforced here rather than
-    # remembered.
+    # Redirecting only bridge's copy would have a build WRITE OVER THE
+    # PERSON'S PRODUCTION θ₀ — once per batch — while the build directory's own
+    # theta file stayed empty, and the log line "Notes θ₀ saved →
+    # .cache/mati_notes_theta0.npz" would be the only sign. It is enforced here
+    # rather than remembered.
     from .field import notes as _fn
     saved = (bridge.NOTES_DB_PATH, bridge.NOTES_THETA0_PATH, vault.VAULT_PATH,
              _fn.NOTES_DB_PATH, _fn.NOTES_THETA0_PATH)
@@ -430,7 +405,7 @@ def build(out_dir, verbose=True, max_chunks=None):
         bridge.thaw()
 
         # ⚠️ PROVE THE REDIRECT TOOK, BEFORE ANYTHING CAN WRITE. A build that
-        # silently writes to the real cache is the incident above; a build
+        # silently writes to the real cache overwrites someone's field; a build
         # that refuses to start is an inconvenience.
         import os.path as _op
         real = _op.join(C.CACHE_DIR, "mati_notes_theta0.npz")
@@ -450,17 +425,9 @@ def build(out_dir, verbose=True, max_chunks=None):
         # ⚠️⚠️ VERBATIM, NOT STUDIED. `study.enqueue` + `study.study` stores
         # what a 3B LEARNED from each chunk, not the chunk — which is right
         # for a book and wrong for a charter, because the `[charter]` label
-        # tells Mati to speak these rows AS ITS OWN. `write_charter_verbatim`
-        # was written for exactly this and was never called from here; the
-        # audit item recording "the charter ships as verbatim rows" described
-        # a function nothing invoked.
-        #
-        # Measured on the artefact this produced, against the source file:
-        #
-        #     verbatim in charter :  8/24
-        #     NOT verbatim        : 16/24
-        #
-        # and the paraphrases were not harmless. Shipped as charter memories:
+        # tells Mati to speak these rows AS ITS OWN. Studied, most of the
+        # charter comes out as paraphrase, and the paraphrases are not harmless.
+        # Shipped as charter memories, they would read:
         #   "I don't retain any information if the conversation doesn't
         #    conclude with a clear resolution"   — a FALSE memory denial
         #   "There's no concept of fields holding shapes or rules"
@@ -470,27 +437,22 @@ def build(out_dir, verbose=True, max_chunks=None):
         #   "You're recalling someone you've known for a long time ..."
         #                                        — second person, which becomes
         #                                          a claim about the PERSON
-        # The charter's own first line survived; its privacy and memory
-        # principles were the ones rewritten.
         #
-        # ⭐ IT ALSO FIXES THE GATE. The note below this used to explain that
-        # 24 imprinted chunks of one voice drove cold-start coherence to
-        # 0.587-0.682 against a 0.700 `EPISODE_GATE_MIN`, so a fresh install
-        # rejected every episode. Verbatim rows leave θ₀ untouched, so the
-        # cause is gone rather than worked around with `--chunks`.
+        # ⭐ IT ALSO KEEPS THE GATE WORKING. Imprinted chunks of one voice drive
+        # cold-start coherence below `EPISODE_GATE_MIN`, so a fresh install
+        # would reject every episode. Verbatim rows leave θ₀ untouched.
         #
         # ⚠️ THE `studied:` PREFIX IS LOAD-BEARING. `bridge.named_recall_block`
-        # reaches the charter branch only via `source.startswith("studied:")`.
-        # Measured: `studied:charter:FILE:1` renders `[charter]`, while a bare
+        # reaches the charter branch only via `source.startswith("studied:")`:
+        # `studied:charter:FILE:1` renders `[charter]`, while a bare
         # `charter:FILE:1` renders `[charter:MATI_MISSION_AND_PRINCIPLES.txt:1]`
         # — the filename leaking into the label Mati reads.
         # ⚠️ `--chunks` TRUNCATES RATHER THAN SAMPLES, because the first
         # chunks are the identity-dense ones: the charter opens "I am Mati...
         # the language I speak comes from a language model, the memory I hold
-        # comes from the field, and I keep them apart" — the distinction the
-        # user has watched Mati lose. It is now a debugging convenience
-        # rather than a dose: nothing is imprinted, so the full charter costs
-        # the field nothing.
+        # comes from the field, and I keep them apart". It is a debugging
+        # convenience rather than a dose: nothing is imprinted, so the full
+        # charter costs the field nothing.
         if max_chunks:
             whole = study.chunk_text(text, tok)
             text = " ".join(whole[:max_chunks])
@@ -536,9 +498,8 @@ def build(out_dir, verbose=True, max_chunks=None):
 
 # ── publishing ──────────────────────────────────────────────────────────────
 # ⚠️ A BUILD NOBODY CAN FIND IS NOT SHIPPED. `.cache/ship/<version>/` is
-# ignored by git, so the artefact existed only on the machine that built it —
-# a fresh clone of this repo could not run the export, and `test_coldstart`
-# correctly refused to believe the files were tracked.
+# ignored by git, so an artefact left only there exists only on the machine
+# that built it, and a fresh clone could not run the export.
 #
 # ⭐ So the build PUBLISHES to fixed, tracked names in `.cache/`. The versioned
 # directory stays as the build output, which is what lets two be compared;
@@ -577,9 +538,8 @@ def main(argv=None):
                     help="report on a built set, build nothing")
     a = ap.parse_args(argv)
     from . import config as C
-    # ⚠️ VERSIONED, at the user's request: each build is its own folder, so a
-    # shipped set is never silently replaced by the next attempt and two can
-    # be compared.
+    # ⚠️ VERSIONED: each build is its own folder, so a shipped set is never
+    # silently replaced by the next attempt and two can be compared.
     out = a.out or os.path.join(C.CACHE_DIR, "ship", a.version)
 
     if a.check:

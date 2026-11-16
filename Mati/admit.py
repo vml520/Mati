@@ -83,18 +83,14 @@ _EXPERIENTIAL = re.compile(
 LIVED = ("episode",)
 # Mati thinking to itself (Mati/reflect.py). Its own voice — never a
 # document, never attributed, and never "lived" either.
-# ⚠️ A TUPLE, LIKE `LIVED`, AND MEMBERSHIP IS EXACT. `self-check` was added
-#  after the first shipped artefact came out of `make_ship_field`
-# with this in a body:
+# ⚠️ A TUPLE, LIKE `LIVED`, AND MEMBERSHIP IS EXACT. `self-check` belongs here:
+# a source in neither LIVED nor OWN_VOICE is wrapped as a quotation whenever
+# `_EXPERIENTIAL` matches — and it matches "I remember" inside "I checked how
+# much I remember", which is no claim of shared experience at all. Mati would
+# then read its own measurement as something it had been told:
 #
 #   self-check says: "I checked how much I remember. I hold 0 lived
 #                     conversations and 24 passages of my own charter…"
-#
-# `_EXPERIENTIAL` had matched the substring "I remember" inside "I checked how
-# much I remember" — not a claim of shared experience at all — and because
-# `self-check` was in neither LIVED nor OWN_VOICE, the row was wrapped as a
-# quotation from a source called "self-check". Mati would then read its own
-# measurement as something it had been told.
 #
 # ⭐ IT BELONGS HERE BY THIS MODULE'S OWN REASONING. These rows are composed
 # in code by `make_ship_field.self_check()` out of counts queried from the
@@ -102,15 +98,16 @@ LIVED = ("episode",)
 # claim an experience it did not have. That is Mati's own voice in the same
 # sense `mine` is.
 #
-# ⚠️ NOT added to LIVED, for the reason the comment below already gives: lived
-# means an event shared WITH the person. A self-check is Mati alone, and a
-# measurement is not even an event.
+# ⚠️ NOT added to LIVED, for the reason the comment below gives: lived means an
+# event shared WITH the person. A self-check is Mati alone, and a measurement
+# is not even an event.
 OWN_VOICE = ("mine", "self-check")
 
 # Talking about the machinery. NARROWER than the reply filter's rule, and it
 # has to be: `basin`, `coherence` and `resonance` are ordinary English words,
-# and a bare-word list refused "Teotihuacan was built around 100 BCE in the
-# Basin of Mexico" — core material for this user, blocked as internals.
+# and a bare-word list would refuse "Teotihuacan was built around 100 BCE in
+# the Basin of Mexico" as internals — ordinary material for anyone who reads
+# history.
 #
 # The real risk is reciting block VALUES, not using the words. So: internal
 # identifiers are always refused, and the ambiguous words only when they arrive
@@ -149,12 +146,12 @@ def attribute(body, source):
 def check(body, source, db_path=None, record=True):
     """Should this become a memory? Returns a Verdict; `body` may be rewritten.
 
-    The body is returned UNCHANGED unless a rule rewrites it. An earlier
-    version normalised whitespace on the way through, which silently flattened
-    every episode: `narrate_episode` writes several lines on purpose, and
-    collapsing them meant the stored text no longer matched the text it was
-    generated from — so a note stopped retrieving itself. Matching is done on a
-    normalised copy; the stored body keeps its shape.
+    The body is returned UNCHANGED unless a rule rewrites it. Normalising
+    whitespace on the way through would silently flatten every episode:
+    `narrate_episode` writes several lines on purpose, and the stored text
+    would no longer match the text it was generated from — so a note would
+    stop retrieving itself. Matching is done on a normalised copy; the stored
+    body keeps its shape.
     """
     original = body or ""
     text = " ".join(original.split())
@@ -174,10 +171,10 @@ def check(body, source, db_path=None, record=True):
     # was not experienced. Attributed rather than refused: the information is
     # wanted, the voice is not.
     # ⚠️ SELF-TALK IS MATI'S OWN VOICE AND MUST NOT BE ATTRIBUTED. Reflection
-    # writes with source='mine', which is not LIVED — so a remark containing
-    # "today's conversation" was wrapped as `mine says: "..."`, turning Mati's
-    # own thinking into a quotation from a source called "mine". Found in the
-    # morning report , where two of four entries read that way.
+    # writes with source='mine', which is not LIVED, so without OWN_VOICE a
+    # remark containing "today's conversation" would be wrapped as
+    # `mine says: "..."` — Mati's own thinking turned into a quotation from a
+    # source called "mine".
     #
     # It is NOT added to LIVED, deliberately: lived means an event shared WITH
     # the person, and self-talk is Mati alone. Own voice and shared experience

@@ -1,8 +1,8 @@
 """
 Local store circulars, by postal code. THE ONLY LOCAL DEAL SOURCE THAT WORKS.
 
-The user asked about Flipp after Craigslist, eBay, Facebook Marketplace and five
-classifieds sites all came back blocked or dead. This one answers.
+Craigslist, eBay, Facebook Marketplace and the classifieds sites are blocked
+or dead to an automated reader. Flipp answers.
 
 ⚠️ THIS WHOLE FILE IS A FIREWALL, AND THAT IS ITS REASON FOR EXISTING.
 `backflipp.wishabi.com` is the backend Flipp's own web app talks to. It is
@@ -21,18 +21,18 @@ So the contract with the rest of Mati is narrow on purpose:
 
 ⚠️ DO NOT PUT THIS ON THE CRITICAL PATH OF ANYTHING.
 
-⚠️ NEVER COMPARE PRICES ACROSS MERCHANTS WITHOUT THE UNIT. Measured in the
-first row ever returned: "Milk, Restaurant Depot, $88.99, item_weight 3.0" —
-a wholesale case, not a carton. A watchlist that reports "milk is $88.99 near
-you" is worse than silence. `unit_price` returns None when the unit cannot be
-established, and None must be shown as "not comparable", never as zero.
+⚠️ NEVER COMPARE PRICES ACROSS MERCHANTS WITHOUT THE UNIT. A real row: "Milk,
+Restaurant Depot, $88.99, item_weight 3.0" — a wholesale case, not a carton.
+A watchlist that reports "milk is $88.99 near you" is worse than silence.
+`unit_price` returns None when the unit cannot be established, and None must
+be shown as "not comparable", never as zero.
 
 ⚠️ THE POSTAL CODE IS A PERSONAL FACT AND FOLLOWS `weather.py`'S PRECEDENT: it
 lives in settings, never in the field, and `forget_postal()` genuinely removes
 it. A field cannot forget; settings can.
 
-Measured  — the postal code really does change the merchants, which
-is what makes this local rather than national:
+The postal code really does change the merchants, which is what makes this
+local rather than national:
 
     78701 Austin   ALDI, CVS, Dollar General, La Michoacana Meat Market
     10001 NYC      Acme, BJ's Wholesale, Bravo Supermarket, C Town

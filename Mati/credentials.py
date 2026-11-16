@@ -2,8 +2,8 @@
 Keys the person brings themselves. One answer to a wall three modules hit.
 
 eBay's Browse API, UCP's agent profile and the event APIs (Ticketmaster,
-Bandsintown) are all FREE and all need a credential. Each time, the same
-thing was true and it was written down three separate times:
+Bandsintown) are all FREE and all need a credential. The same thing is true
+of each of them:
 
     ⚠️ A SHARED KEY BAKED INTO A PUBLIC APACHE-2.0 BUILD IS NOT A KEY.
 

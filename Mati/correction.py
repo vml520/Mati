@@ -2,35 +2,35 @@
 Being corrected, and remembering that you were.
 
 When Mati gets something wrong and you tell it so, that is the most valuable
-thing that happens in a conversation — and until now it was the most damaging.
+thing that happens in a conversation, and it must not become the most
+damaging.
 
-WHAT WENT WRONG WITHOUT THIS. An episode records `I said: <the reply>`. If the
-reply was wrong, the wrong answer is what gets stored, imprinted into θ₀, and
-replayed into later turns as lived memory:
+THE RISK. An episode records `I said: <the reply>`. If the reply was wrong,
+the wrong answer is what gets stored, imprinted into θ₀, and replayed into
+later turns as lived memory:
 
     I was asked: When was Teotihuacan founded?
     I said: Teotihuacan was founded around 1200 CE by the Mexica.
 
-Nothing marked it. Your correction became a separate note with no link to it,
-and might not surface at all — so Mati could recall the error cleanly and
-repeat it, having also been told the truth. That is the memory loop amplifying
-errors, on the path where it matters most.
+If the correction were only a separate note with no link, it might not
+surface at all, and Mati could recall the error cleanly and repeat it, having
+also been told the truth.
 
 WHAT THIS DOES. A user turn that reads as a correction is linked to the episode
 it corrects. From then on, whenever that episode is recalled, the correction
-comes with it — not as a separate memory that may or may not surface, but
+comes with it: not as a separate memory that may or may not surface, but
 attached, in the same line.
 
 CORRECTIONS ANNOTATE. THEY DO NOT ERASE. Mati did say the wrong thing; that
-happened, and deleting it would be a lie of a different kind — the field is
-supposed to carry what occurred. So the episode stays, and can never surface
-unmarked. "I said X, and you told me that was wrong" is a true and useful
-memory. "I said X" alone is a trap.
+happened, and deleting it would be a lie of a different kind, because the
+field is supposed to carry what occurred. So the episode stays, and can never
+surface unmarked. "I said X, and you told me that was wrong" is a true and
+useful memory. "I said X" alone is a trap.
 
 DETECTION IS DELIBERATELY CONSERVATIVE. Two conditions, both required: an
 explicit correction marker, and a preceding reply to correct. A missed
 correction costs one annotation. A false positive brands a good memory as an
-error and teaches Mati to distrust something true — much worse — so the
+error and teaches Mati to distrust something true, which is much worse, so the
 markers are ones that rarely appear except when correcting.
 """
 

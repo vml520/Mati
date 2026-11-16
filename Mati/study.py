@@ -8,19 +8,17 @@ Reading a file, as something Mati does slowly.
 WHY NOT "TOKENIZE THE FILE AND IMPRINT IT". Imprinting costs ~1s per token, so
 a 5,000-token document is about 80 minutes — and it deforms θ₀ globally rather
 than locally, measurably homogenising it. A bulk imprint would flatten the
-memory it was supposed to add to. That is the wall this feature kept hitting.
+memory it was supposed to add to.
 
 So: uploading is fast and studying is slow. An upload chunks the file, records
 ONE episode ("I read notes.md today"), and queues the chunks. The worker drains
 the queue while Mati is idle, on a budget. Reading is quick; consolidation
 happens in sleep.
 
-TESTING WHAT IT LEARNED — and what the measurement changed
-----------------------------------------------------------
-The design was: test before (skip what Mati already knows) and test after
-(did it stick?), both via `recall(address_vector(chunk))`. Test-after works.
-**Test-before does not, and the numbers say so plainly.** Measured against the
-live corpus :
+TESTING WHAT IT LEARNED
+-----------------------
+A test after studying (did it stick?) works; a test before (skip what Mati
+already knows) does not, and the numbers say so plainly:
 
     exact stored text        1.000        <- retrieval is exact and stable
     a slice of stored text   0.424–0.688  <- material Mati HAS read
@@ -29,11 +27,10 @@ live corpus :
 New text scores *higher on average* than known material. The classes are
 inverted and overlapping, so no threshold separates them: at 0.7 a brand-new
 sentence about mitochondria is skipped as "already known", at 0.4 nothing is
-ever learned. This is the documented limit of the retrieval — trajectory
-features discriminate token surface, not meaning, and shared stopwords
-dominate — surfacing exactly where the design leaned on it hardest.
+ever learned. That is the limit of the retrieval — trajectory features
+discriminate token surface, not meaning, and shared stopwords dominate.
 
-What is used instead:
+So:
 
   TEST BEFORE  — a content hash. Exact, free, and correct for the case that
                  actually recurs: the same file, or overlapping files, offered
@@ -41,9 +38,8 @@ What is used instead:
   TEST AFTER   — re-address the chunk and confirm it retrieves itself. This is
                  the test that carries the meaning ("I read it but it didn't
                  stick"), and it is the one that works.
-  COST BOUND   — a per-run study budget. The original plan bounded cost by how
-                 much got skipped; since skipping is unreliable, the budget
-                 does it directly and honestly.
+  COST BOUND   — a per-run study budget. Since skipping is unreliable, the
+                 budget bounds the cost directly and honestly.
 
 The similarity gate is left implemented but OFF (`--use-similarity-gate`), so
 the day retrieval becomes semantic it can be measured again rather than
@@ -237,12 +233,12 @@ def clean_text(text):
 def read_file(path):
     """Text of a file Mati can study.
 
-    ⚠️ RICH FORMATS ARE CONVERTED, NOT READ. This was `f.read()`, so handing
-    it an RTF studied the MARKUP: a 370 KB reference was 32% control words —
-    16,829 of them — and `{\rtf1\ansi\cocoartf2822 \fonttbl\f0\fswiss` would
-    have gone into the field as prose. It would not have errored. It would
-    have queued 2,200 chunks and spent hours imprinting font tables, which is
-    the worst shape of failure: confident, slow and wrong.
+    ⚠️ RICH FORMATS ARE CONVERTED, NOT READ. Read raw, an RTF is studied as
+    its MARKUP — a large reference can be a third control words, and
+    `{\rtf1\ansi\cocoartf2822 \fonttbl\f0\fswiss` would go into the field as
+    prose. Nothing would error: it would queue thousands of chunks and spend
+    hours imprinting font tables, which is the worst shape of failure —
+    confident, slow and wrong.
 
     ⚠️ `textutil` SHIPS WITH macOS, so this adds no dependency — the same
     argument as `/usr/bin/say` for the voice and `sysctl` for the machine
@@ -289,9 +285,9 @@ def reading_episode(origin, summary):
 def _already_recallable(lm, tok, body, min_sim):
     """The similarity gate, kept for the day retrieval becomes semantic.
 
-    OFF by default. : known material scores 0.424–0.688 and
-    unseen material 0.305–0.754 — overlapping, and inverted on the mean. Any
-    threshold either skips new material or learns nothing.
+    OFF by default. Known material scores 0.424–0.688 and unseen material
+    0.305–0.754 — overlapping, and inverted on the mean. Any threshold either
+    skips new material or learns nothing.
     """
     hits = bridge.recall(bridge.address_vector(lm, tok, body),
                          k=1, lm=lm, tok=tok, min_sim=-1.0)
@@ -334,17 +330,15 @@ def study_one(lm, tok, db_path=None, similarity_gate=None, verbose=False):
 
         t0 = time.time()
         # ⚠️ WHAT IS STORED IS WHAT MATI NOW KNOWS, not the author's sentence.
-        # A studied note used to hold the passage verbatim, and you can quote a
-        # passage or paraphrase it but you cannot SPEAK FROM it — which is why
-        # studied material never transferred into a reply the way memory did.
-        # : 2,670 studied notes, ~67h of imprinting, 202
-        # ever recalled (7.6%).
+        # You can quote a passage or paraphrase it but you cannot SPEAK FROM
+        # it, so a studied note holding the passage verbatim almost never
+        # transfers into a reply the way memory does.
         #
         # The source is kept in `verbatim` beside it, so a claim can always be
-        # checked against what was actually written. Fidelity measured at 14/15
-        # against an LLM judge with a working control; the one miss was an
-        # inference the passage did not make, which is exactly why the source
-        # is retained rather than discarded.
+        # checked against what was actually written. Fidelity is high against
+        # an LLM judge with a working control, and the misses are inferences the
+        # passage did not make — which is exactly why the source is retained
+        # rather than discarded.
         #
         # If it cannot be learned, it stays a quotation. Inventing a sentence
         # to stand for a passage is the failure this is meant to prevent.
@@ -397,16 +391,11 @@ def study(lm, tok, budget=1, db_path=None, similarity_gate=None,
           should_stop=None, reindex_after=True, verbose=False):
     """Drain up to `budget` chunks, then repair the index.
 
-    REINDEXING IS PART OF STUDYING, not a follow-up. Every imprint moves θ₀,
-    and every stored address was measured against the θ₀ of the moment — so
-    studying chunk N stales chunk N−1. Measured: two chunks studied back to
-    back, and the first no longer retrieved its own exact text (0.301) though
-    it had matched perfectly when written. A burst of imprints is the worst
-    case for this, which makes study the place it bites hardest.
-
-    So the batch ends by putting every address back in one space. Without it,
-    only the last chunk of a batch is reliably recallable — Mati would report
-    "learned" for material it had already lost.
+    The batch ends with a re-address pass. Addresses are read from a frozen
+    space, so between promotions it finds nothing to do; it stays for a batch
+    that runs after `promote()`, when it is what keeps the chunks just studied
+    recallable — without it only the last chunk of such a batch would be
+    reliably found, and Mati would report "learned" for material it had lost.
 
     `should_stop()` lets an arriving turn interrupt between chunks.
     """

@@ -1,32 +1,28 @@
 """
 When this person is actually here, learned from the record.
 
-⚠️ THE NUMBERS THAT WERE IN USE WERE NOT CLOSE. The user: *"idle is coming on too
-soon. Mati is not really idle unless it hasn't been spoken to in more than 45
-minutes at least, depending on the age of the person."* Measured over 333 real
-gaps between consecutive turns:
+⚠️ IDLE MEANS GONE, NOT PAUSED. Mati is not really idle unless it has not been
+spoken to in more than 45 minutes at least, depending on the person. Measured
+over 333 real gaps between consecutive turns:
 
     median  3.0 min    p90  10.6 min    p95  32.8 min    p99  110 min
 
-    IDLE_SECONDS was 45 SECONDS  — shorter than 96% of the gaps in a normal
-                                   conversation, so idle work started after
-                                   almost every turn
-    SLEEP_AFTER was 600s (10 min) — inside p90, so the expensive path fired
-                                   during ordinary pauses
+A 45-SECOND threshold is shorter than 96% of the gaps in a normal
+conversation, so idle work would start after almost every turn; a 10-minute
+one sits inside p90, so the expensive path would fire during ordinary pauses.
+Either way idle would be on almost permanently.
 
-Idle was not coming on too soon; it was on almost permanently.
-
-⚠️ AND "DEPENDING ON THE AGE OF THE PERSON" IS THE REAL POINT. A fixed number is
-wrong for everybody except whoever it was tuned for. The pause that means "gone"
-belongs to the person, and it is in their own record — so it is measured rather
-than chosen, with the user's 45 minutes as the floor.
+⚠️ AND "DEPENDING ON THE PERSON" IS THE REAL POINT. A fixed number is wrong for
+everybody except whoever it was tuned for. The pause that means "gone" belongs
+to the person, and it is in their own record — so it is measured rather than
+chosen, with 45 minutes as the floor.
 
 ⚠️ WHAT CANNOT BE LEARNED YET, AND IS NOT PRETENDED OTHERWISE. A daily schedule
-needs a daily pattern. Over 17 days with five or more turns, the first turn of
-the day has a **standard deviation of 8.5 hours** — median 12:31, but ranging
-from 00:01 to 22:36. Waking at the median would be wrong most days. So the
-schedule is learned only when the spread is tight enough to mean something, and
-until then the default stands and says so.
+needs a daily pattern, and a real record may not have one: the first turn of
+the day can have a **standard deviation of 8.5 hours**, ranging from just
+after midnight to late evening. Waking at the median would be wrong most days.
+So the schedule is learned only when the spread is tight enough to mean
+something, and until then the default stands and says so.
 """
 
 from __future__ import annotations
@@ -36,7 +32,7 @@ import sqlite3
 import statistics
 from datetime import datetime
 
-# The user's floor. Below this, a pause is a pause.
+# The floor. Below this, a pause is a pause.
 FLOOR_IDLE_S = 45 * 60
 
 # Where in the person's own distribution "they have gone" sits. p95 by

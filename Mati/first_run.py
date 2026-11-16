@@ -4,11 +4,10 @@
 and both are the kind that bite later:
 
   1. `.gitignore` UNTRACKS THE PERSONAL FIELD ON PURPOSE. `mati_notes.db` is
-     one person's conversations; the rule exists because a fresh clone once
-     arrived carrying somebody else's memories. Re-admitting that name so the
-     artefact could ship under it would have started tracking the developer's
-     own store — 6,669 real memories — in the repository the rename existed to
-     clean.
+     one person's conversations, and a fresh clone must never arrive carrying
+     somebody else's memories. Re-admitting that name so the artefact could
+     ship under it would start tracking the builder's own store in the very
+     repository the rule exists to keep clean.
 
   2. A TRACKED FILE AT THE LIVE PATH BECOMES THE PERSON'S OWN STORE. They
      clone, they talk to Mati, and their memories accumulate inside a file

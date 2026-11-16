@@ -1,39 +1,41 @@
 """
 Reading turns into knowledge, not into quotations.
 
-⚠️ WHY THE OLD SHAPE COULD NOT WORK. A studied note held the author's sentence:
+⚠️ WHY A QUOTATION CANNOT BECOME KNOWLEDGE. A studied note that holds the
+author's sentence:
 
-    "Aztec Thought and Culture by Miguel León-Padilla [Updated and edited by
-     the user Luna]"
+    "Aztec Thought and Culture by Miguel León-Portilla"
 
-An episode held Mati's own:
+sits beside an episode that holds Mati's own:
 
     "I was asked: … It brought back 4 earlier moments…"
 
-You can QUOTE a passage or paraphrase it. You cannot SPEAK FROM it. That is why
-studied material never transferred into a reply the way memory does — it
-arrived as a foreign object, so Mati held it up and described it. The
-narration was not a prompt defect; it is what anyone does with a quotation.
+You can QUOTE a passage or paraphrase it. You cannot SPEAK FROM it. Studied
+material stored as quotation does not transfer into a reply the way memory
+does — it arrives as a foreign object, so Mati holds it up and describes it.
+The narration is not a prompt defect; it is what anyone does with a
+quotation.
 
-, the cost of the old shape: 2,670 studied notes, ~67 hours
-of imprinting, and **202 ever recalled — 7.6%**. Everything that retrieved was
-lexical search over the author's words, matched against a question in the
-person's words, which is why paraphrase retrieval sat at 8–13 of 25.
+Stored that way, studied material is almost never used: of 2,670 studied
+notes, ~67 hours of imprinting, **202 were ever recalled — 7.6%**. Everything
+that retrieves is lexical search over the author's words, matched against a
+question in the person's words, which is why paraphrase retrieval sits at
+8–13 of 25.
 
 So: read the passage, work out what is now known, and store THAT — in Mati's
 own sentences, as the same kind of object as a memory. The source text is kept
 beside it, unchanged, so a claim can always be checked against what was
 actually written.
 
-Three things fall out, and only the first was the goal:
+Three things fall out, and only the first is the goal:
 
   1. Studied material transfers naturally, because it is Mati's own language.
   2. Retrieval improves sideways: a question in the person's words matches a
-     sentence in Mati's words better than either matches León-Padilla's prose.
-  3. SELF-CORRECTION becomes possible for the first time. Two of Mati's own
-     statements can contradict each other, and a statement can be checked
-     against the verbatim source it came from. Two quotations cannot disagree;
-     they just sit there.
+     sentence in Mati's words better than either matches the author's prose.
+  3. SELF-CORRECTION becomes possible. Two of Mati's own statements can
+     contradict each other, and a statement can be checked against the
+     verbatim source it came from. Two quotations cannot disagree; they just
+     sit there.
 """
 
 from __future__ import annotations

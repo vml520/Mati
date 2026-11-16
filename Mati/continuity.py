@@ -1,9 +1,8 @@
 """
 When asked whether it remembers, Mati answers from the STORE, not the model.
 
-⚠️ THIS EXISTS BECAUSE AN INSTRUCTION IS NOT A MECHANISM, FOR THE FOURTH TIME.
-The user: *"It actually says that it does not have continuous
-memory."* Measured the same hour, with FOUR memories in the prompt:
+⚠️ AN INSTRUCTION IS NOT A MECHANISM. With four memories in its prompt,
+llama3.2:3b answers questions about its own past like this:
 
     "What do you know about me?"        -> "I don't have any prior knowledge"
     "What did we talk about yesterday?" -> "my memory is limited to the
@@ -11,14 +10,11 @@ memory."* Measured the same hour, with FOUR memories in the prompt:
     "Do you have continuous memory?"    -> "No ... as if we're starting from
                                             a blank slate"
 
-Retrieval was not the problem — self-retrieval measured 6/6 on the real store.
-`state_block` was telling the model "you have no recollection of it" whenever
-the field surfaced nothing, and that text is now fixed. ⚠️ BUT FIXING THE
-INSTRUCTION WAS NOT ENOUGH, AND THAT WAS MEASURED TOO: with an explicit
-"never say you have no memory of earlier conversations, that is false" in the
-block, llama3.2:3b went on saying *"As a conversational AI, my memory is
-limited to the current session."* A 3B's RLHF prior about what an assistant is
-beats anything written in context.
+Retrieval is not the problem — self-retrieval scores 6/6 on a real store. Nor
+is the wording of the waking block: with an explicit "never say you have no
+memory of earlier conversations, that is false" in it, the model still says
+*"As a conversational AI, my memory is limited to the current session."* A
+3B's RLHF prior about what an assistant is beats anything written in context.
 
 So the same answer as the morning report and the money confirmation:
 **EMIT, NEVER PROMPT.** The facts here are arithmetic over the store — a
@@ -57,12 +53,11 @@ _ABOUT_MEMORY = re.compile(
     r"(?:how|what) (?:much |do )?you (?:remember|recall)|"
     r"what do you know about me|"
     r"how long have (?:we|you)|"
-    # ⚠️ "What did we talk about yesterday?" MATCHED NOTHING ABOVE and was the
-    # single worst turn measured: the model denied having memory and then
-    # recalled correctly in the same breath — "my memory is limited to the
-    # current session. However, I can recall that you mentioned earlier..."
-    # Asking what was said BEFORE is a continuity question whether or not the
-    # word "memory" appears in it.
+    # ⚠️ "What did we talk about yesterday?" has no "memory" in it and is the
+    # worst case: the model denies having memory and then recalls correctly in
+    # the same breath — "my memory is limited to the current session. However,
+    # I can recall that you mentioned earlier..." Asking what was said BEFORE
+    # is a continuity question whether or not the word "memory" appears in it.
     r"what (?:did|'d) (?:we|you|i) (?:talk|speak|discuss)"
     r"|(?:talk|speak|discuss)(?:ed|ing)? about\s+"
     r"(?:yesterday|last night|last week|before|earlier|previously)"
@@ -127,8 +122,8 @@ def is_only_question(text_in):
     # you know about me?" is about memory AND has a real answer the model has
     # to give from the profile — swallowing it would replace "you work on
     # research, you are interested in mesoamerica" with a bare note about how
-    # many memories exist, which answers a question nobody asked. Measured:
-    # it fell through to only=True on the first cut.
+    # many memories exist, which answers a question nobody asked. The broad
+    # `_ABOUT_MEMORY` list would let it through to only=True.
     if not _PURE.search(text_in or ""):
         return False
     rest = _ABOUT_MEMORY.sub(" ", text_in or "")
@@ -150,12 +145,21 @@ def is_only_question(text_in):
                     "sessions", "session", "keep", "retain", "store",
                     "do", "you", "have", "a", "any", "the", "is", "it", "s",
                     "and", "or", "so", "about", "me", "my", "i", "of", "that",
-                    "this", "what", "how", "mati", "hey", "hi", "hello",
+                    "this", "what", "how", "hey", "hi", "hello",
                     "please", "tell", "can", "does", "did", "your", "really",
                     "actually", "still", "yet", "also", "too", "right", "now",
                     "there", "then", "us", "our", "we", "to", "be", "are",
-                }]
+                } and w not in _name_words()]
     return not leftover
+
+
+def _name_words():
+    """The assistant's own name, as filler words — "do you remember, Mati?"
+
+    ⚠️ The name this person gave it, read at call time, never the product's.
+    """
+    from . import config as C
+    return set(re.sub(r"[^a-z]+", " ", C.assistant_name().lower()).split())
 
 
 def _span(seconds):
@@ -190,10 +194,11 @@ def facts(db_path=None):
     try:
         row = conn.execute(
             # ⚠️ EVERY NOTE, ARCHIVED INCLUDED. The working set is a RETRIEVAL
-            # bound (62 notes stay field-addressed), not the extent of what is
-            # kept — archived memories are still there and still findable by
-            # their words. Counting only the working set would under-report the
-            # store by 3,993 and make an honest answer into a false modesty.
+            # bound (`config.WORKING_SET` notes stay field-addressed), not the
+            # extent of what is kept — archived memories are still there and
+            # still findable by their words. Counting only the working set
+            # would under-report the store by thousands and make an honest
+            # answer into a false modesty.
             "SELECT count(*), min(wall_created), max(wall_created) FROM notes"
         ).fetchone()
     except sqlite3.Error:
@@ -211,24 +216,21 @@ def line(db_path=None, now=None):
 
     ⚠️ FIRST PERSON AND PRESENT TENSE, because this is spoken BY Mati to the
     person. Nothing in here is addressed to Mati, so there is no "you" to be
-    re-aimed at the person when it speaks, which is a trap this has fallen into
-    before.
+    re-aimed at the person when it speaks.
 
-    ⚠️ NO COUNT, AND NO AGE. This used to read *"I keep memory between
-    conversations, and I have 4,299 of them right now, the oldest going back 2
-    months."* the user, reading a real turn: it still sounds like the LLM, not
-    Mati. That was right, and the missing inventory was half of why.
+    ⚠️ NO COUNT, AND NO AGE. "I keep memory between conversations, and I have
+    4,299 of them right now, the oldest going back 2 months" still sounds like
+    the LLM, not Mati, and the inventory is half of why.
 
     `bridge.state_block` tells Mati, of its own memories: *"Do not announce
-    them, quote them, or say how many there are."* Then I wrote code that
-    announced them and counted them, and prefixed it to every memory-adjacent
-    turn. Nobody asking "do you recall our conversation about Akkad?" wants an
-    inventory read-out first — and the same sentence arriving every time is the
-    canned-response problem they raised at the start of this work, relocated from
-    `smalltalk` into me.
+    them, quote them, or say how many there are."* Code that announced and
+    counted them on every memory-adjacent turn would break that rule on the
+    model's behalf. Nobody asking "do you recall our conversation about
+    Akkad?" wants an inventory read-out first — and the same sentence arriving
+    every time is a canned response, whichever module it comes from.
 
-    The count has not been thrown away; it moved to `count_line`, for the one
-    question where a number IS the answer.
+    The count is not thrown away; it is in `count_line`, for the one question
+    where a number IS the answer.
     """
     if facts(db_path) is None:
         # ⚠️ STILL NOT A DENIAL. An empty store means nothing has happened
@@ -243,8 +245,8 @@ def asks_how_many(text_in):
 
     ⚠️ A SEPARATE QUESTION, AND THE ONLY ONE A NUMBER ANSWERS. "Do you
     remember?" wants yes; "how much do you remember?" wants the figure. Mixing
-    them is how the figure ended up prefixed to turns that were about
-    something else entirely.
+    them would prefix the figure to turns that are about something else
+    entirely.
     """
     return bool(_HOW_MANY.search(text_in or ""))
 
@@ -263,12 +265,11 @@ def _age_of(stamp, now):
     """How long ago an ISO `wall_created` was, in words. None if unreadable.
 
     ⚠️ `wall_created` IS AN ISO-8601 STRING, NOT AN EPOCH FLOAT —
-    `notes._now()` returns `datetime.isoformat(timespec='seconds')`. The first
-    cut of this called `float(stamp)`, which raises ValueError on
-    "2026-07-30T06:43:45+00:00", and a bare `except` swallowed it: the whole
-    "oldest going back ..." clause vanished from every answer and the line
-    still read as a complete sentence. The only reason it was caught is that
-    the clause was missing from a printed sample.
+    `notes._now()` returns `datetime.isoformat(timespec='seconds')`.
+    `float(stamp)` raises ValueError on "2026-07-30T06:43:45+00:00", and if a
+    bare `except` swallowed it the whole "going back ..." clause would vanish
+    from every answer while the line still read as a complete sentence. Hence
+    the parse failure is printed, not hidden.
     """
     if not stamp:
         return None

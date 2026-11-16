@@ -189,10 +189,9 @@ def choose_model():
 def choose_name():
     """What this person wants to call their assistant. Skippable.
 
-    ⚠️ THE USER: *"the name must be choosable; Mati is a personal
-    AI."* The mechanism existed and nothing reached it — `assistant_name` was
-    settable only by hand-editing the settings JSON, which is not a choice
-    anyone will make.
+    ⚠️ THE NAME IS THE PERSON'S CHOICE: Mati is a personal AI. Without this
+    step, `assistant_name` would be settable only by hand-editing the settings
+    JSON, which is not a choice anyone will make.
 
     ⚠️ THE PRODUCT STAYS MATI, and saying so here prevents the obvious
     confusion. The app, the commands and the docs do not change; what changes
@@ -225,17 +224,15 @@ def choose_name():
 def _confirm_recorded(phrase, only):
     """Make the risk explicit and get an acknowledgement. True if given.
 
-    ⚠️ A BARE RETURN USED TO BE ENOUGH. The old prompt said "write this down
-    before continuing" and then continued on an empty line, so the honest
-    answer and the reflexive one were the same keystroke. That is how the
-    passphrase went unrecorded on the one occasion it was needed, and why
-    losing the key twice came down to luck both times.
+    ⚠️ A BARE RETURN IS NOT ENOUGH. "Write this down before continuing",
+    continued on an empty line, makes the honest answer and the reflexive one
+    the same keystroke — and an unrecorded passphrase is lost the one time it
+    is needed.
 
-    ⚠️ IT ASKS FOR UNDERSTANDING, NOT PROOF. An earlier version cleared the
-    screen and made the person type the passphrase back. That verifies more —
-    but it is friction nobody asked for, and the thing actually missing was a
-    plain statement of what gets lost. This says it, and asks them to say they
-    have read it.
+    ⚠️ IT ASKS FOR UNDERSTANDING, NOT PROOF. Making the person type the
+    passphrase back verifies more, but it is friction nobody asked for, and
+    the thing actually missing is a plain statement of what gets lost. This
+    says it, and asks them to say they have read it.
 
     ⭐ AND IT NAMES THE DURABLE ANSWER. A warning is not a remedy;
     `--recovery-kit` is, because it stops a remembered passphrase being the
@@ -387,20 +384,18 @@ def gather():
 
 
 def first_dream(lm, tok, seed_text, cycles=None, verbose=True):
-    """Let Mati sleep on what it just learned about you.
+    """Let Mati sleep on what it just learned about you. OFF by default.
 
-    HOW THIS WORKS, and what it does not do. `DreamingLoop` free-dreams from
-    whatever θ₀ currently is — "a resonance of whatever the field IS right
-    now", per its own docstring — and deepens the attractors that settle
-    coherently. Imprinting the user's interests immediately before means the
-    first dreams consolidate near those regions rather than wherever the
-    shipped checkpoint happened to sit.
+    `DreamingLoop` free-dreams from whatever θ₀ currently is — "a resonance of
+    whatever the field IS right now", per its own docstring — and deepens the
+    attractors that settle coherently. The idea was that dreaming right after
+    imprinting the person's interests would deepen those regions.
 
-    It does NOT teach Mati anything about those topics. The field has no
+    ⚠️ IT DOES THE OPPOSITE: free dreaming erodes a fresh imprint faster than
+    a topic never mentioned, so `config.SETUP_DREAM_CYCLES` is 0. This is kept
+    so that can be re-measured, with its control topic, not because it helps.
+    It never teaches Mati anything about those topics either: the field has no
     knowledge of Mesoamerican archaeology or protein folding; it has a shape.
-    What this buys is that the shape leans toward where conversation will
-    actually go. Whether that measurably helps is UNMEASURED — the before/after
-    coherence printed below is one observation, not evidence.
     """
     cycles = C.SETUP_DREAM_CYCLES if cycles is None else cycles
     if not seed_text or cycles <= 0:
@@ -513,9 +508,8 @@ def main():
             # cannot answer, which is the failure this step exists to catch.
             print("  Fix the above and run setup again.\n")
             return 1
-        # ⚠️ THE AVATAR DEFAULT COMES FROM THE MACHINE, not from a constant.
-        # The user: "Avatar should be set depending on machine specs; off on
-        # computers like mine." Written once, here, and freely changeable in
+        # ⚠️ THE AVATAR DEFAULT COMES FROM THE MACHINE, not from a constant —
+        # off on a slow machine. Written once, here, and freely changeable in
         # the app afterwards — this sets the STARTING point, not a policy.
         try:
             if not C._settings().get("avatar"):
@@ -530,13 +524,11 @@ def main():
             print("  (`python3 -m Mati.vault --setup --force` replaces it, "
                   "which makes\n   every existing memory unreadable.)\n")
         else:
-            # ⚠️ NO TOUCH ID USED TO MEAN NO ENCRYPTION AT ALL, and that was a
-            # real gap rather than a missing nicety: those installs kept every
+            # ⚠️ NO TOUCH ID MUST NOT MEAN NO ENCRYPTION. Every Mac is offered
+            # the choice, and declining is a decision someone made rather than
+            # a branch they never saw — otherwise an install would keep every
             # memory in the clear while the privacy wording read the same as
-            # everywhere else. The user: *"If there is not touchID
-            # include a passphrase option."* So it is now a CHOICE on every
-            # machine, and declining is a decision someone made rather than a
-            # branch they never saw.
+            # everywhere else.
             biometrics = vault.biometrics_available()
             if biometrics:
                 print("  Lock Mati's memories?")
@@ -546,11 +538,18 @@ def main():
                 print("    3  not yet")
                 pick = ask("1, 2 or 3", required=False) or "1"
             else:
-                print("  There is no Touch ID on this Mac, so the only way to")
-                print("  lock Mati's memories is a passphrase you keep.")
-                print("    2  passphrase only  (recommended)")
+                # ⚠️ ON A MAC WITH NO TOUCH ID MATI OPENS ITS OWN KEY. The
+                # fingerprint was only ever a check that someone is present;
+                # the key is protected by the login keychain either way. A
+                # passphrase typed at every start is still offered, for
+                # someone who wants the key kept off the machine.
+                print("  There is no Touch ID on this Mac. Lock Mati's "
+                      "memories?")
+                print("    1  yes — Mati keeps the key in your keychain and "
+                      "opens it\n       by itself  (recommended)")
+                print("    2  passphrase only — typed every time Mati starts")
                 print("    3  not yet — memories stay readable on this disk")
-                pick = ask("2 or 3", required=False) or "2"
+                pick = ask("1, 2 or 3", required=False) or "1"
 
             pick = pick.strip()[:1]
             if pick == "3":
@@ -561,8 +560,9 @@ def main():
                       "this disk. You can change\n  this later with "
                       "`python3 -m Mati.vault --setup`.\n")
             else:
-                only = (pick == "2") or not biometrics
-                phrase = vault.setup(passphrase_only=only)
+                only = (pick == "2")
+                phrase = vault.setup(passphrase_only=only,
+                                     presence_check=biometrics)
                 n = vault.migrate()
                 # Sibling tables too, not just `notes` — see SEALED_COLUMNS.
                 n += vault.migrate_tables(verbose=False)
@@ -577,17 +577,33 @@ def main():
                     # With no keychain copy this is the ONLY key in existence —
                     # there is no Touch ID fallback to be casual about.
                     print("  This passphrase is the ONLY way into Mati's "
-                          "memories. There\n  is no key in the keychain and no "
-                          "Touch ID fallback — that is\n  what makes this mode "
-                          "worth anything. Lose it and the memories\n  are "
-                          "gone for good. Nothing can recover it for you, and "
-                          "it will\n  not be shown again.")
-                else:
+                          "memories. There\n  is no key in the keychain — "
+                          "that is what makes this mode\n  worth anything. "
+                          "Lose it and the memories are gone for good.\n  "
+                          "Nothing can recover it for you, and it will not be "
+                          "shown again.")
+                    print("\n  Mati starts locked each time. Open it with the "
+                          "passphrase:\n      python3 -m Mati.vault --unlock")
+                elif biometrics:
                     print("  Touch ID unlocks Mati day to day. This "
                           "passphrase is the\n  only way back if the keychain "
-                          "is ever lost — a wiped Mac,\n  a new machine, a "
-                          "reset Touch ID. Nothing can recover it\n  for you, "
-                          "and it will not be shown again.")
+                          "is ever lost — a wiped Mac\n  or a new machine. "
+                          "Nothing can recover it for you, and it\n  will "
+                          "not be shown again.")
+                else:
+                    # ⚠️ SAY WHAT THIS DOES AND DOES NOT PROTECT. A mode that
+                    # needs nothing from the person is easy to mistake for
+                    # one that protects against everything.
+                    print("  Mati opens its own key from your keychain when "
+                          "it starts, so\n  there is nothing to type. That "
+                          "protects these memories if the\n  files leave this "
+                          "Mac — a backup, a copied folder, another\n  "
+                          "account, a lost disk. It does not protect them from "
+                          "software\n  running as you.")
+                    print("\n  This passphrase is the only way back if the "
+                          "keychain is ever\n  lost — a wiped Mac or a new "
+                          "machine. Nothing can recover it for\n  you, and it "
+                          "will not be shown again.")
                 print("  " + "=" * 60)
                 if n:
                     print(f"\n  {n} existing memories encrypted.")
@@ -645,7 +661,7 @@ def main():
 
     # The interests become things Mati will look into on its own when idle —
     # asking, comparing against what it holds, asking again. NOT free dreaming,
-    # which was measured to erode a fresh imprint rather than deepen it.
+    # which erodes a fresh imprint rather than deepening it.
     topics = []
     for field, _prompt, _req in QUESTIONS:
         if field in ("interests", "use"):
@@ -667,15 +683,13 @@ def main():
         bridge.save_notes_field(lm)
 
     print(f"\n  Done — {len(stored)} learned.")
-    # ⚠️ THIS USED TO SAY "Mati will know these from now on, in every
-    # conversation." Cut: it is a promise of permanent recall about
-    # a person, delivered at the moment they hand over their name, and it reads
-    # as surveillance rather than reassurance. It was also the wrong emphasis —
-    # what matters is that the person stays in control of it.
-    # ⚠️ Only promise what exists. The first draft of this line said "change
-    # or remove any of it with --show" — `show()` is READ-ONLY, so that would
-    # have been a false assurance about control over personal data, which is
-    # worse than the creepy line it replaced.
+    # ⚠️ NO PROMISE OF PERMANENT RECALL. "Mati will know these from now on, in
+    # every conversation", said at the moment someone hands over their name,
+    # reads as surveillance rather than reassurance — and what matters is that
+    # the person stays in control of it.
+    # ⚠️ Only promise what exists. `show()` is READ-ONLY, so a line offering to
+    # "change or remove any of it with --show" would be a false assurance about
+    # control over personal data.
     print("  See what Mati knows about you any time with")
     print("      python3 -m Mati.setup --show")
     if result:

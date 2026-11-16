@@ -1,8 +1,7 @@
 # Part of Mati's field — the phase-field substrate its memory is built on.
 #
-# ⚠️ THIS IS THE AUTHORITATIVE COPY. These modules began as a shared study
-# codebase and were split off so the field could change without anything
-# else moving under it. Nothing outside Mati imports them.
+# ⚠️ THIS IS THE AUTHORITATIVE COPY. Nothing outside Mati imports these
+# modules, so the field can change without anything else moving under it.
 #
 # ⚠️ KEEP THIS A COMMENT, NOT A DOCSTRING. A docstring here would sit
 # before `from __future__`, which is a SyntaxError that `ast.parse`
@@ -409,8 +408,8 @@ class MultiModeField:
         Update rule:  ω_i ← clip(ω_i + α_ω · coherence · |vθ_i|, 0, OMEGA_MAX)
 
         Capped at OMEGA_MAX = E₀·max_rho/dt = 1.0 (physical bound: ω = E₀·m/ℏ,
-        m ≤ max_rho). Prevents the vθ_ss = ω/STICKINESS feedback runaway that
-        previously drove ω to 1.6×10⁸.
+        m ≤ max_rho). Prevents the vθ_ss = ω/STICKINESS feedback runaway that,
+        uncapped, drives ω to 1.6×10⁸.
 
         Boundary nodes (input receivers) are excluded — they should
         remain silent so context encoding is not contaminated by

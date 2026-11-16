@@ -8,10 +8,10 @@ Mati looking into something on its own.
 WHAT THIS IS, AND WHAT FREE DREAMING IS NOT. Free dreaming (`bridge.dream`) is
 what Mati does when idle with nothing to chew on: it generates from its own
 ground state and deepens whatever settles coherently. It is undirected by
-construction, and measurement showed it actively ERODES a fresh imprint — after
-30 cycles a just-imprinted topic had lost more coherence than a topic never
-mentioned (-0.0499 against -0.0245). It is the wrong tool for learning a
-subject, and it stays where it belongs: idle time.
+construction, and it actively ERODES a fresh imprint — after 30 cycles a
+just-imprinted topic has lost more coherence than a topic never mentioned
+(-0.0499 against -0.0245). It is the wrong tool for learning a subject, and it
+stays where it belongs: idle time.
 
 This is the directed version. Mati takes a topic it has reason to care about —
 the interests given at setup — and works on it:
@@ -21,18 +21,17 @@ the interests given at setup — and works on it:
       -> keep the parts that are new
       -> let what came back decide the next question
 
-The comparison is not a gate. Retrieval here is lexical, and it was measured
-unable to separate known material from new (known 0.424-0.688 vs new
-0.305-0.754, overlapping and inverted). So `recall` is used for what it can
-actually do — tell Mati what it already holds nearby, so the NEXT question can
-go somewhere else. Exact duplicates are caught by hash, same as reading a file.
+The comparison is not a gate. Retrieval here is lexical, and it cannot
+separate known material from new (known 0.424-0.688 vs new 0.305-0.754,
+overlapping and inverted). So `recall` is used for what it can actually do —
+tell Mati what it already holds nearby, so the NEXT question can go somewhere
+else. Exact duplicates are caught by hash, same as reading a file.
 
 ⚠️ THE HAZARD THIS LOOP CREATES, stated plainly. The memory loop amplifies
 errors: what Mati stores is replayed into later turns, and a flawed answer
-gets re-parroted. Observed before, from a single bad reply. This loop runs
-UNATTENDED and stores model output by design, so it is that hazard with a pump
-attached. A 3B model asked open questions about a subject will produce
-confident, wrong, plausible sentences.
+gets re-parroted. This loop runs UNATTENDED and stores model output by design,
+so it is that hazard with a pump attached. A 3B model asked open questions
+about a subject will produce confident, wrong, plausible sentences.
 
 Three structural mitigations, none of them an instruction:
 
@@ -43,8 +42,8 @@ Three structural mitigations, none of them an instruction:
   * SANITISED ON WRITE. Bodies go through the same filter as reply excerpts;
     anything mentioning the machinery is dropped rather than stored.
   * ABSORBED, NOT ASSERTED. Inquiry only QUEUES material. The study loop
-    imprints it, tests whether it stuck, and reindexes — so the cost bound, the
-    test-after and the idle budget all still apply.
+    imprints it and tests whether it stuck, so the cost bound and the idle
+    budget all still apply.
 
 It does not make the model correct. It makes what the model said traceable to
 the model.
@@ -84,9 +83,9 @@ CREATE TABLE IF NOT EXISTS inquiry_topics (
 #
 # This is prepended to the USER message, not passed as a system prompt. The
 # provider's system prompt is fixed when the client is built (Mati's persona),
-# and a second one cannot be layered on it. Passing this as `system` silently
-# did nothing: the model answered in Mati's voice and never emitted the NEXT
-# line, so every step re-asked the opening question and the loop never advanced.
+# and a second one cannot be layered on it: passed as `system` it does nothing,
+# the model answers in Mati's voice and never emits the NEXT line, and every
+# step re-asks the opening question so the loop never advances.
 ASK_SYSTEM = (
     "You are answering a question for your own study notes. Reply with three "
     "or four short factual sentences, no preamble and no lists. If you are not "
@@ -163,8 +162,8 @@ def _pick(conn):
 def step(lm, tok, llm, db_path=None, verbose=True):
     """One question, asked and absorbed. Returns a summary, or None if idle.
 
-    The LLM call is the slow part (~60-100s on a 3B), which is why this is one
-    question per idle pass and not a loop that runs until it is bored.
+    The LLM call is the slow part (a minute or more on a 3B), which is why this
+    is one question per idle pass and not a loop that runs until it is bored.
     """
     conn = _conn(db_path)
     try:
@@ -279,29 +278,22 @@ def status(db_path=None):
 # Asking the person instead of the model
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ⚠️ REWRITTEN, AND THE OLD WORDING IS KEPT BELOW BECAUSE IT
-# EXPLAINS 862 BAD QUESTIONS. It read:
+# ⚠️ WHAT THIS ASKS FOR, AND WHAT IT MUST NOT. Two wordings that look reasonable
+# produce bad questions:
 #
-#     "Write ONE short question about it that a person who was there could
-#      answer and you cannot work out for yourself — something the passage
-#      leaves open, assumes, or does not explain."
-#
-# Two faults, both visible only once you know what passage it was handed.
-#
-# 1. "a person who was there". Given a passage about Cortes or the Long Count,
-#    nobody alive was there — so the instruction INVITED the anachronism.
-#    "Did you live with Hernan Cortes?" is the prompt working as written. It
-#    presumed the passage described something the person witnessed, which is
-#    true only of a lived episode, and the source pool was 65% not that.
+# 1. "a question that a person who was there could answer". Handed a passage
+#    about Cortes or the Long Count, nobody alive was there — so the
+#    instruction INVITES the anachronism, and "Did you live with Hernan
+#    Cortes?" is that prompt working as written.
 #
 # 2. "something the passage leaves open, assumes, or does not explain" is a
 #    READING-COMPREHENSION instruction. It asks for gaps in a TEXT, not for
-#    things only this person knows — which is why 49.6% of the queue opened
-#    with "what is/was/were the..." and 80% contained no "you" at all.
+#    things only this person knows — and produces "what is/was/were the…"
+#    questions with no "you" in them at all.
 #
-# What replaces it asks for the one thing a passage of CONVERSATION genuinely
+# What this asks for is the one thing a passage of CONVERSATION genuinely
 # cannot contain: what the other person knew and did not say. The source pool
-# is now lived episodes only (`bridge._ASK_PRIORITY`), so "you" in the
+# is lived episodes only (`bridge._ASK_PRIORITY`), so "you" in the
 # instruction below always refers to someone who really was present.
 ASK_USER_SYSTEM = (
     "Below is a record of a conversation you had with this person. "
@@ -328,11 +320,11 @@ ASK_USER_SYSTEM = (
 
 # Referents that only make sense if you are holding the passage.
 #
-# ⚠️ MEASURED : 59 of 124 queued questions (48%) leaned on one of
-# these, and the worst were unanswerable by anyone — "What were those four
-# earlier moments?" The person has no way to know which four, and neither does
-# anyone reading it later. The referent lived in the episode the model was
-# looking at when it wrote the question and never made it into the question.
+# ⚠️ A QUESTION THAT LEANS ON ONE OF THESE IS UNANSWERABLE BY ANYONE — "What
+# were those four earlier moments?" The person has no way to know which four,
+# and neither does anyone reading it later: the referent lived in the episode
+# the model was looking at when it wrote the question, and never made it into
+# the question.
 #
 # The generator cannot see this itself: it writes WITH the passage in front of
 # it, so "those four moments" feels perfectly specified. Hence a check outside
@@ -341,9 +333,8 @@ ASK_USER_SYSTEM = (
 _DANGLING = re.compile(
     r"""(?:
         # "those moments" — but NOT "those who…", which is a relative
-        # construction and perfectly self-contained. Found by auditing all 33
-        # rejections rather than sampling them: "What happens to those who are
-        # able to think with their own minds?" was being dropped.
+        # construction and perfectly self-contained: "What happens to those
+        # who are able to think with their own minds?" must not be dropped.
         \b(?:those|these)\b(?!\s+(?:who|whom|which|that)\b)
       | \bthat\s+(?:moment|conversation|topic|passage|note|text|event|
                    time|occasion|subject|discussion|exchange|thing|one)\b
@@ -390,18 +381,22 @@ def names_its_subject(question):
 
 def question_for_user(body, llm, topic=None, db_path=None, verbose=False,
                       note_id=None):
-    """Turn a memory into a question for the PERSON, and queue it.
+    """Turn a lived episode into a question for the PERSON, and queue it.
 
-    This does not REPLACE `step()` above — the two are one loop. `step()` asks
-    Mati's own model and files the answer as `studied:asked about …`, the
-    weakest provenance it holds. That weakness is the POINT, not a defect: it
-    marks a topic Mati is unsure of. This function then takes the weak topic
-    to the one authority on the device that actually knows, and their answer
-    comes back through the ordinary turn path as a LIVED episode — the
-    strongest. Dreaming finds the soft spot; asking hardens it.
+    ⚠️ OFF BY DEFAULT (`config.ASK_USER_ON_SLEEP`). A question written offline
+    and parked until its topic comes up has no relation to the moment it
+    arrives in, and sounds forced; questions now come from the turn itself
+    (`clarify.py`). This is kept so that design can be measured against it.
 
-    Which is why `bridge.episode_to_ask_about` orders candidates by WEAKNESS
-    rather than recency, and puts `studied:asked about …` first.
+    `step()` above asks Mati's own model and files the answer as
+    `studied:asked about …`. This is the other direction: the person is the
+    one authority on the device for what they lived, and their answer comes
+    back through the ordinary turn path as a LIVED episode.
+
+    ⚠️ ONLY ABOUT SOMETHING THEY WERE IN. `bridge.episode_to_ask_about` draws
+    from lived episodes only and orders them by weakness; asking the person
+    to vouch for something Mati read, or told itself, would be seeking a
+    witness for an invention.
 
     The question is QUEUED, never asked immediately. It waits until the subject
     comes up, exactly as a finding does: raised at the top of a conversation it
@@ -417,7 +412,7 @@ def question_for_user(body, llm, topic=None, db_path=None, verbose=False,
             [{"role": "user",
               "content": f"{ASK_USER_SYSTEM}\n\nPassage:\n{text[:800]}"}],
                 # ⚠️ CAPPED. The first line is taken and a "?" demanded, so
-                # everything past it was generated and thrown away.
+                # anything generated past it would be thrown away.
                 max_tokens=60)
     except Exception:
         return None                       # never let curiosity break the loop
@@ -439,17 +434,16 @@ def question_for_user(body, llm, topic=None, db_path=None, verbose=False,
     if any(w in low for w in ("field", "basin", "coherence", "imprint",
                               "theta", "your memory system")):
         return None
-    # ⚠️ AND NOT ABOUT MATI'S OWN RECALL EITHER, which the list above missed
-    # because those are substrate words and this is a different mistake.
-    # , from the first run of the corrected generator:
+    # ⚠️ AND NOT ABOUT MATI'S OWN RECALL EITHER — substrate words are a
+    # different mistake from the ones above. Questions such as
     #
     #     "What were the four memories that were triggered by your answer to
     #      'How many memories do you have?'"
     #     "What specific moments from your past were triggered by the mention
     #      of the Calmecac?"
     #
-    # Both ask the person to account for what MATI remembered. The subject of
-    # a sincere question is the person's life, never Mati's retrieval — and a
+    # ask the person to account for what MATI remembered. The subject of a
+    # sincere question is the person's life, never Mati's retrieval — and a
     # conversation ABOUT Mati's memory is still a conversation, so the
     # episode is legitimate source material while a question about its
     # mechanics is not.
@@ -576,17 +570,14 @@ def resolve_from_later(llm, db_path=None, verbose=False):
                 continue
             # ⚠️ ONLY WHAT WAS SAID AFTERWARDS. Earlier material is what the
             # question was asked ABOUT — answering from it is answering the
-            # question with the thing that raised it. The first version of this
-            # only said so in a comment and did not check.
+            # question with the thing that raised it.
             if not _written_after(hit["note_id"], made, db_path):
                 continue
             # ⚠️ AND ONLY THE PERSON'S HALF. An episode body is "I was asked:
             # <them> / I said: <Mati>", and Mati's half is model output. Left
-            # whole, this resolves a question from Mati's own earlier guess —
-            # which is `step()`'s circular self-answering with extra steps, and
-            # the thing this exists to avoid. Measured on the tlamatinime
-            # episode, where the "answer" came straight out of Mati's own
-            # reply, priestesses and all.
+            # whole, this would resolve a question from Mati's own earlier
+            # guess — `step()`'s circular self-answering with extra steps, and
+            # the thing this exists to avoid.
             passage = _their_words(hit["body"])
             if len(passage) < 40:
                 continue                     # nothing of theirs to read

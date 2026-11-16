@@ -57,8 +57,8 @@ def why_off():
     """The sentence to say when this is off. Empty string when it is on.
 
     ⚠️ IT NAMES THE KEYLESS PATH TOO, because for a lot of people that is the
-    right answer and the key is not. The user: "I'd rather not use
-    anything that requires keys or passwords." A message that only says "go
+    right answer and the key is not — plenty of people would rather not use
+    anything that requires keys or passwords. A message that only says "go
     make an account" would push someone toward the thing they declined.
     """
     from . import credentials
@@ -73,12 +73,12 @@ def why_off():
 def follow(url, name=None, db_path=None):
     """Follow a venue's own listings. (ok, message). ⚠️ No key, no account.
 
-    Measured  — this path is REAL BUT PATCHY, and saying so is part
-    of the feature. Songkick's artist RSS returns 406, Bandsintown's is dead
-    and the Kennedy Center returns 403; SF Station's feed answers with ten
-    items and Pitchfork publishes one. So it works where a site chooses to
-    publish, which is a smaller promise than "concerts near you" and an
-    honest one.
+    This path is REAL BUT PATCHY, and saying so is part of the feature. Some
+    listing feeds refuse automated readers (Songkick's artist RSS returns 406,
+    the Kennedy Center 403) or are gone (Bandsintown's); others answer (SF
+    Station's with ten items, Pitchfork's with one). So it works where a site
+    chooses to publish, which is a smaller promise than "concerts near you"
+    and an honest one.
 
     ⚠️ ALL EXISTING MACHINERY. An iCal feed goes to `agenda.import_ics`, so
     gigs land beside meetings and bills and get the same reminders; anything
@@ -165,8 +165,8 @@ def _event(raw):
         # ⚠️ Event and venue names are submitted by promoters.
         "name": untrusted.clean(raw.get("name"), max_len=140),
         # ⚠️ Taken as the API gives it — local to the VENUE, not converted.
-        # Re-deriving a local day from UTC is the bug this project shipped
-        # twice, and a gig's date belongs to the city it is in.
+        # Re-deriving a local day from UTC is an easy bug to ship, and a gig's
+        # date belongs to the city it is in.
         "date": dates.get("localDate"),
         "time": dates.get("localTime"),
         "venue": untrusted.clean(v.get("name"), max_len=80) or None,

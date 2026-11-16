@@ -7,8 +7,8 @@ Mati is a thing you can carry.
 Everything Mati knows lives on this machine, in a handful of files totalling a
 few megabytes. That is the whole point of the architecture and the reason for a
 real shutdown: **a clean stop should leave a directory you can drag onto a
-thumb drive and open somewhere else.** Sleep does not do that — it hands the
-field to the pro terminal and the process stays up.
+thumb drive and open somewhere else.** A handoff (`/release`) does not do that
+— it gives the field to the pro terminal and the process stays up.
 
 WHAT MAKES A COPY SAFE RATHER THAN MERELY COMPLETE. Three things, none obvious,
 all of which produce a copy that *looks* fine:
@@ -19,20 +19,20 @@ all of which produce a copy that *looks* fine:
      it, with no error at either end. `prepare()` runs a TRUNCATE checkpoint so
      the main file is self-contained and the sidecars are empty.
 
-  2. ⚠️ **ADDRESSES GO STALE FASTER THAN THEY ARE REPAIRED.** Measured
-: after roughly nine turns, 22 of 23 episodes were addressed
-     against an older θ₀. Repair is bounded and runs only on idle, so an
+  2. ⚠️ **ADDRESSES GO STALE FASTER THAN THEY ARE REPAIRED.** After roughly
+     nine turns, nearly every episode is addressed against an older θ₀ (22 of
+     23 in one measurement). Repair is bounded and runs only on idle, so an
      install handed over mid-session carries a store whose recall has quietly
      collapsed toward recency. `prepare()` reindexes to completion first —
      unbounded, because a transfer is exactly the moment worth paying for.
 
   3. ⚠️ **THE KEYCHAIN DOES NOT TRAVEL.** The vault key is wrapped twice: into
-     this Mac's Secure Enclave behind Touch ID, and into the recovery
-     passphrase. Only the second one is in the file. On the destination machine
-     Touch ID cannot help and **the passphrase is the only way in** — so a
-     transfer without it is a permanent loss of every memory, not an
-     inconvenience. `vault.adopt()` re-wraps into the new machine's keychain
-     once, after which Touch ID works there.
+     this Mac's keychain, and into the recovery passphrase. Only the second
+     one is in the file. On the destination machine there is no keychain
+     entry and **the passphrase is the only way in** — so a transfer without
+     it is a permanent loss of every memory, not an inconvenience.
+     `vault.adopt()` writes the key into the new machine's keychain once,
+     after which it opens there the way it did on the old one.
 
 ⚠️ **A DRIVE IS NOT A SAFE.** The vault encrypts memory *bodies*; addresses and
 metadata stay in plaintext so recall can work without the key. That is a
@@ -41,9 +41,9 @@ leaks the retrieval index — roughly, what you talked about and when — even
 though the text is sealed. Encrypt the volume if that matters.
 
 WHAT DOES NOT TRAVEL, ON PURPOSE. Nothing here is machine-specific except the
-keychain wrap, and no absolute paths are stored anywhere (verified: `ROOT` is
-derived from this file's location and the database holds zero). So the same
-directory works from `/Users/…`, from `/Volumes/…`, or from anywhere else.
+keychain wrap, and no absolute paths are stored anywhere: `ROOT` is derived
+from this file's location and the database holds none. So the same directory
+works from `/Users/…`, from `/Volumes/…`, or from anywhere else.
 """
 
 import argparse

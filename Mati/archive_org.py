@@ -1,11 +1,8 @@
 """
 Free films that are free to take — the Internet Archive, keyless.
 
-The user asked about yt-dlp, ProxiTok and free movie sites like Tubi. Measuring
-those turned up one fact that reframes the whole question:
-
-    ⚠️ FOR OPENLY-LICENSED VIDEO YOU DO NOT NEED A RIPPER AT ALL.
-    THE FILE IS ALREADY PUBLISHED.
+⚠️ FOR OPENLY-LICENSED VIDEO YOU DO NOT NEED A RIPPER AT ALL. THE FILE IS
+ALREADY PUBLISHED.
 
     archive.org/metadata/night_alarm
       licence  http://creativecommons.org/licenses/publicdomain/
@@ -14,45 +11,28 @@ those turned up one fact that reframes the whole question:
 
 An extractor exists precisely to pull video out of sites that CHOSE NOT to
 publish a file. Where the file is published, plain HTTP is the whole story —
-which is also why `podcast.py` already downloads video podcast enclosures with
-no extractor anywhere in this codebase.
+which is also why `podcast.py` downloads video podcast enclosures with no
+extractor anywhere in this codebase. archive.org's feature-film shelf alone
+holds tens of thousands of such items, keyless.
 
-:
+⚠️ NOTHING THAT NEEDS AN EXTRACTOR, A KEY OR A THIRD-PARTY BRIDGE. Channel
+feeds from the big video sites carry titles and links, never a file, and a
+feed hosted on someone else's server to stand in for one is not the site.
 
-    archive.org feature_films      28,437 items, keyless, direct files
-    PeerTube (framatube.org)       23,831 videos, open API AND an RSS feed
-    ProxiTok (3 known instances)   000, 000, 000 — nothing is running
-    yt-dlp / ffmpeg                not installed
+⚠️ "ADVERTISED" IS NOT "AVAILABLE". A site's own page can publish a feed URL
+that 404s, and `world.discover_feed` will happily hand back an address that
+does not answer — so a caller must treat a discovered feed as a claim to check
+rather than a fact.
 
-    YouTube channel RSS            404 on all three channel IDs tried —
-                                   and ⚠️ the channel page STILL ADVERTISES
-                                   that exact URL in <link rel="alternate">.
-                                   Even when it worked it carried titles and
-                                   links only, never a file. Shorts have no
-                                   feed of their own at all.
-    Twitch official API            401 Unauthorized — needs a Client-ID
-    twitch.tv/feeds/<user>         200, but it is the app HTML, 0 items
-    twitchrss.appspot.com          200, 1 item — ⚠️ a THIRD-PARTY bridge on
-                                   someone's App Engine instance, not Twitch.
-                                   Worse than Flipp: Flipp is at least
-                                   first-party.
+⚠️ PEERTUBE NEEDS NO CODE HERE. `/feeds/videos.xml` is ordinary RSS and
+`world.subscribe` already handles it; anything added here for PeerTube would
+be a second copy of `world.py`.
 
-⚠️ "ADVERTISED" IS NOT "AVAILABLE", and YouTube is the clean example: its own
-page publishes a feed URL that 404s. `world.discover_feed` will happily hand
-back an address that does not answer, so a caller must treat a discovered feed
-as a claim to check rather than a fact.
-
-⚠️ PEERTUBE NEEDS NO CODE AT ALL. `/feeds/videos.xml` is ordinary RSS and
-`world.subscribe` already handles it — 20 items on the first try. Anything
-added here for PeerTube would be a second copy of `world.py`.
-
-⚠️ WHAT THIS MODULE WILL NOT DO, and the reason is one line: Tubi is a
-legitimate free service whose catalogue is licensed from studios and delivered
-under DRM. Taking video out of it means circumventing that protection, which
-is a different category from every other source in this project — not a terms
-question like Craigslist, but an anti-circumvention one. A public Apache-2.0
-release cannot carry that. Nothing here touches a protected stream, and the
-three sources above need no circumvention to begin with.
+⚠️ WHAT THIS MODULE WILL NOT DO, and the reason is one line: a free service
+whose catalogue is licensed from studios and delivered under DRM cannot be
+taken from without circumventing that protection — not a terms question but
+an anti-circumvention one, and a public Apache-2.0 release cannot carry that.
+Nothing here touches a protected stream, and nothing here needs to.
 """
 
 from __future__ import annotations
@@ -92,11 +72,9 @@ COLLECTIONS = {
     "silent":     "silent_films",
     "scifi":      "SciFi_Horror",
     "westerns":   "westerns_movies",
-    # ⚠️ EVERY SHELF HERE WAS FICTION, which is why "play nasa videos" came
-    # back with sci-fi B-movies — searching `feature_films` for "nasa" finds
-    # *Voyage to the Planet of Prehistoric Women*, not a launch. Measured
-    # : `collection:nasa AND mediatype:movies` holds 13,771 items and
-    # nothing in this project had ever pointed at it.
+    # ⚠️ A SHELF FOR WHAT IS NOT FICTION. Searching `feature_films` for "nasa"
+    # finds *Voyage to the Planet of Prehistoric Women*, not a launch; the NASA
+    # collection holds over thirteen thousand films of the real thing.
     #
     # ⚠️ ALL PUBLIC DOMAIN, which is the standing rule for this module. NASA
     # material is US government work; Prelinger is explicitly released.
@@ -202,17 +180,17 @@ def search(query=None, collection="films", limit=10):
         })
 
     # ⚠️ THE ARCHIVE MATCHES LOOSELY AND RANKS BY DOWNLOADS, so the thing
-    # actually about the subject lands anywhere. Measured for `physics` on the
+    # actually about the subject lands anywhere. For `physics` on the
     # Prelinger shelf:
     #
-    #   1. Automotive Service (1940)   subjects: Occupations, Car culture   ← won
+    #   1. Automotive Service (1940)   subjects: Occupations, Car culture   ← top
     #   2. Case of Spring Fever        subjects: PHYSICS: Springs
     #   3. Make Mine Freedom           subjects: Cold War, Capitalism
     #   4. A is for Atom (1953)        subjects: Atomic-nuclear, PHYSICS    ← right
     #
-    # The user: *"I asked for a video about physics; it played a short fiction
-    # film."* Same disease as the radio tag filter — a binary match, then a
-    # popularity sort, with relevance thrown away in between.
+    # A request for a video about physics must not play a short fiction film.
+    # Same shape as the radio tag filter — a binary match, then a popularity
+    # sort, with relevance thrown away in between.
     if query:
         for r in out:
             r["match"] = _topic_match(r, query)
@@ -321,10 +299,10 @@ def files(identifier):
         # ⚠️ STATED, NOT ASSUMED. If an item's licence is not what this module
         # expects, the caller can see that rather than being told it is fine.
         # ⚠️ `rights` IS FREE TEXT AN UPLOADER TYPED, and it reaches a spoken
-        # reply. Measured: one item's rights field is an `<a href="https://…">`
-        # anchor, which Mati read out as raw HTML mid-sentence. `licenseurl`
-        # is a URL and safe; `rights` has to be cleaned like any other string
-        # from a stranger — the same rule `_clean` applies to station names.
+        # reply. It can be an `<a href="https://…">` anchor, which Mati would
+        # read out as raw HTML mid-sentence. `licenseurl` is a URL and safe;
+        # `rights` has to be cleaned like any other string from a stranger —
+        # the same rule `_clean` applies to station names.
         "licence": meta.get("licenseurl") or _rights(meta.get("rights"))
                    or "public domain collection",
         "files": out,
@@ -356,17 +334,15 @@ def would_cost(f):
 def playable(identifier, max_mb=MAX_FILM_MB):
     """What the APP needs to play a film itself. (dict, None) or (None, why).
 
-    ⚠️ NO APPLICATION IS INVOLVED. The user asked whether video could go through
-    AVFoundation like the radio does. It can — AVKit and AVPlayerView are both
-    present — but putting a window in the server would turn a headless daemon
-    into a GUI app with a Dock icon and an NSApplication run loop competing
-    with `serve_forever`. That is the opposite of "keep this as simple as
-    possible".
+    ⚠️ NO APPLICATION IS INVOLVED. AVKit could play these, but a window in the
+    server would turn a headless daemon into a GUI app with a Dock icon and an
+    NSApplication run loop competing with `serve_forever` — the opposite of
+    keeping this as simple as possible.
 
     The app already has a `<video>` element, and archive.org serves these
-    directly: measured **HTTP 206 with `content-range`**, so seeking works,
-    and a plain `<video>` needs no CORS for playback. So Mati hands over a
-    URL and the page plays it — no new framework, no window, nothing to quit.
+    directly with **HTTP 206 and `content-range`**, so seeking works, and a
+    plain `<video>` needs no CORS for playback. So Mati hands over a URL and
+    the page plays it — no new framework, no window, nothing to quit.
     """
     f, why = best_file(identifier, max_mb=max_mb)
     if not f:
@@ -376,24 +352,21 @@ def playable(identifier, max_mb=MAX_FILM_MB):
 
 
 # Shelves a silent-era reel is drawn from. ⚠️ ALL SILENT BY ERA, which is the
-# whole point: the user wants this running WHILE the radio does, and a talkie
-# would fight it. Muting is still enforced in the app, because archive.org
-# prints of silent films often carry an added music track.
+# whole point: the reel runs WHILE the radio does, and a talkie would fight it.
+# Muting is still enforced in the app, because archive.org prints of silent
+# films often carry an added music track.
 #
-# ⚠️ `shorts` IS DELIBERATELY NOT HERE. `short_films` sorted by downloads
-# returns, in its first four: "These Girls Are Fools (1950), exploitation short
-# with nude scenes" and "1940s French stag film: whipping, spanking fetish".
-# Measured  while building this. The Chaplin shorts people actually
-# want are in `silent` anyway.
+# ⚠️ `shorts` IS DELIBERATELY NOT HERE. `short_films` sorted by downloads opens
+# with an exploitation short and a stag film. The Chaplin shorts people
+# actually want are in `silent` anyway.
 REEL_SHELVES = ("cartoons", "silent")
 
 # ⚠️ A SCREEN FOR UNATTENDED CHOICES ONLY, AND THE LINE IS WHO CHOSE.
 #
-# The user: *"I just don't want to accidentally play something
-# inappropriate. The user should be able to watch any available film by name,
-# or subject matter, or genre etc — the same for videos and cartoons."*
-#
-# So the test is not WHAT the material is, it is WHO picked it:
+# Nothing inappropriate should play by accident, and any available film —
+# by name, subject matter or genre, the same for videos and cartoons — should
+# play when asked for. So the test is not WHAT the material is, it is WHO
+# picked it:
 #
 #   Mati picked it   a bare "play a movie", "play some shorts", the reel,
 #                     a shelf browsed with nothing named -> SCREENED
@@ -421,11 +394,11 @@ _REEL_BY_NAME = ("birth of a nation",)
 REEL_MAX_YEAR = 1965
 
 # ⚠️ A SIZE CAP IS HOW "SHORT" GETS ENFORCED, because archive.org does not
-# publish runtime in the search row. With only the year filter the reel came
+# publish runtime in the search row. With only the year filter the reel comes
 # back as *Phantom of the Opera* (463 MB), *20,000 Leagues* (429 MB) and
-# *Caligari* (222 MB) — right era, and features rather than shorts, and a lot
-# of bandwidth to leave looping. Measured: Popeyes land at 26–29 MB and the
-# Chaplin two-reelers at 88 MB, so this keeps both and drops the features.
+# *Caligari* (222 MB) — right era, features rather than shorts, and a lot of
+# bandwidth to leave looping. Popeyes land at 26–29 MB and the Chaplin
+# two-reelers at 88 MB, so this keeps both and drops the features.
 REEL_MAX_MB = 120
 
 
@@ -452,27 +425,26 @@ def ok_unattended(title):
 
 # ── Studio pictures ──────────────────────────────────────────────────────────
 #
-# The user: *"Unless someone is looking for something different,
-# 'film' and 'movie' must be something from major film studios."*
+# Unless someone is looking for something different, "film" and "movie" mean
+# something from a major film studio.
 #
 # ⚠️ THE METADATA CANNOT DO THIS, which is why the list is written out.
-# Measured: `publisher` and `creator` are ABSENT on most rows — of the six
-# most-downloaded feature films, four have neither. There is nothing to filter
-# a studio on.
+# `publisher` and `creator` are ABSENT on most rows — most of the
+# most-downloaded feature films have neither. There is nothing to filter a
+# studio on.
 #
 # ⚠️ AND THE DEFAULT SHELF IS WORSE THAN UNHELPFUL. `feature_films` sorted by
 # downloads opens with "Sex Madness" (1938) and "Dr. Sex." — the same trouble
-# the reel had, reaching the named path too.
+# the reel has, reaching the named path too.
 #
 # ⚠️ WHAT THIS CAN AND CANNOT BE. A current studio film is under copyright and
-# is not legitimately available; this module refuses Tubi on exactly that
-# ground. What IS available is the set of major-studio pictures whose copyright
-# lapsed — a real and well-known group, mostly through renewal failures. So
-# "from major film studios" is honoured as far as the law allows, and the
-# docstring says so rather than quietly delivering something narrower.
+# is not legitimately available; this module refuses DRM'd services on exactly
+# that ground. What IS available is the set of major-studio pictures whose
+# copyright lapsed — a real and well-known group, mostly through renewal
+# failures. So "from major film studios" is honoured as far as the law allows,
+# and the docstring says so rather than quietly delivering something narrower.
 #
-# Every identifier here was verified present on archive.org  with its
-# download count; none is a guess.
+# Every identifier here was verified present on archive.org; none is a guess.
 STUDIO_PICKS = (
     ("his_girl_friday", "His Girl Friday", 1940, "Columbia"),
     ("meet_john_doe", "Meet John Doe", 1941, "Warner Bros."),
@@ -523,15 +495,13 @@ def studio_pick(limit=1, max_mb=MAX_FILM_MB, rng=None):
 def reel(limit=5, max_mb=REEL_MAX_MB):
     """A short loop of era shorts and cartoons. [] if nothing is playable.
 
-    the user: *"there should be a short playlist of shorts and
-    cartoons from the era that play in a loop. This way it can play at the
-    same time as listening to music."*
+    Shorts and cartoons from the era, looping, so they can play at the same
+    time as music.
 
-    ⚠️ EVERY ITEM IS CHECKED FOR A PLAYABLE FILE BEFORE IT IS OFFERED. This is
-    not caution for its own sake — the bare "play some videos" request
-    returned a Chaplin short whose only formats were unsupported, and said so
-    after the fact. A reel that stops on its third item is worse than a
-    shorter reel.
+    ⚠️ EVERY ITEM IS CHECKED FOR A PLAYABLE FILE BEFORE IT IS OFFERED. An item
+    whose only formats are unsupported would otherwise be offered and then
+    fail — and a reel that stops on its third item is worse than a shorter
+    reel.
 
     ⚠️ COSTS ONE REQUEST PER CANDIDATE, so it is built once and handed over
     whole rather than resolved as it plays.

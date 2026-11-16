@@ -9,16 +9,209 @@ and nothing is held back. If Mati is useful to you,
 **[a tip on Ko-fi](https://ko-fi.com/serialtheorist)** keeps the work going.
 
 Mati runs on your own computer. No account, no API key, no subscription. The
-model, the memory, and the field state all live on your disk.
+language model and everything Mati remembers live on your disk.
 
-**Nothing about you is ever sent anywhere.** Not your conversations, not your
-memories, not the field, not your name, not an identifier of any kind. There
-is no telemetry, no analytics, no account, no update check, and no cookie.
-Mati has nothing to send you back to, because it never learns who you are in
-any sense a server could use.
+**Nothing about you is ever sent anywhere.** No identifier of any kind.
+Every connection Mati can make is listed below, with exactly what it sends.
 
-That is the claim that matters, and you don't have to take it on trust —
-here is every connection Mati can make and what goes with it.
+**New here?** [Install Mati](#install-mati) ·
+[Start and stop it](#starting-and-stopping-mati) ·
+[A tour of the window](#a-tour-of-the-window) ·
+[Things to try](#things-to-try) ·
+[Every connection it makes](#every-connection-mati-can-make) ·
+[Uninstall](#uninstalling)
+
+---
+
+## Install Mati
+
+### What you need
+
+- **A Mac.** Apple silicon (M1 or later) is much faster. Intel Macs work, but a
+  reply can take a minute — see [How fast it is](#how-fast-it-is).
+- **8 GB of memory or more.** Apple menu → *About This Mac* shows how much yours
+  has.
+- **About 5 GB of free disk space**, mostly for the language model.
+- **An internet connection while installing.** After that Mati works offline,
+  apart from the things listed under
+  [Every connection Mati can make](#every-connection-mati-can-make).
+- **10–30 minutes**, most of it waiting for downloads.
+
+You do not need an account anywhere, and you do not need to know anything
+about GitHub or Terminal.
+
+### Install it
+
+1. **[Download Mati](https://github.com/vml520/Mati/archive/refs/heads/main.zip)**
+   — a zip file of a few megabytes. If your browser does not open it by itself,
+   double-click it in your **Downloads** folder. You now have a folder called
+   **Mati-main**.
+
+2. **Open that folder and double-click `Install Mati.command`.**
+
+   The first time, macOS stops it with a message that it cannot verify the
+   developer. That is because Mati is not signed with a paid Apple developer
+   certificate — not because anything is wrong with it. To let it run:
+
+   - **macOS 15 Sequoia or later:** click **Done**. Open **System Settings →
+     Privacy & Security**, scroll down to the message about
+     *Install Mati.command*, click **Open Anyway**, and confirm.
+   - **Earlier versions of macOS:** hold **Control**, click the file, choose
+     **Open**, then click **Open** again.
+
+3. **A Terminal window opens and the installer does the rest**, showing each
+   step as it goes:
+
+   1. checks that your Mac can run Mati
+   2. installs Apple's free Command Line Tools if they are missing — a window
+      asks; click **Install**
+   3. installs a few small Python packages Mati uses
+   4. installs [Ollama](https://ollama.com), the free program that runs the
+      language model
+   5. downloads the language model, Llama 3.2 (about 2 GB)
+   6. puts Mati in a folder called **Mati** in your home folder
+   7. runs the first-time setup — see the next step
+   8. adds a **Mati** app to the **Applications** folder in your home folder
+
+   It never asks for your administrator password.
+
+4. **Answer the setup questions.** Mati asks:
+
+   - **Whether to lock your memories.** Choose the recommended option: Touch
+     ID on a Mac that has it, or the keychain on a Mac that does not — either
+     way Mati opens by itself when it starts. (*Passphrase only* means typing
+     your passphrase every time Mati starts.) Mati then shows a **recovery
+     passphrase**. **Write it down and keep it somewhere safe.** If this Mac's
+     keychain is ever lost — a new Mac, a wiped disk — it is the only way back
+     into your memories, and nobody can recover it for you.
+   - **What to call you**, and a little about you. Only the name is needed;
+     press Return to skip the rest.
+
+5. **When the window says *Mati is installed*,** Mati starts and its window
+   opens in your web browser.
+
+**Prefer Terminal?** Paste this instead. It runs the same installer:
+
+```sh
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/vml520/Mati/main/Install%20Mati.command')"
+```
+
+**Updating.** Download the zip again and double-click `Install Mati.command`.
+It replaces Mati's program files and leaves your memories, your settings and
+your key exactly as they are.
+
+### Starting and stopping Mati
+
+- **To start**, open **Mati** from the Applications folder in your home folder
+  (in Finder: **Go → Home**, then **Applications**). Drag it to the Dock to keep
+  it handy. Starting takes 10–30 seconds — a few minutes on an older Mac — and,
+  if your memories are locked with Touch ID, your Mac asks for your fingerprint.
+  Then Mati's window opens in your browser. If nobody was there to answer
+  Touch ID, or your memories open only with a passphrase, the window says
+  *Memories are locked* and opens them from there.
+- **The window is a page at `http://127.0.0.1:8756`.** That address is your own
+  Mac, not a website. You can bookmark it.
+- **Closing the browser tab does not stop Mati.** It keeps running quietly so it
+  is ready when you come back. Open the Mati app again to bring the window back.
+- **To stop**, open the Mati app while Mati is running and choose **Stop Mati**.
+  It saves first, which can take a couple of minutes.
+- **Ollama runs alongside it** — a small llama in the menu bar. Leave it
+  running; Mati needs it to speak.
+
+If Mati will not start, the Mati app says why, and everything Mati printed is in
+the file `mati.log` inside `Mati/.cache` in your home folder. (Finder hides
+folders whose names start with a dot; press **⌘ ⇧ .** to show them.)
+
+## A tour of the window
+
+The window is quiet on purpose: Mati's face, what it says, and a box to type
+in.
+
+- **Mati's face** — an axolotl in the middle of the window, showing what Mati is
+  doing: listening, thinking, speaking, resting. The colour of the frame around
+  it shows how settled Mati's memory is; it is there to be felt rather than
+  read, and you can ignore it. On slower Macs the face starts as a still
+  picture or switched off — *Settings → Avatar* changes that.
+- **The message box** at the bottom — *Say something*. Type, then press Return
+  or click the arrow.
+- **Mati's reply** appears under the face, a line at a time. Longer answers with
+  a structure, such as the morning report, appear on a card that stays until
+  you close it with **✕**.
+- **"Still thinking… please wait."** Replies are worked out on your own
+  computer, so they take from about 20 seconds to a minute or more. Mati says
+  something like "Let me think." straight away; the answer follows.
+- **What's playing.** When radio or a podcast is on, a small label shows what
+  is playing, with **Play**, **Pause** and **Stop** buttons under it.
+- **Stations.** Ask for radio and the stations found appear in a list. Click
+  one, or say "next station" or "the third one". **×** closes the list.
+- **Films.** Public-domain films from the Internet Archive play in their own
+  panel; **✕** closes it.
+- **"Memories are locked."** Shown only when Mati started without its key —
+  nobody answered Touch ID, or your memories open only with a passphrase.
+  Click **Use Touch ID** or **Try again**, or type your passphrase and click
+  **Unlock**. Until then Mati still talks, but cannot read or keep memories.
+
+The small buttons in the top corner open Mati's menus. Hold the pointer over one
+to see its name.
+
+**Settings**
+
+| | |
+|---|---|
+| **Show terminal** | adds the Terminal button (below). Off until you turn it on. |
+| **Notify me when Mati answers** | a notification when an answer arrives while you are looking at another window. |
+| **How much Mati says** | *Brief* (fastest, about 22 seconds), *Normal* (about 32) or *Thorough* (slowest). Shorter answers arrive sooner. |
+| **Speak answers aloud** | Mati reads its answers out loud, using your Mac's own voices, offline. |
+| **Speaking pace**, **Voice** | how fast, and which of your Mac's voices. |
+| **Name** | what Mati calls itself — anything you like. |
+| **Avatar** | *Animated*, *Still frame* or *Off*. |
+
+**Commands** — things to do now. Each says what it costs before you choose it.
+
+| | |
+|---|---|
+| **Sleep** | Mati rests: it tidies up the day's memories and dreams. It still answers if you talk to it. |
+| **Wake** | ends a sleep. |
+| **Restart Mati** | saves, then starts fresh. About two minutes before it answers again. |
+| **Encyclopedia — Check** | whether an offline encyclopedia is set up. See [Adding an encyclopedia](#adding-an-encyclopedia). |
+
+**Library** — what Mati has read, and what you give it to read.
+
+- **What Mati has read** lists each text it has studied and how far through it
+  is. **Archive** puts a text away; Mati can still find it by its words.
+  **Reshelf** brings it back. **Deshelve** removes it, and asks first.
+- **Give Mati something to read**: choose a plain-text file, or paste text, then
+  click **Add**. Before anything starts, Mati says how long reading it will
+  take. It reads when it is not busy talking to you.
+
+**Terminal** — only when *Show terminal* is on, and for the curious. It shows
+the full record of every exchange and what each answer was built from, a choice
+of language model (it takes effect after a restart), and maintenance buttons:
+*Dream now*, *Study now*, *Reindex* and *Pack*. You never need it to use Mati.
+**Done** goes back.
+
+## Things to try
+
+Mati understands ordinary sentences; there are no commands to learn. A few to
+start with:
+
+- "Good morning."
+- "What's the weather like?" — the first time, Mati asks which town you are in.
+- "Play some jazz." — then "next station", or "Stop the music."
+- "Play a podcast about ancient Rome."
+- "Remind me to call the dentist tomorrow at 10am."
+- "How far is San Antonio from Austin?"
+- "Give me the morning report."
+- "What did we talk about yesterday?"
+
+Mati is new to you, and you are new to it. The first conversation has no
+memories in it, and Mati will say so — that is correct; it has not met you yet.
+
+---
+
+## Every connection Mati can make
+
+Here is every connection Mati can make and what goes with it.
 
 **Talking to the model** — `http://localhost:11434`, your own machine. Three
 calls in `Mati/llm.py`. This is where your conversation goes, and it does not
@@ -44,7 +237,7 @@ Mati ships neither.
 
 | what | where | what is sent |
 |---|---|---|
-| headlines, every 4 hours | 4 public RSS feeds | nothing but the request |
+| headlines, every 4 hours | the RSS feeds you have added — none until you add one | nothing but the request |
 
 **Only when you ask for that exact thing**:
 
@@ -61,7 +254,7 @@ Every one of those carries the same fixed header — `Mati/1.0 (personal
 assistant)` — with no machine identifier and nothing unique to you. It is one
 constant, `config.USER_AGENT`, which every outbound module reads; there is no
 second string to drift. Mati identifies itself honestly and never presents as
-a browser. Ask for nothing and nothing but the headline fetch happens.
+a browser. Ask for nothing and add no feed, and nothing is fetched at all.
 
 **Mati never reads your location.** There is no Core Location use anywhere in
 the codebase, and no permission prompt, because Mati never asks the machine
@@ -72,12 +265,10 @@ that exists here. There is no live tracking of any kind: routes are computed
 once from a start and an end you gave, and then they are a list of steps like
 any other text.
 
-⚠️ **If an earlier version of this README said Mati makes no outbound
-connections at all, that was wrong** and this table is the correction. The
-headline fetch above runs at startup. Nothing about you went anywhere, which
-was always the point — but "no connections" was a stronger claim than the
-code, and overstating a privacy property is the one mistake this project
-cannot afford.
+⚠️ **Mati does make outbound connections: the ones in this table, and no
+others.** The feed fetch above runs at startup once you have added a feed. Nothing about you goes
+anywhere — but "no connections" would be a stronger claim than the code, and
+overstating a privacy property is the one mistake this project cannot afford.
 
 It is also not stateless. Most assistants forget you between sessions, or
 "remember" by storing text a company holds. Mati's memory is a physical thing on
@@ -126,30 +317,43 @@ because provenance is written once and never rewritten. It cannot lose your
 memories to a second process, because exactly one thing may hold the field at a
 time. It does not record what it did not settle on.
 
-We tried putting the principles *into* the field first, and measured that it
-does not work — a phase field can hold a shape, not a rule. [How the principles
-are handled in code](PRINCIPLES.md) shows each one, what enforces it, the test
-that proves it, and where the enforcement is weaker than it sounds.
+The principles are not held in the field — a phase field can hold a shape, not
+a rule. [How the principles are handled in code](PRINCIPLES.md) shows each one,
+what enforces it, how it is checked, and where the enforcement is weaker than
+it sounds.
 
-### Your memories are encrypted, and your fingerprint holds the key
+### Your memories are encrypted on disk
 
-Mati's episodes are encrypted on disk. The key lives in your macOS keychain
-behind Touch ID, so unlocking Mati is a touch — and without it the memories are
-ciphertext, including to anyone else with an account on the machine, anyone who
-takes the disk, and anything that reads your backups.
+Mati's episodes are encrypted on disk. Without the key they are ciphertext,
+including to anyone else with an account on the machine, anyone who takes the
+disk, and anything that reads your backups or a copy of the folder.
 
-The enforcement is in the T2 Secure Enclave, not in Mati's code. That matters:
-Mati is open source, so a check written in Python is a check anyone can delete.
-A key you do not have is a key you do not have.
+Where the key lives is your choice at setup:
+
+- **Touch ID**, on a Mac that has it. The key is in your login keychain, and
+  Mati asks for your fingerprint before reading it.
+- **Keychain**, on a Mac without Touch ID. The key is in your login keychain
+  and Mati opens it when it starts, with nothing to type.
+- **Passphrase only**, on either. The key is nowhere on the machine, and you
+  type the passphrase each time Mati starts.
+
+We are specific about what Touch ID is here: a check that you are present, not
+a lock on the key. The keychain entry is an ordinary one, and software running
+as you can read it without a fingerprint — a stronger rule needs a signed app,
+which Mati is not. So the first two modes protect exactly the same things.
+Only passphrase mode keeps the key off the machine, and it pays for that: Mati
+starts locked, and reads and keeps nothing until you open it — in the window,
+or with `python3 -m Mati.vault --unlock`.
 
 Setup prints a **recovery passphrase**. Write it down. If the keychain is ever
-lost — a wiped Mac, a new machine, a reset Touch ID — it is the only way back,
-and nothing can recover it for you.
+lost — a wiped Mac or a new machine — it is the only way back, and nothing can
+recover it for you.
 
-We are specific about what this protects: another account on your machine, a
-stolen or imaged disk, and Time Machine backups. It does not protect against
-you, or against something running as you. That is the right threat model for a
-personal assistant, and overstating it would be worse than not having it.
+What this protects: another account on your machine, a stolen or imaged disk,
+a copied or synced folder, and Time Machine backups. It does not protect
+against you, or against something running as you. That is the right threat
+model for a personal assistant, and overstating it would be worse than not
+having it.
 
 ### It can read what you give it
 
@@ -276,18 +480,18 @@ to be synced, migrated, or requested back from anyone.
 python3 -m Mati.transfer            # what to copy, and is it safe right now
 ```
 
-Stop Mati properly first — `POST /shutdown`, not sleep. That reindexes,
-snapshots the field, and folds the database's write-ahead log back into the main
-file. **Copying `.cache/` while Mati is running gives you a copy missing the
+Stop Mati properly first — `POST /stop`, not `/release` or the nightly rest.
+That re-addresses the working set, snapshots the field, folds the database's
+write-ahead log back into the main file, and then ends the process. **Copying `.cache/` while Mati is running gives you a copy missing the
 most recent memories, and nothing will tell you.**
 
 Two things to know before you carry it anywhere:
 
-**Your recovery passphrase becomes the only way in.** The Touch ID key lives in
-*this* Mac's Secure Enclave and does not travel — it cannot. On the new machine
+**Your recovery passphrase becomes the only way in.** The keychain copy of the
+key lives in *this* Mac's login keychain and does not travel. On the new machine
 the passphrase is the sole route to your memories, and without it they are gone
 permanently. Once you are there, `python3 -m Mati.vault --adopt` teaches that
-Mac the key so Touch ID works again.
+Mac the key so Mati can open itself again.
 
 **A flash drive is not a safe.** Mati encrypts what you said; it deliberately
 does not encrypt the *index* of when you said it, because recall has to work
@@ -307,12 +511,7 @@ gives you a number or validates an argument, it computed it.
 
 ---
 
-## Requirements
-
-- **macOS** — Apple Silicon or Intel
-- **8 GB RAM** minimum (this is a real floor, not a suggestion)
-- **~3 GB disk** for the language model
-- [Ollama](https://ollama.com) for the local model
+## How fast it is
 
 Apple Silicon is substantially faster. The numbers below are from the slowest
 machine Mati is meant to run on — an 8 GB Intel i5-8257U at 1.4 GHz, no GPU,
@@ -330,10 +529,17 @@ it to remember something took 68–75 seconds.
 It is usable if you are willing to wait for a reply. It is not snappy, and on
 this hardware it is not going to become snappy.
 
-## Install
+## Installing by hand
+
+For people comfortable with Terminal; [the installer](#install-it) does all of
+this for you. From inside a copy of this repository:
 
 ```sh
-brew install ollama
+xcode-select --install            # Apple's Command Line Tools, if missing
+/usr/bin/python3 -m pip install --user numpy tiktoken \
+    pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-NaturalLanguage
+
+brew install ollama               # or the app from https://ollama.com
 ollama serve &
 ollama pull llama3.2:3b
 
@@ -458,24 +664,28 @@ not a list.
 
 ## Uninstalling
 
-Mati keeps everything in one folder and one keychain item. There is no
-installer, no daemon, and nothing in `/Library` or `/Applications`.
+Mati keeps everything in one folder and one keychain item, plus the Mati app
+if you used the installer. There is no daemon, and nothing in `/Library`.
 
-**1. Stop it.**
+**1. Stop it.** Open the Mati app and choose **Stop Mati** — or, in Terminal:
 
 ```sh
 pkill -f Mati.server
 ```
 
-**2. Delete the folder.** Everything Mati knows is in `MATI_HOME` — by default
-`.cache/` inside this repository. Deleting it deletes your memories, your
-settings and the field. It cannot be undone and nothing else has a copy.
+**2. Delete the folder.** The installer puts Mati in **Mati** in your home
+folder; everything Mati knows is in `.cache` inside it (or in your `MATI_HOME`).
+Deleting it deletes your memories, your settings and the field. It cannot be
+undone and nothing else has a copy. Drag the **Mati** folder to the Trash and
+empty it, or:
 
 ```sh
-rm -rf .cache          # or your MATI_HOME
+rm -rf ~/Mati          # or the folder you put Mati in
 ```
 
-**3. Remove the key from your keychain.** ⚠️ **This step is the one people
+**3. Delete the Mati app** from the Applications folder in your home folder.
+
+**4. Remove the key from your keychain.** ⚠️ **This step is the one people
 miss.** Deleting the folder leaves the encryption key behind in macOS's
 keychain, where it will sit forever protecting nothing.
 
@@ -483,13 +693,14 @@ keychain, where it will sit forever protecting nothing.
 security delete-generic-password -s ollin-vault -a data-key
 ```
 
-⚠️ The item is named `ollin-vault` rather than `mati-vault` — Mati was called
-something else during development, and the keychain name was deliberately left
-alone so that existing installs would not lose their key to a rename. It is
-the right item.
+⚠️ `ollin-vault` is the right item. The name is a fixed label, not the
+product's name: renaming it would orphan every key already stored under it.
 
-**4. Optionally, remove the model.** Ollama is a separate program and Mati does
-not manage it. If you installed it only for Mati:
+**5. Optionally, remove Ollama and the model.** Ollama is a separate program
+and Mati does not manage it. If you installed it only for Mati, quit it from
+its menu-bar icon and drag **Ollama** from Applications to the Trash; the model
+it downloaded is in the hidden folder `.ollama` in your home folder. If you
+installed it with Homebrew instead:
 
 ```sh
 ollama rm llama3.2:3b
@@ -529,7 +740,7 @@ The single-turn command still exists for scripting, and stands down if the
 server is already running:
 
 ```sh
-python3 -m Mati.mati "one question, no server"
+python3 -m Mati.ollin "one question, no server"
 python3 -m Mati.dream --cycles 5      # consolidate, when idle
 ```
 
@@ -557,7 +768,7 @@ The server speaks plain HTTP on `127.0.0.1`, so anything can be a client:
 ```sh
 curl -N localhost:8756/chat -d '{"text":"hello"}'    # streams tokens
 curl localhost:8756/state
-curl localhost:8756/episodes
+curl localhost:8756/health
 ```
 
 It binds to loopback and refuses to bind anywhere else. "Nothing leaves your
@@ -567,22 +778,24 @@ machine" should be a property of the program, not a promise in a README.
 
 Dreaming, seeding and the admin terminal don't talk to Mati — they take the
 field and work on it directly. Only one thing can hold it at a time, so they
-open when Mati is shut down, or asleep:
+open when Mati is shut down, or has let the field go:
 
 ```sh
-curl -X POST localhost:8756/sleep    # finishes up, saves, lets go
+curl -X POST localhost:8756/release  # finishes up, saves, lets go
 # another process may now open the field
 curl -X POST localhost:8756/wake     # back in a few seconds
 ```
 
-`/sleep` returns once Mati has finished whatever it was already doing, so it
-is not instant and the wait is not bounded by anything you can see: measured
-once at **eight minutes**, because two reflection passes were in flight and
-each is a model call. With nothing in flight it returns immediately. `/wake`
-took **2.6–6.4 seconds**. If you are scripting around these, wait on `/health`
-rather than on a timer.
+`/release` returns once Mati has finished whatever it was already doing, so it
+is not instant and the wait is not bounded by anything you can see: with a
+reflection in flight it can take minutes, because each round is a model call.
+With nothing in flight it returns immediately. `/wake` takes a few seconds. If
+you are scripting around these, wait on `/health` rather than on a timer.
 
-Asleep, Mati keeps running and can be woken; it just isn't holding anything.
+`/release` is not sleep. Sleeping — the app's Sleep button, `/sleep`, the same
+as the nightly `/rest` — keeps the field, goes on dreaming and still answers;
+releasing hands the field over. Released, Mati keeps running
+and can be woken; it just isn't holding anything.
 Try one of those tools while it's awake and it will tell you rather than
 quietly writing over Mati's memory.
 
@@ -617,10 +830,9 @@ Architecture details are in [DESIGN.md].
 
 We would rather you learn these here than discover them:
 
-- **The field does not hold Mati's values.** We designed it to, built it, and
-  measured that it does not: the field has no preference between "never deceive
-  yourself" and "always deceive yourself", before or after training, because it
-  cannot represent negation. The principles are enforced in code instead, which
+- **The field does not hold Mati's values.** It cannot: the field has no
+  preference between "never deceive yourself" and "always deceive yourself",
+  before or after training, because it cannot represent negation. The principles are enforced in code instead, which
   works — see [PRINCIPLES.md](PRINCIPLES.md). We are telling you because the
   alternative is letting you assume otherwise.
 
@@ -647,8 +859,8 @@ We would rather you learn these here than discover them:
 - **Reading a file is slow and lossy at the edges.** A studied chunk is about
   sixty tokens, so long documents become many small memories, and Mati will
   tell you when one did not stick. It also cannot tell that it already knows
-  something — we measured that and it does not work — so it dedupes on exact
-  text and bounds the cost by studying a little at a time instead.
+  something, so it dedupes on exact text and bounds the cost by studying a
+  little at a time instead.
 - **What Mati looks up on its own is the weakest thing it holds.** It is a 3B
   model answering its own questions unattended. It is marked as such everywhere
   it appears, which makes it traceable, not correct. You can turn it off.
@@ -664,16 +876,13 @@ We would rather you learn these here than discover them:
 
 ## Support the work
 
-Mati is free and Apache-2.0 licensed, and it always will be — there is no paid
-tier and nothing is held back. If it is useful to you, or if the research
-behind it interests you, a one-off tip or a monthly sponsorship funds the work
-directly.
+Mati is free and Apache-2.0 licensed, there is no paid tier. If it is useful to you, or if the research behind it interests you, a one-off tip or a monthly sponsorship funds the work directly.
 
 - **[Ko-fi](https://ko-fi.com/serialtheorist)** — one-off or monthly. Payments go
   straight to the maintainer's own account; Ko-fi never holds the money.
 - **GitHub Sponsors** — the Sponsor button at the top of this page.
 
-Collaborators are very welcome — particularly on the open questions above.
+Collaborators are welcome — particularly on the open questions above.
 
 ## License and attribution
 

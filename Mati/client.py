@@ -84,22 +84,30 @@ class MatiClient:
     # ── API ──────────────────────────────────────────────────────────────────
 
     def health(self):
-        # ⚠️ 10s DECLARED A BUSY SERVER DEAD, and the terminal showed "Mati
-        # is not reachable" over a server that was awake and working.
+        # ⚠️ GENEROUS ON PURPOSE. 10s declares a busy server dead, and the
+        # terminal says "Mati is not reachable" over a server that is awake
+        # and working.
         #
-        # ⚠️ AN EARLIER NOTE HERE BLAMED THE WRONG CAUSE — GIL starvation —
-        # the idle loop holding the interpreter and choking the HTTP thread.
-        # The evidence against it was already on the page: /state answered in
-        # 0.03s throughout, on the same thread in the same server. A starved
-        # thread does not serve one route instantly and another never.
+        # A slow route is not a starved server: /state answers in 0.03s on
+        # the same thread while a slow /health is still working, and a starved
+        # thread does not serve one route instantly and another never. What
+        # slows a route is work inside it — decrypting many sealed rows at
+        # ~59ms of openssl each is enough.
         #
-        # It was `schedule.pending(include_held=True)` inside /health,
-        # decrypting ~690 sealed rows at 59ms of openssl each. Fixed at source
-        # in f13f673; /health now answers in 0.05s.
-        #
-        # The generous timeout STAYS. It costs nothing when the server is well,
-        # and the next slow thing should be reported as slow rather than dead.
+        # The generous timeout costs nothing when the server is well, and the
+        # next slow thing should be reported as slow rather than dead.
         return self._json("/health", timeout=45)
+
+
+    def unlock(self, passphrase=None):
+        """Open a locked Mati. With no passphrase it retries its own way —
+        the keychain, after a fingerprint where the vault calls for one.
+
+        Raises `MatiUnavailable` carrying the reason if it stays locked.
+        """
+        return self._json("/unlock",
+                          {"passphrase": passphrase} if passphrase else {},
+                          timeout=120)
 
     def state(self):
         return self._json("/state", timeout=10)
@@ -115,11 +123,10 @@ class MatiClient:
 
     def pending(self):
         """What Mati is holding to say, and whether it may interrupt."""
-        # ⚠️ 10s TIMED OUT AGAINST A 41s CALL. Sealing `to_say` made
-        # `schedule.pending` decrypt every candidate row, one openssl
-        # subprocess each. Fixed at the source (cache + lazy body open, now
-        # ~7s cold and 0.02s warm) — this is headroom for the FIRST call in a
-        # fresh process, which is the one that cannot use the cache.
+        # ⚠️ 30s, NOT 10. `to_say` is sealed, so `schedule.pending` opens its
+        # candidate rows — ~7s cold and 0.02s warm. This is headroom for the
+        # FIRST call in a fresh process, which is the one that cannot use the
+        # cache.
         return self._json("/pending", timeout=30)
 
     def remind(self, text, when=None):
@@ -131,8 +138,8 @@ class MatiClient:
     def shutdown(self):
         """Stop for real, leaving an install that can be carried away.
 
-        Not `/sleep`, which hands the field to the pro terminal and expects to
-        wake. This reindexes to completion and folds the write-ahead log into
+        Not `/release`, which hands the field to the pro terminal and expects
+        to wake. This reindexes to completion and folds the write-ahead log into
         the database, so the directory is safe to copy to a drive.
         """
         # ⚠️ Kept for callers that still say "shutdown". It PACKS; it does
@@ -154,11 +161,10 @@ class MatiClient:
         return self._json("/dream", {"cycles": cycles})
 
     # ── the library ──────────────────────────────────────────────────────
-    # ⚠️ HERE, NOT IN A NEW MODULE. The user asked for a "new terminal"; the
-    # transport, the REPL and the routes all live here already, and both
-    # existing apps are clients of `Mati.server`. A second terminal would
-    # duplicate the transport, which is the mistake this file's own docstring
-    # says it exists to avoid.
+    # ⚠️ HERE, NOT IN A NEW MODULE. The transport, the REPL and the routes all
+    # live here already, and both apps are clients of `Mati.server`. A
+    # second terminal module would duplicate the transport, which is the
+    # mistake this file's own docstring says it exists to avoid.
     def library(self):
         return self._json("/library")
 
@@ -221,6 +227,9 @@ def repl(client, session, show_info):
         return 1
     print(f"Mati — {h['llm']}, {h['episodes']} episodes, session {session!r}")
     print("Ctrl-D to leave.  /new clears the session, /state shows the field.\n")
+    if h.get("memories_locked"):
+        print("  ⚠️ Mati's memories are locked, so it can neither read nor "
+              "keep any.\n     /unlock opens them.\n")
 
     while True:
         try:
@@ -240,7 +249,7 @@ def repl(client, session, show_info):
         # into an ebook reader carrying someone's library.
         if text == "/library" or text.startswith("/library "):
             want = text[9:].strip()
-            d = c.library()
+            d = client.library()
             works = d.get("works") or []
             if d.get("error"):
                 print(f"     ! {d['error']}")
@@ -259,7 +268,7 @@ def repl(client, session, show_info):
                     print(f"     {t}  —  {', '.join(str(b) for b in bits)}")
             continue
         if text == "/reading":
-            st = (c.library().get("reading") or {})
+            st = (client.library().get("reading") or {})
             pend = st.get("pending", 0)
             print(f"     {pend} passage(s) still to read"
                   + (f"  (~{round(pend * 30 / 60)} min)" if pend else ""))
@@ -269,7 +278,7 @@ def repl(client, session, show_info):
                           f"of {doc['chunks']}")
             continue
         if text.startswith("/read "):
-            got = c.library_read(text[6:].strip())
+            got = client.library_read(text[6:].strip())
             if got.get("error"):
                 print(f"     ! {got['error']}")
             else:
@@ -281,7 +290,7 @@ def repl(client, session, show_info):
             continue
         if text.startswith("/shelve "):
             title = text[8:].strip()
-            got = c.library_shelve(title)
+            got = client.library_shelve(title)
             if got.get("error"):
                 print(f"     ! {got['error']}")
             else:
@@ -292,6 +301,24 @@ def repl(client, session, show_info):
             continue
         if text == "/state":
             print("  " + json.dumps(client.state(), indent=2, default=str) + "\n")
+            continue
+        if text == "/unlock":
+            import getpass
+            now = client.health()
+            if not now.get("memories_locked"):
+                print("  memories are open\n")
+                continue
+            ask = ("passphrase" if now.get("unlock_method") == "passphrase"
+                   else "passphrase (or just return, to have Mati open its "
+                        "own key)")
+            # ⚠️ getpass, so the passphrase is neither echoed nor left in the
+            # scrollback of a terminal someone else may read later.
+            phrase = getpass.getpass(f"  {ask}: ").strip()
+            try:
+                client.unlock(phrase or None)
+                print("  unlocked — memories are readable again\n")
+            except MatiUnavailable as e:
+                print(f"  still locked: {e}\n")
             continue
 
         t0 = time.time()

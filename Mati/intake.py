@@ -1,10 +1,10 @@
 """
 Taking a document in: a summary now, the reading later.
 
-The user: *"Mati should create a summary of the text for immediate use unless
-specifically told to read the document, in which case Mati will respond
-according to the file size. Additionally, once receiving the file it goes in the
-personal library and marked to read, and given appropriate priority."*
+A document gets a summary for immediate use, unless Mati is specifically told
+to read it — and then the answer depends on the file's size. Either way, once
+received, the file goes into the personal library, marked to read and given
+an appropriate priority.
 
 Three things happen on arrival and they are deliberately separate:
 
@@ -16,11 +16,11 @@ Three things happen on arrival and they are deliberately separate:
              produces rather than in an encouraging guess.
 
 ⚠️ READING IS NOT SUMMARISING AND THE DIFFERENCE IS HOURS. Studying imprints
-each passage into θ₀ — measured on the live store: **~48 seconds of work per
-passage**, and because studying only runs on idle, **one passage per ~444
-seconds of wall clock**. Aztec Thought and Culture is 1,744 passages. That is
-not a progress bar, it is a fortnight, and a person asking "read this" deserves
-the real figure before it starts rather than after.
+each passage into θ₀ — measured: **~48 seconds of work per passage**, and
+because studying only runs on idle, **one passage per ~444 seconds of wall
+clock**. A 1,744-passage book is not a progress bar, it is a fortnight, and a
+person asking "read this" deserves the real figure before it starts rather
+than after.
 
 ⚠️ AND A SUMMARY IS NOT A MEMORY. What comes back from `summarise` is the
 model's account of a sample, held for the conversation. It is not imprinted, it
@@ -37,10 +37,10 @@ import sqlite3
 
 from . import bridge
 
-# Measured on the live store , not assumed. `WORK_S` is the time a
-# passage costs while it is being studied; `WALL_S` is how long one takes to
-# come round, because studying waits for an idle machine. The second is what a
-# person actually experiences and is the one quoted.
+# Measured, not assumed. `WORK_S` is the time a passage costs while it is being
+# studied; `WALL_S` is how long one takes to come round, because studying waits
+# for an idle machine. The second is what a person actually experiences and is
+# the one quoted.
 WORK_S_PER_PASSAGE = 48
 WALL_S_PER_PASSAGE = 444
 

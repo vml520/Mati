@@ -1,8 +1,7 @@
 # Part of Mati's field — the phase-field substrate its memory is built on.
 #
-# ⚠️ THIS IS THE AUTHORITATIVE COPY. These modules began as a shared study
-# codebase and were split off so the field could change without anything
-# else moving under it. Nothing outside Mati imports them.
+# ⚠️ THIS IS THE AUTHORITATIVE COPY. Nothing outside Mati imports these
+# modules, so the field can change without anything else moving under it.
 #
 # ⚠️ KEEP THIS A COMMENT, NOT A DOCSTRING. A docstring here would sit
 # before `from __future__`, which is a SyntaxError that `ast.parse`
@@ -27,10 +26,11 @@ Every note permanently reshapes θ₀.  The field accumulates the full
 history of what has been written into it — even notes that sink to the
 bottom of a search are still present in the ground state.
 
-Requires trained checkpoint:
+Uses the trained checkpoint when there is one, and the vocabulary alone
+otherwise.
 
 Usage:
-    python mati_notes.py
+    python3 -m Mati.field.notes
 
 Commands:
     note            — enter a new note (blank line to finish)
@@ -61,14 +61,13 @@ from .data          import CACHE_DIR
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 VOCAB_PATH        = os.path.join(CACHE_DIR, 'qa_vocab.json')
-# The FINAL checkpoint, matching Mati (`Mati/config.CKPT_PATH`). This used to
-# be the ROLLING one while writing the same NOTES_THETA0_PATH that Mati lives
-# in. They are byte-identical today, so nothing was corrupted — but the moment
-# training resumes, rolling diverges, and this CLI would address notes with a
-# different encoder while sharing Mati's θ₀. Addresses are only comparable
-# within one field; two checkpoints writing one θ₀ is the bug that cost a
-# repair earlier. Only this module's own CLI reads it — `Mati/bridge.py`
-# imports paths from `Mati/config.py`, not from here.
+# The FINAL checkpoint, matching Mati (`Mati/config.CKPT_PATH`), never the
+# rolling one. This CLI writes the same NOTES_THETA0_PATH that Mati lives in,
+# and the moment training resumes the rolling checkpoint diverges — notes would
+# be addressed with a different encoder while sharing Mati's θ₀. Addresses are
+# only comparable within one field, so two checkpoints writing one θ₀ corrupts
+# it. Only this module's own CLI reads this — `Mati/bridge.py` imports paths
+# from `Mati/config.py`, not from here.
 CKPT_PATH         = os.path.join(CACHE_DIR, 'diag_pattern8d_shuf_final.npz')
 NOTES_THETA0_PATH = os.path.join(CACHE_DIR, 'mati_notes_theta0.npz')
 NOTES_DB_PATH     = os.path.join(CACHE_DIR, 'mati_notes.db')
@@ -485,9 +484,9 @@ def save_field(lm):
     np.savez(tmp, **arrays)
     # ⚠️ OWNER-ONLY ON EVERY WRITE, NOT ONCE AT SETUP. `harden_permissions()`
     # runs during first-run setup, but this file is REWRITTEN on every save and
-    # comes back at the umask default. Found : the notes DB and the
-    # vault were 0600 and θ₀ was 0644 — world-readable, on a machine where the
-    # whole point is that the field lives on one disk and goes nowhere.
+    # would come back at the umask default — 0644, world-readable, beside a
+    # notes DB and vault that are 0600, on a machine where the whole point is
+    # that the field lives on one disk and goes nowhere.
     #
     # Set on the temp file BEFORE the rename, so the live path is never briefly
     # readable: os.replace is atomic and carries the mode with it.

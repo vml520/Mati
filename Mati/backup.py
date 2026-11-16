@@ -8,14 +8,13 @@ Snapshots of Mati's whole memory, and the way back from one.
 
 WHY THIS IS A FEATURE AND NOT A HOLE. Mati's store is a plain SQLite file and
 a plain .npz beside it, so anything running as you can read or rewrite them —
-that is how the machinery-and-pantomime cleanup on  was done, by a
-script, from outside. Rather than pretend that is preventable on a machine its
-owner controls, the deliberate operations get a front door here and in the pro
-terminal, and the rest of the defence is at-rest encryption plus a signed app.
+a cleanup of the store can be done by a script, from outside. Rather than
+pretend that is preventable on a machine its owner controls, the deliberate
+operations get a front door here and in the pro terminal, and the rest of the
+defence is at-rest encryption plus a signed app.
 
-The thing that made that cleanup safe to attempt was a backup taken first.
-That was a throwaway script; this is the same thing, repeatable, so no future
-edit has to be brave.
+What makes an edit like that safe to attempt is a backup taken first. This is
+that backup, repeatable, so no edit has to be brave.
 
 WHAT A SNAPSHOT IS. Exactly `transfer.manifest()` — the notes DB, the notes θ₀,
 the checkpoint and its θ₀, the vocabulary, and the vault descriptor. The set is
@@ -45,8 +44,8 @@ no longer exists. They move together or not at all.
     rather than discovered later.
 
 ⚠️ NOTHING HERE MAY RUN WHILE MATI HOLDS THE FIELD. Two writers is one of the
-three θ₀-corruption paths this project has already been bitten by, so every
-mutating path goes through `exclusive.require`.
+known ways to corrupt θ₀, so every mutating path goes through
+`exclusive.require`.
 """
 
 import argparse

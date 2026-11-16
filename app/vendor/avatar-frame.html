@@ -10,19 +10,18 @@
   html,body { margin:0; height:100%; background:#05202a; overflow:hidden; }
   #root { width:100%; height:100%; }
 
-  /* ⚠️ THE PLAYER CHROME IS WHAT WAS SHOWING. `RiverApp` is the animation's
-     DEMO HARNESS: it renders the 1080×1080 stage, and below it a transport
-     bar — pause, step, a scrubber reading 0:00.01 — plus a draggable
-     "Tweaks" panel. Inside a small round avatar that chrome took most of the
-     box and squeezed the square stage into a corner, which is the visible
-     frame the user reported.
+  /* ⚠️ HIDE THE PLAYER CHROME. `RiverApp` is the animation's DEMO HARNESS: it
+     renders the 1080×1080 stage, and below it a transport bar — pause, step,
+     a scrubber — plus a draggable "Tweaks" panel. Inside a small round avatar
+     that chrome would take most of the box and squeeze the square stage into
+     a corner.
 
      Both carry `data-omelette-chrome`, and the component's own source says
      of the bar: "Shown only outside the app — the host bar suppresses this
      whenever it is present." Mati is the host, so this is the sanctioned
      behaviour rather than a hack around the component.
 
-     ⚠️ CSS, NOT A REBUILD. The alternative was rendering CompositionStage
+     ⚠️ CSS, NOT A REBUILD. The alternative is rendering CompositionStage
      without the harness, which means regenerating avatar.js from the
      delivered .jsx. One attribute selector leaves that source untouched. */
   [data-omelette-chrome] { display: none !important; }

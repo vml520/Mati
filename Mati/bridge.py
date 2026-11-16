@@ -2,14 +2,15 @@
 The coupling: field ↔ LLM.
 
 Direction 1 (field → LLM): the field contributes *state*, not language —
-triplet coordinates, coherence, and triplet-addressed recall of notes the user
-wrote. Retrieval is by field resonance, not embedding cosine.
+triplet coordinates, coherence, and field-addressed recall of notes. That
+recall is the secondary path; the memories a reply is built on are found by
+their words, in `notes.search`.
 
 Direction 2 (LLM → field): the turn deforms θ₀. The user turn always imprints
 (user interaction is the primary training signal); the reply imprints only if
 the field settled coherently — the §10.4 field-native gate.
 
-The field is never asked to produce or score language. See README § Boundary.
+The field is never asked to produce or score language. § Boundary.
 """
 
 import hashlib
@@ -104,10 +105,9 @@ def imprint_text(lm, tok, text, passes=None, strength=None, steps=None):
     """
     Deform θ₀ toward `text`. Returns the pre-imprint snapshot.
 
-    GUARD: `imprint_question` builds (context → target) pairs and early-returns
-    when there are none (`field_lm.py:457-459`). A single token yields ZERO
-    pairs and imprints nothing — silently. That invalidated a probe on
-, so this raises instead of no-opping.
+    GUARD: `imprint_question` builds (context → target) pairs and returns
+    early when there are none. A single token yields ZERO pairs and imprints
+    nothing — silently — so this raises instead of no-opping.
     """
     ids = tok.encode(text)
     if len(ids) < 2:
@@ -157,21 +157,19 @@ def consolidate_reply(lm, tok, reply_text, gate_min=None):
 
 # ── Reading a frozen θ₀ while writing the live one ───────────────────────────
 #
-# The user: *"Is it possible to read the frozen field while writing only to the
-# live field?"* Yes, and cheaply — `snapshot_ground_state` is 9,600 bytes and
-# 0.01 ms, and restore is exact to 0.00e+00.
+# Addressing reads a frozen copy of θ₀ while every write goes to the live one.
+# Snapshot and restore are cheap — about ten kilobytes — and restore is exact.
 #
-# ⚠️ THE REASON IS MEASURED, NOT AESTHETIC. A preregistered study found
-# self-retrieval at 8/8 with no imprinting and 1/8 with it — and that
-# drift MAGNITUDE is not the mechanism: addressing alone moved θ₀ by 1.4162
-# rad harmlessly while an imprint added 0.17 rad and destroyed retrieval.
-# Writing and addressing fight, and the write wins. Freezing what is READ is
-# the only lever that does not also stop the field learning.
+# ⚠️ THE REASON IS MEASURED, NOT AESTHETIC. Read from the live field,
+# imprinting destroys self-retrieval — and drift MAGNITUDE is not the
+# mechanism: addressing alone moves θ₀ much further than an imprint does,
+# harmlessly. Writing and addressing fight, and the write wins. Freezing what
+# is READ is the only lever that does not also stop the field learning.
 #
 # ⚠️ `field_state` MUST STAY ON THE LIVE FIELD. It produces the coherence that
-# `EPISODE_GATE_MIN` reads, and a constant coherence is the August 2026 bug —
-# "Mati stops forming memories altogether, silently, while looking 11 seconds
-# faster". What you read WITH is frozen; what you ARE is live.
+# `EPISODE_GATE_MIN` reads; read from a frozen field, coherence would be
+# constant and Mati would stop forming memories altogether, silently. What you
+# read WITH is frozen; what you ARE is live.
 # ⚠️ ONE SLOT, NOT A DICT KEYED BY `id(lm)`. There is one field per process,
 # and `id()` is reused after garbage collection — a reloaded field (every wake
 # calls `load_field` again) could land on the id of the old one and inherit its
@@ -197,20 +195,19 @@ def _snap(lm):
     """Everything `address_vector` can see. ⚠️ NOT JUST θ₀.
 
     `lm.snapshot_ground_state()` covers θ₀ and mass₀, and a frozen read built
-    on it alone was measurably NOT reproducible: the same text addressed before
-    and after an imprint came back at cosine 0.999987 instead of 1.0. Against
-    an inter-episode margin of 0.008 rad, 1.3e-5 of wobble is not rounding —
-    episode addresses were measured at ~99%
-    mutually similar, so the whole signal lives in the last decimals.
+    on it alone is not reproducible: the same text addressed before and after
+    an imprint comes back slightly different. Episode addresses are nearly
+    identical to one another, so the whole signal lives in the last decimals
+    and that wobble is not rounding.
 
-    The leak was `mode.lambda_eff` — α·⟨|∇θ|²⟩·vol, recomputed from the live
+    The leak is `mode.lambda_eff` — α·⟨|∇θ|²⟩·vol, recomputed from the live
     state during evolution and left behind afterwards, so the first step of the
-    next forward used the previous caller's value. Restoring θ₀ without it
+    next forward uses the previous caller's value. Restoring θ₀ without it
     restores the field but not the field's dynamics.
 
-    ⚠️ IF A FUTURE CHANGE ADDS ANOTHER PER-MODE RESIDUAL, IT BELONGS HERE.
-    `Mati/test_address_space.py` asserts bit-identical addresses precisely so
-    that the next one fails loudly instead of degrading recall by 1e-5 a turn.
+    ⚠️ IF A FUTURE CHANGE ADDS ANOTHER PER-MODE RESIDUAL, IT BELONGS HERE. The
+    tests assert bit-identical addresses so that the next one fails loudly
+    instead of degrading recall a little every turn.
     """
     theta_0s, mass_0s = lm.snapshot_ground_state()
     return (theta_0s, mass_0s,
@@ -309,25 +306,17 @@ def _load_address_space(n_modes):
 def pin_address_space(lm):
     """Give `lm` its address space on load: the saved one, or today's θ₀.
 
-    ⚠️ THIS IS WHAT MAKES ADDRESSES SURVIVE A RESTART, which they previously
-    did not. Stored `feat_gs` values record the space a note was filed in; if
-    that space were re-derived from the live θ₀ on every load, every note would
-    read stale at every startup and the idle worker would re-address the whole
-    working set — the never-terminating reindex loop `_check_addresses`
-    documents, in a new costume.
+    ⚠️ THIS IS WHAT MAKES ADDRESSES SURVIVE A RESTART. Stored `feat_gs` values
+    record the space a note was filed in; if that space were re-derived from
+    the live θ₀ on every load, every note would read stale at every startup
+    and the whole working set would need re-addressing each time.
 
     First run has nothing saved, so the current θ₀ becomes the space and is
     written down. Returns "loaded", "seeded" or None.
 
-    ⚠️ THERE IS NO LONGER A WAY TO TURN THIS OFF, and that is deliberate.
-    `MATI_FROZEN_ADDRESSING` existed so one measured result could be
-    overruled per-run while the question was open. It is not open: addressing
-    against a frozen θ₀ scored **6/6 against live addressing's 1/6**, the
-    episode gate still moves, and the reindex terminates — which it did not
-    before. A flag that switches between two memory architectures is not an
-    option to ship: flipping it silently invalidates every stored address in
-    both directions, with nothing to repair it, and a shipped environment
-    variable is a supported interface this could never honestly be.
+    ⚠️ THERE IS NO WAY TO TURN THIS OFF, deliberately. A switch between two
+    memory architectures cannot ship: flipping it silently invalidates every
+    stored address in both directions, with nothing to repair it.
     """
     snap = _load_address_space(lm.mf.n_modes)
     if snap is not None:
@@ -386,16 +375,13 @@ class reading:
 def address_drift(lm):
     """How far the LIVE field has moved from the address space, in radians.
 
-    Mean absolute phase difference, wrapped to [-π, π] — the same measure
-    the nightly study used, so the figure is comparable to the
-    1.4162 rad it reports.
+    Mean absolute phase difference, wrapped to [-π, π].
 
-    ⚠️ NOT `_gs_std(live) - address_gs(lm)`, WHICH IS WHAT THIS REPORTED
-    FIRST. That is the gap between two standard deviations, and two fields
-    can drift a long way apart while their spreads happen to coincide —
-    observed live within one turn: the figure read 0.0867 and then FELL to
-    0.0434 while the field had only moved further. A monitor that can go down
-    as the thing it watches gets worse is worse than no monitor.
+    ⚠️ NOT `_gs_std(live) - address_gs(lm)`. That is the gap between two
+    standard deviations, and two fields can drift a long way apart while their
+    spreads happen to coincide — the figure would fall while the field moved
+    further. A monitor that can go down as the thing it watches gets worse is
+    worse than no monitor.
     """
     snap = frozen_snapshot(lm)
     if snap is None:
@@ -427,8 +413,8 @@ def field_state(lm, tok, text):
 
     The triplet comes from the notes module's own `_measure_triplet`, so the
     query address lives in the SAME space as every stored note address. Do not
-    substitute a raw θ std here — that was a real bug (query ~2.5 vs addresses
-    ~0.001–0.1) and it silently makes recall return nearest-to-nothing.
+    substitute a raw θ std here: its scale is orders of magnitude off the stored
+    addresses, and recall silently returns nearest-to-nothing.
     """
     # Same cap the seeder uses — query and address must be measured alike.
     ids = tok.encode(text)[:C.TRIPLET_CAP] or [1]
@@ -472,17 +458,11 @@ def recall(query_vec, k=None, db_path=None, lm=None, tok=None, min_sim=None,
             "SELECT note_id, body, source, feat, wall_created FROM notes "
             "WHERE archived IS NULL").fetchall()
 
-        # ⚠️ CIPHERTEXT IS CARRIED THROUGH SCORING, NOT PLAINTEXT.
-        #
-        # This loop used to call `vault.open_body` on EVERY row, and the
-        # comment above it claimed the opposite — that only what is handed back
-        # gets decrypted. Ranking uses `feat` alone, so decrypting n bodies to
-        # return k of them was pure waste, and it went unnoticed because it
-        # cost nothing until a vault actually existed. Measured  at
-        # 8,928 notes: recall took 101 SECONDS. Corrections were fetched and
-        # decrypted for the whole store on every call too.
-        #
-        # Now: score on the vectors, sort, and decrypt only the k that survive.
+        # ⚠️ CIPHERTEXT IS CARRIED THROUGH SCORING, NOT PLAINTEXT. Ranking uses
+        # `feat` alone, so decrypting every row to return k of them is pure
+        # waste — on a large sealed store it turns recall from milliseconds
+        # into minutes. Score on the vectors, sort, and decrypt only the k that
+        # survive; corrections are fetched only for those, too.
         entries, backfilled = [], False
         for note_id, stored, source, blob, created in rows:
             if blob is None:
@@ -507,11 +487,11 @@ def recall(query_vec, k=None, db_path=None, lm=None, tok=None, min_sim=None,
 
         # Centre on the note centroid before comparing. Every episode shares the
         # same "I was asked:" opening and provokes a similar generic field
-        # response, and that common component dominates a raw cosine — measured
-        # margins were ~0.03. Removing it lifts correct-match margins to
-        # 0.33–0.70. It does NOT make the code semantic: an out-of-domain query
-        # can still match confidently (see module note), which is why the
-        # language layer is told these may be associative and can disregard them.
+        # response, and that common component dominates a raw cosine. Removing
+        # it widens correct-match margins a great deal. It does NOT make the
+        # code semantic: an out-of-domain query can still match confidently
+        # (see module note), which is why the language layer is told these may
+        # be associative and can disregard them.
         V  = np.stack([e[0] for e in entries])
         mu = V.mean(0)
         Vc = V - mu
@@ -529,8 +509,7 @@ def recall(query_vec, k=None, db_path=None, lm=None, tok=None, min_sim=None,
 
         # Only now, and only for these: the corrections that annotate them,
         # then the bodies themselves. A correction must travel with the memory
-        # it corrects so no consumer can render an error without it — that
-        # rule is unchanged, it just no longer costs a full-store scan.
+        # it corrects so no consumer can render an error without it.
         fixes = {}
         ids = [note_id for _d, note_id, _b, _s, _c in top]
         if ids:
@@ -548,11 +527,8 @@ def recall(query_vec, k=None, db_path=None, lm=None, tok=None, min_sim=None,
             # `with_ids` is opt-in so the 3-tuple every existing caller unpacks
             # is untouched. `segue` needs the id: an offer that cannot name the
             # note it came from is a confabulation, and the id is already here.
-            # ⚠️ WITH THE DATE. The user: "we need the timestamp for future
-            # reads — this way Mati can have a conversation about the read,
-            # and not just use the memory as a lookup key." The label could
-            # only say THAT it read something, never when, so a reading had no
-            # place in time and could not be talked about as an event.
+            # ⚠️ WITH THE DATE, so a reading has a place in time and can be
+            # talked about as an event, not only used as a lookup key.
             out.append((dist, note_id, body, source, created) if with_ids
                        else (dist, body, source))
         if record and top:
@@ -572,11 +548,10 @@ def recall(query_vec, k=None, db_path=None, lm=None, tok=None, min_sim=None,
 # Recall on demand — lexical, deliberately
 #
 # The field's own address path is what `recall()` above uses, and it is at its
-# capacity limit: episode addresses are ~99% mutually similar (margin ~0.008),
-# so which memory comes back is close to arbitrary. Measured  on the
-# live store — the charter is 49% of the notes and came back as 53% of what
-# recall returned across eight unrelated queries, including 4/4 for "what is 17
-# times 4". That is the base rate. It is not retrieval.
+# capacity limit: episode addresses are ~99% mutually similar, so which memory
+# comes back is close to arbitrary — whatever dominates the store dominates
+# what comes back, whatever was asked. That is the base rate. It is not
+# retrieval.
 #
 # So on-demand recall does NOT go through the field. When someone (or Mati)
 # names a topic and asks for the memory, they know a word that is in it, and
@@ -607,7 +582,7 @@ def recall(query_vec, k=None, db_path=None, lm=None, tok=None, min_sim=None,
 
 
 # Apple's on-device tagger. Free, offline, no new dependency — pyobjc is
-# already present — and measured at 0.3ms after a 154ms first load.
+# already present — and fast once its first load is paid.
 
 
 
@@ -628,16 +603,14 @@ def recall(query_vec, k=None, db_path=None, lm=None, tok=None, min_sim=None,
 #
 # WHY THIS IS NOT RETRIEVAL. The charter is already imprinted (`study.study`
 # calls `remember`, which imprints) and already stored and addressed. Both
-# lookup paths still miss it on the most obvious question there is: measured
-# , "what are your principles" returned ZERO charter chunks — it
-# fetched episodes ABOUT principles instead, because the charter says "To
-# always be honest is to…" and never uses the word "principles". "what are you
-# for" matched nothing at all, every word being a stopword.
+# lookup paths still miss it on the most obvious question there is: "what are
+# your principles" finds episodes ABOUT principles instead, because the charter
+# says "To always be honest is to…" and never uses the word "principles"; and
+# "what are you for" matches nothing at all, every word being a stopword.
 #
 # Retrieval by word cannot fix a paraphrase gap, and the field's own address
-# path is at its capacity limit (charter returned at its 49% base rate,
-# including 4/4 for "what is 17 times 4"). So on the few turns where the
-# subject IS what Mati is, the whole document goes in and lookup is skipped.
+# path is at its capacity limit. So on the few turns where the subject IS what
+# Mati is, the whole document goes in and lookup is skipped.
 #
 # ⚠️ THE WHOLE CHARTER IS ~684 TOKENS OF A 4096 WINDOW — 17%. That is why the
 # trigger list below is narrow and literal rather than clever. A false positive
@@ -692,12 +665,11 @@ def _as_named(text):
     Mati"; renaming the assistant must not go back and edit stored memories,
     and an install that already has a charter must not need rebuilding.
 
-    ⚠️ AND THIS IS THE HALF THE RENAME WAS MISSING. `ollin.system_prompt()`
-    changed the identity line, but the charter is handed over WHOLE on
-    identity turns — exactly the turns where someone asks "what are you". So
-    the prompt said "I am Tochtli" while the charter it was reading from said
-    "I am Mati", which is the two-names-in-one-conversation failure
-    setup was written to prevent.
+    ⚠️ AND IT HAS TO HAPPEN HERE AS WELL AS IN THE SYSTEM PROMPT. The charter
+    is handed over WHOLE on identity turns — exactly the turns where someone
+    asks "what are you" — so renaming only the prompt would have it say "I am
+    Tochtli" while the charter it reads from says "I am Mati": two names in
+    one conversation.
 
     ⚠️ EVERY MENTION, unlike the system prompt where only the identity line
     changes. The charter is the assistant's own document, written in first
@@ -742,10 +714,8 @@ def charter_chunks(db_path=None):
 
 # The four principles, and nothing else.
 #
-# ⚠️ THE WHOLE CHARTER IS ~684 TOKENS AND WAS GOING IN ON EVERY IDENTITY TURN,
-# on top of a 1,502-token system prompt. : a turn carried
-# 3,857 tokens of a 4,096 window — 94% prompt before the person's message —
-# and prefill is where the 110–230 s went, not generation.
+# ⚠️ THE WHOLE CHARTER IS ~684 TOKENS — too much to send on every turn on top
+# of the system prompt, when prefill is where a turn's time goes.
 #
 # So the principles travel on every turn, because they govern how Mati speaks,
 # and the rest of the charter is READ WHEN NEEDED — it is in the store, found
@@ -866,41 +836,33 @@ def named_recall_block(found):
     if not found:
         return ""
     lines = ["<recalled_by_name>",
-             # ⚠️ THIS SENTENCE USED TO SAY "Use them if they are relevant and
-             # ignore them if they are not". That is an instruction to EVALUATE,
-             # handed over with every recall, and a 3B does that work out loud —
-             # The user saw it assessing each memory in turn instead of answering.
-             # The caution is right and stays: lexical search returns anything
-             # containing a matching word, so an irrelevant memory really can
-             # arrive. What changed is where the judging lands.
+             # ⚠️ NO INSTRUCTION TO EVALUATE. "Use them if relevant, ignore
+             # them if not" makes a 3B do that work out loud, assessing each
+             # memory in turn instead of answering. The caution is right —
+             # lexical search returns anything containing a matching word, so
+             # an irrelevant memory really can arrive — but the judging must
+             # not land in the reply.
              #
              # Phrased positively on purpose. "Do not narrate which you used"
-             # names the behaviour, and naming it is how the last prompt fix
-             # made things worse — the model took the distinction and dropped
-             # the negation.
-             # ⚠️ THIS IS WHAT MATI HOLDS, NOT WHAT A SEARCH RETURNED. The
-             # earlier wording — "an exact lookup, not the field drifting near
-             # something" — described the MECHANISM, and describing the
-             # mechanism is how the mechanism ends up in the reply. The user's
-             # model is that learning should sit alongside memory: the agent
-             # speaks from what it knows, and keyword search is a diagnostic
-             # fallback, not the thing being narrated.
+             # names the behaviour, and a model given a named behaviour tends
+             # to keep the distinction and drop the negation.
+             # ⚠️ THIS IS WHAT MATI HOLDS, NOT WHAT A SEARCH RETURNED. Wording
+             # that describes the MECHANISM is how the mechanism ends up in the
+             # reply. Learning sits alongside memory: the agent speaks from what
+             # it knows, and keyword search is a diagnostic fallback, not the
+             # thing being narrated.
              "What you hold on this. Some of it will not fit — having a word "
              "in common does not make a passage apposite. Weigh it to "
              "yourself, then answer as yourself.",
-             # ⚠️ THE LEGEND LIVES HERE NOW. It was 1,210 chars of the system
-             # prompt, resident on every turn including the ones with no
-             # memories at all — 43% of the window went on instructions, and
-             # the person's question was ~1% of it. A label list is only
-             # meaningful next to the labels it explains.
+             # ⚠️ THE LEGEND LIVES HERE, next to the labels it explains, not in
+             # the system prompt — there it would be resident on every turn,
+             # including the ones with no memories at all.
              LABEL_LEGEND]
-    # ⚠️ FOCUS MEANS THE EXACT WORDS. The user: "Human memories come to us as
-    # gists, background noise — however when a memory is relevant or appears
-    # so, we can focus on it and pull up the details. Mati should have
-    # photographic memory on demand." This block IS the focus gesture: Mati
-    # asked for these by name. Until now it rendered `body`, the gist, capped
-    # at 400 characters — so focusing returned the same surface detail that
-    # surfaced unbidden, and there was no way to pull anything up at all.
+    # ⚠️ FOCUS MEANS THE EXACT WORDS. Memories surface as gists; when one is
+    # relevant, Mati can focus on it and pull up the details — photographic
+    # memory on demand. This block IS the focus gesture: Mati asked for these
+    # by name, so they render the verbatim, not the gist that surfaced
+    # unbidden.
     #
     # ⚠️ BUDGETED, NOT UNLIMITED, AND SAY SO RATHER THAN PRETEND. `num_ctx` is
     # 4096 and an overflow drops the MIDDLE of the prompt — four full
@@ -912,17 +874,14 @@ def named_recall_block(found):
     for r, room in zip(found, budget):
         how = provenance_of(r["source"])
         # The verbatim if there is one, the gist if there is not. Studied
-        # passages have had one all along; episodes only , so
-        # older conversations fall back and cannot do better.
+        # passages always have one; older episodes may not, and fall back.
         exact = r.get("verbatim")
         body = " ".join(((exact or r["body"]) or "").split())
         mark = ""
         if len(body) > room:
-            # ⚠️ CONDENSE, DO NOT CUT. The user: "rather than cut out possibly
-            # relevant information, have the verbatim be summarized to fit the
-            # limit." Trimming discards the END, and the end is often the
-            # point — in a correction it IS the correction. The digest is made
-            # off the turn and stored; this only looks one up.
+            # ⚠️ CONDENSE, DO NOT CUT. Trimming discards the END, and the end
+            # is often the point — in a correction it IS the correction. The
+            # digest is made off the turn and stored; this only looks one up.
             #
             # ⚠️ AND IT IS LABELLED. A condensation is accurate but it is not
             # quotable as exact words, so it says which it is. Without the
@@ -999,22 +958,18 @@ def provenance_of(source):
     if source.startswith("studied:asked about "):
         return "self-asked"
     if source.startswith("studied:"):
-        # ⚠️ THE TITLE TRAVELS, OR MATI CANNOT SAY WHAT IT READ. The label was
-        # a bare "studied", so a retrieved passage told Mati it had studied
-        # SOMETHING and never what — it could not say "I read that in Aztec
-        # Thought and Culture" because it was never told which book the words
-        # came from. The title was in `source` the whole time; nothing read it.
-        # Same shape as the activity log and the catalogue, a third time.
+        # ⚠️ THE TITLE TRAVELS, OR MATI CANNOT SAY WHAT IT READ. A bare
+        # "studied" would tell Mati it had studied SOMETHING and never what;
+        # with the title it can say "I read that in Aztec Thought and Culture".
         title = source[len("studied:"):]
         title = re.sub(r"\.(txt|md|pdf)$", "", title).strip(" .")
         return f"studied, in {title}" if title else "studied"
     if source == PROFILE_SOURCE:
         return "about you"
-    # ⚠️ `self:` HAD NO CASE AND FELL THROUGH TO THE RAW SOURCE STRING, so the
-    # label read "self:how I am built" — a filename presented to Mati as a
-    # provenance kind. Found while designing the display, which is
-    # what a display is for. These are Mati's OWN documentation: what it is
-    # and how it works, checkable, and not an event it lived.
+    # ⚠️ `self:` HAS ITS OWN CASE, or the raw source string — "self:how I am
+    # built" — would be presented to Mati as a provenance kind. These are
+    # Mati's OWN documentation: what it is and how it works, checkable, and
+    # not an event it lived.
     if source.startswith("self:"):
         return "my own documentation"
     # ⚠️ THERE WAS A CATEGORY FOR THE PERSON AND NONE FOR MATI. Five kinds —
@@ -1029,10 +984,9 @@ def provenance_of(source):
     return source or "unknown"
 
 
-# ⚠️ ONE CATEGORY, THREE KINDS INSIDE IT. The user: "self-ask and about-you plus
-# personal should be all part of the same category". They are right about the
-# structure — all three are Mati's own sphere rather than an external document
-# or an event, and splitting them is why the library had nowhere to live.
+# ⚠️ ONE CATEGORY, THREE KINDS INSIDE IT. About-you, Mati's own derived notes
+# and its self-asked answers all belong to Mati's own sphere rather than an
+# external document or an event, so they share a shelf.
 #
 # They are grouped and NOT flattened, because they do not carry the same
 # authority and the difference is load-bearing:
@@ -1043,10 +997,8 @@ def provenance_of(source):
 #               named in the system prompt as "the weakest thing I hold"
 #
 # Sharing a label would let a self-answered guess be stated with the standing
-# of something the person said. This project has already measured what that
-# costs: `named_recall_block` once converted the weakest provenance into the
-# strongest, and an unlabelled memory was answered for by a marker Mati
-# invented. The category is for organising; the label is for trusting.
+# of something the person said. The category is for organising; the label is
+# for trusting.
 PERSONAL_KINDS = ("mine", "self-asked", "about you", "my own documentation")
 
 
@@ -1057,11 +1009,11 @@ def category_of(source):
     within it still says how each one was come by. See `PERSONAL_KINDS`.
     """
     kind = provenance_of(source)
-    # ⚠️ THE TITLE IS A DISPLAY DETAIL, NOT A CATEGORY. `provenance_of` now
+    # ⚠️ THE TITLE IS A DISPLAY DETAIL, NOT A CATEGORY. `provenance_of`
     # returns "studied, in <title>" so Mati can say WHICH book it read; the
-    # shelf is still "studied". Caught by `test_terminal` — without this,
-    # every document would become its own category and the personal/studied
-    # distinction would dissolve one book at a time.
+    # shelf is still "studied". Without this, every document would become its
+    # own category and the personal/studied distinction would dissolve one
+    # book at a time.
     if kind.startswith("studied, in "):
         kind = "studied"
     if kind in PERSONAL_KINDS:
@@ -1106,85 +1058,66 @@ MINE_PREFIX = "mati:"
 #
 # The Δθ₀ triplet is NOT used to retrieve. It is self-invalidating: it measures
 # the CHANGE a text induces, so once a note is imprinted the field has absorbed
-# it and re-measuring gives ~6× smaller values. Stored ≫ query means
-# ‖q−a‖ ≈ ‖a‖ and the ranking collapses to stored-magnitude order — verified
-# query-independent, identical ranking even for an empty query.
+# it and re-measuring gives much smaller values. Stored ≫ query means
+# ‖q−a‖ ≈ ‖a‖, and the ranking collapses to stored-magnitude order whatever the
+# query — even an empty one.
 #
 # Trajectory features are the field's own readout and are STABLE: the same text
-# re-measured gives cosine 1.0000, so storing a memory no longer moves it.
-# Honest limit: they discriminate token surface, not meaning (a same-topic pair
-# scored lowest in testing; shared stopwords dominate). This is bag-of-words
-# retrieval on a field-native code — good enough to function, not semantic.
+# re-measured gives the same address, so storing a memory does not move it.
+# Honest limit: they discriminate token surface, not meaning (shared stopwords
+# dominate). This is bag-of-words retrieval on a field-native code — good
+# enough to function, not semantic.
 
 def address_vector(lm, tok, text):
     """
     L2-normalized trajectory feature — the retrieval address.
 
-    Deterministic given θ₀, and ONLY because the RNG is pinned below. It was documented as deterministic for months and
-    measurably was not.
+    Deterministic given θ₀, and ONLY because the RNG is pinned below.
 
     Averaged over sliding CONTEXT_LEN windows across the text. A single forward
     only sees the field's 8-token context window, so addressing a whole episode
-    by one pass captured just its opening — and every episode opens with
+    by one pass would capture just its opening — and every episode opens with
     "I was asked:", making them near-identical by boilerplate. Averaging windows
     makes the address reflect the whole text (a bag-of-windows code), while
     staying deterministic and field-native.
     """
-    # ⚠️ MEASURED AND REVERTED . Addressing `key_points(text)`
-    # instead of the body looked obviously right — every episode opens with the
-    # same "I was asked:" scaffolding, so the shared prefix seemed to be
-    # crowding the CONTEXT_LEN window. It made separation WORSE:
-    #
-    #     nearest-impostor similarity  0.9771 -> 0.9913
-    #     mean margin                  0.0229 -> 0.0087   (2.6x worse)
-    #
-    # The scaffolding is a constant, and a constant offset is exactly what
-    # L2-normalised cosine already discounts. What `key_points` actually
-    # removed was the USER'S QUESTION as the leading content, and questions
-    # vary far more between episodes than Mati's own replies do — replies
-    # share its voice, and since the brevity instruction they are short and
-    # stylistically uniform. Prioritising the reply pushed every address
+    # ⚠️ THE ADDRESS USES THE BODY, NOT `key_points(text)`. Addressing the key
+    # points looks obviously right — every episode opens with the same
+    # "I was asked:" scaffolding — and makes separation WORSE. The scaffolding
+    # is a constant, and a constant offset is exactly what L2-normalised cosine
+    # already discounts. What `key_points` removes is the USER'S QUESTION as the
+    # leading content, and questions vary far more between episodes than
+    # Mati's own replies do, which share its voice and are short and
+    # stylistically uniform. Prioritising the reply pushes every address
     # toward the same region.
     #
-    # The imprint still uses key_points (measured: 16.9% less shared content).
-    # The ADDRESS uses the body. Do not "tidy" this into agreement.
+    # The imprint uses key_points; the ADDRESS uses the body. Do not "tidy"
+    # this into agreement.
     ids = tok.encode(text)[:C.TRIPLET_CAP] or [1]
     w = C.CONTEXT_LEN
     starts = range(0, max(len(ids) - w, 0) + 1, max(w // 2, 1))  # 50% overlap
 
     # ⚠️ THE ADDRESS SPACE IS FROZEN HERE, AT THE ONE CHOKE POINT, ON PURPOSE.
-    # Nine call sites address the field — the turn, reindex, remember, recall's
-    # backfill, inquiry, reflect, the suites — and wrapping each one is a list
-    # that gets out of date the first time somebody adds a tenth. A query
-    # addressed in a different space from the stored addresses is not a worse
-    # match, it is a meaningless distance, so this is not a place to leave a
-    # caller's choice. `restore_all()` below resets the nodes to θ₀, which is
-    # why replacing θ₀ is enough to replace the space.
-    #
-    # Measured: 6/6 self-retrieval against the live
-    # field's 1/6 over six turns. A no-op until `pin_address_space` has run.
-    # ⚠️ AND THE RNG IS PINNED, BECAUSE THIS FUNCTION WAS NEVER DETERMINISTIC.
-    # The docstring above said "Deterministic" and `reindex` said "trajectory
-    # features are deterministic given θ₀ — which is why restarts are
-    # bit-identical". : TWO CONSECUTIVE CALLS on an
-    # untouched field, nothing in between, agree only to cosine 0.999983.
-    # Evolution draws from the global numpy RNG, so an address depended on how
-    # many draws the process happened to have made before it — the field was
-    # seeded once at `load_field` and everything downstream inherited whatever
-    # position the stream was in.
-    #
-    # The floor is 1.71e-05 against a 1.06e-02 gap to a different episode, so
-    # 0.2% — never fatal, which is why it survived unnoticed behind a comment
-    # claiming the opposite. But a frozen address space read by a reader that
-    # jitters is half a fix, and "deterministic" should be true rather than
-    # asserted.
+    # Many call sites address the field — the turn, reindex, remember, recall's
+    # backfill, inquiry, reflect — and wrapping each one is a list that gets
+    # out of date the first time somebody adds another. A query addressed in a
+    # different space from the stored addresses is not a worse match, it is a
+    # meaningless distance, so this is not a place to leave a caller's choice.
+    # `restore_all()` below resets the nodes to θ₀, which is why replacing θ₀
+    # is enough to replace the space. A no-op until `pin_address_space` has run.
+    # ⚠️ AND THE RNG IS PINNED, BECAUSE EVOLUTION IS NOT DETERMINISTIC ON ITS
+    # OWN. It draws from the global numpy RNG, so without this an address
+    # would depend on how many draws the process had made before it, and two
+    # consecutive calls on an untouched field would disagree slightly. Small
+    # against the gap between episodes, but a frozen address space read by a
+    # reader that jitters is half a fix.
     #
     # ⚠️ THE STATE IS SAVED AND PUT BACK, so no other caller's stream moves.
     # Seeding globally and walking away would make dreams and regrows
     # reproduce the same sequence every turn.
-    # ⚠️ THIS CHANGES EVERY ADDRESS EVER COMPUTED. It is safe only because
-    # promoting the address space already forces a full reindex; do not port
-    # this to a build that is not reindexing.
+    # ⚠️ PINNING CHANGES EVERY ADDRESS COMPUTED WITHOUT IT, so a store
+    # addressed before it needs a full re-address. Promoting the address space
+    # forces exactly that.
     rng_state = np.random.get_state()
     with reading(lm):
         acc = None
@@ -1210,9 +1143,9 @@ def state_triplet(lm, tok, text):
     """
     Cheap Born-rule state readout (sink mass fractions), kept for provenance.
 
-    NOT used for retrieval — measured to be near-constant across inputs
-    (≤0.0013 apart for unrelated texts). Recorded because it is the field's
-    actual state at the moment, which is worth having in the record.
+    NOT used for retrieval — it is near-constant across inputs, even for
+    unrelated texts. Recorded because it is the field's actual state at the
+    moment, which is worth having in the record.
     """
     ids = tok.encode(text)[:C.CONTEXT_LEN] or [1]
     lm.mf.restore_all()
@@ -1228,11 +1161,11 @@ def state_triplet(lm, tok, text):
 #
 # WHY THIS EXISTS: episodes record what Mati said, and are then recalled into
 # later turns. So any flaw in a reply is not a one-off — it is stored and
-# replayed, and the model copies it back out. Observed directly: one reply
-# mentioned "the memories_recalled block", that phrasing was written into the
-# episode, and every later turn parroted it even after the system prompt was
-# fixed. The memory loop AMPLIFIES errors, so the store has to be defended
-# structurally rather than by instruction alone.
+# replayed, and the model copies it back out: a reply that mentions "the
+# memories_recalled block" writes that phrasing into the episode, and every
+# later turn parrots it whatever the system prompt says. The memory loop
+# AMPLIFIES errors, so the store has to be defended structurally rather than by
+# instruction alone.
 _INTERNAL_TERMS = (
     "field_state", "field state", "memories_recalled", "memories recalled",
     "basin", "coherence", "resonance", "triplet", "<field", "block",
@@ -1256,9 +1189,9 @@ def narrate_episode(user_text, triplet, coherence, memories, consolidated,
     First-person record of one episode, from what actually happened.
 
     Deliberately contains NO basin/coherence numbers. They are already stored as
-    columns (triplet_w0..w2, gs_std), and putting them in the prose too made a
-    small model recite them back at the user verbatim and mistake the internals
-    for the content. The body is the *episode*; the numbers are its address.
+    columns (triplet_w0..w2, gs_std), and in the prose a small model recites
+    them back at the user verbatim and mistakes the internals for the content.
+    The body is the *episode*; the numbers are its address.
 
     Includes a short excerpt of what Mati said: what it said is part of what it
     lived, so it belongs in autobiography. This does not import LLM knowledge —
@@ -1285,15 +1218,13 @@ def _narrate_work(work):
     happened to it. Reaching for language is real work and the field is running
     throughout it — recording only question and answer would hide the doing.
 
-    QUALITATIVE ONLY — no seconds, no step counts. This is the same rule the
-    caller already applies to basin/coherence, and for the same measured
-    reason: an episode is later surfaced as a recalled memory, and a small
-    model recites whatever is in it. It did exactly that — "it took 76 seconds
-    to find the words and your field turned over 774 times" — which reads as
-    Mati narrating its own instrumentation at the user. 11 of 14 stored
-    episodes contained those counters before this was fixed. The measurements
-    are kept in `info['work']`, where they belong; the *episode* records that
-    the words were slow to come, which is the part Mati actually lived.
+    QUALITATIVE ONLY — no seconds, no step counts, for the same reason the
+    caller keeps basin/coherence out: an episode is later surfaced as a
+    recalled memory, and a small model recites whatever is in it. "It took 76
+    seconds to find the words and your field turned over 774 times" reads as
+    Mati narrating its own instrumentation at the user. The measurements are
+    kept in `info['work']`, where they belong; the *episode* records that the
+    words were slow to come, which is the part Mati actually lived.
     """
     secs  = work.get("seconds") or 0.0
     steps = work.get("field_steps") or 0
@@ -1305,12 +1236,9 @@ def _narrate_work(work):
               "The words came quickly")
     s = effort
     if steps:
-        # ⚠️ WAS ", my field working the whole time they formed". This function
-        # already forbids itself instrumentation, for the measured reason in
-        # the docstring — and then named the substrate anyway, in 12 of 33
-        # stored episodes. Mati recites its own episodes, so writing machinery
-        # here is writing it into every future recital. What it actually lived
-        # is the sustained effort, which is what this now says.
+        # ⚠️ NOT "my field working". Naming the substrate here writes the
+        # machinery into every future recital of this episode; what Mati
+        # actually lived is the sustained effort, which is what this says.
         s += ", and I stayed with it the whole time they formed"
     if c0 is not None and c1 is not None:
         if c1 > c0 + 0.02:
@@ -1333,25 +1261,22 @@ def think_while(lm, chunk_iter, steps_per_chunk=None, budget_s=None,
     step the field between chunks and it is genuinely running as it answers.
 
     It is SYNCHRONOUS — stepping happens between pulling a chunk and yielding
-    it — so strictly it is added to the reply, not overlapped with it. Measured
-     that addition is SMALL: one step over three modes is 4.8ms, and
-    a typical reply takes ~200 steps ≈ 1s against ~26s of generation. The
-    `[field] worked Ns` line in the log is the whole streaming loop, NOT the
-    field's share — misreading it as field time sent one investigation down the
-    wrong path.
+    it — so strictly it is added to the reply, not overlapped with it. The
+    addition is small: about a second of stepping against tens of seconds of
+    generation. The `[field] worked Ns` line in the log is the whole streaming
+    loop, NOT the field's share.
 
     `budget_s` bounds time SPENT STEPPING (not elapsed wall clock) so a very
-    long reply cannot turn a 1s cost into a large one. At current settings it
-    never binds; it is a guard, not a fix. `budget_s=0` disables it.
+    long reply cannot turn a small cost into a large one. At current settings
+    it never binds; it is a guard, not a fix. `budget_s=0` disables it.
 
     Yields chunks through unchanged; returns nothing (see `Work` in ollin.py).
     """
     n = C.THINK_STEPS_PER_CHUNK if steps_per_chunk is None else steps_per_chunk
     budget = C.THINK_BUDGET_S if budget_s is None else budget_s
-    # The budget bounds time SPENT STEPPING, not elapsed wall clock. Measuring
-    # elapsed time was wrong and silently disabled the feature: the model's own
-    # latency before the first chunk consumed the whole budget, so the field
-    # never stepped at all ("worked 21s, 0 steps").
+    # The budget bounds time SPENT STEPPING, not elapsed wall clock. Elapsed
+    # time would let the model's own latency before the first chunk consume the
+    # whole budget, so the field would never step at all.
     spent = 0.0
     for chunk in chunk_iter:
         if budget <= 0 or spent < budget:
@@ -1369,31 +1294,19 @@ def think_while(lm, chunk_iter, steps_per_chunk=None, budget_s=None,
 
 # What Mati may write a question to the person ABOUT. ⚠️ LIVED EPISODES ONLY.
 #
-# ⚠️ THIS LIST USED TO BEGIN WITH `studied:asked about %` AND THAT WAS THE
-# WHOLE FAULT. The reasoning was: that source is what `inquiry.step` writes
-# when Mati's own 3B answers Mati's own question, unattended, with nothing to
-# check against — the least reliable thing in the store — so asking the person
-# converts the weakest provenance into the strongest. Sound as far as it goes,
-# and it does not go far enough.
+# ⚠️ NOT `studied:asked about %`, though it looks like the obvious candidate.
+# That source is what `inquiry.step` writes when Mati's own 3B answers Mati's
+# own question, unattended, with nothing to check against — the least reliable
+# thing in the store — so asking the person about it looks like converting the
+# weakest provenance into the strongest.
 #
-# A weak note is not only "a topic Mati is unsure of". It is often a note
+# But a weak note is not only "a topic Mati is unsure of". It is often a note
 # whose CONTENT IS INVENTED. Asking the person to confirm that does not harden
 # a soft spot; it launders a confabulation into a lived episode, which is then
 # the strongest provenance in the store. That is the memory loop `inquiry.py`'s
-# own docstring warns about, running through a channel nobody checked.
-#
-# , from what Mati had actually queued up to ask the user:
-#
-#     notes used to generate a question        1,919
-#     of them `studied:asked about …`          1,246   64.9%
-#     queued questions                           862
-#     sincere inquiries, read by hand              ~6%
-#
-# and the nonsense was exactly what the pipeline predicts — a 3B writing a
-# question about a 3B's hallucination, addressed to the user as though they were
-# present: "Did you live with Hernan Cortes?", "Did you live through a medical
-# trial with vitraximab, also known as Sareptra?" (a drug that exists nowhere
-# but in its own earlier answer).
+# own docstring warns about, and it produces questions such as "Did you live
+# through a medical trial with vitraximab?" — about a drug that exists nowhere
+# but in Mati's own earlier answer.
 #
 # ⚠️ SO A QUESTION TO THE PERSON IS ONLY EVER ABOUT SOMETHING THEY WERE IN.
 # Weakness still orders what is asked — shallowly-imprinted episodes first —
@@ -1401,9 +1314,9 @@ def think_while(lm, chunk_iter, steps_per_chunk=None, budget_s=None,
 # read or something it told itself, asking the person to vouch for it is not
 # curiosity, it is seeking a witness for an invention.
 #
-# User-supplied material (`studied:charter:…`, `studied:file:…`) stays out for
-# the original reason: asking someone to explain the document they handed over
-# is asking them to account for their own notes.
+# User-supplied material (`studied:charter:…`, `studied:file:…`) stays out as
+# well: asking someone to explain the document they handed over is asking them
+# to account for their own notes.
 _ASK_PRIORITY = (
     ("shallow lived episode",
      "source = ? AND (imprint_passes IS NULL OR imprint_passes < %d)"
@@ -1421,9 +1334,7 @@ def episode_to_ask_about(db_path=None, max_age_days=14):
     archaeology; a question about the exchange Mati is least sure of is the
     point of asking at all.
 
-    ⚠️ LIVED EPISODES ONLY — see the note on `_ASK_PRIORITY`. This used to
-    reach into what Mati's own model had told itself, and 64.9% of the
-    questions ever generated came from there.
+    ⚠️ LIVED EPISODES ONLY — see the note on `_ASK_PRIORITY`.
 
     Returns (note_id, body) or None.
     """
@@ -1490,12 +1401,10 @@ def deepen_shallow(lm, tok, db_path=None, limit=1, should_stop=None):
         # NULL = written before the column existed; treat as complete rather
         # than re-imprinting the entire back catalogue on first run.
         rows = conn.execute(
-            # ⚠️ NULL COUNTS AS SHALLOW. It used to be excluded, and that
-            # made deepening blind to every note written before this column
-            # existed — : 0 of 49 visible, `shallow_count`
-            # reporting a clean 0. NULL means the depth was never recorded,
-            # which is UNKNOWN, and treating unknown as fully-imprinted is the
-            # one reading that produces a silent false all-clear.
+            # ⚠️ NULL COUNTS AS SHALLOW. NULL means the depth was never
+            # recorded — every note written before the column existed — which
+            # is UNKNOWN, and treating unknown as fully-imprinted is the one
+            # reading that produces a silent false all-clear.
             "SELECT note_id, body, imprint_passes FROM notes "
             "WHERE (imprint_passes IS NULL OR imprint_passes < ?) "
             "ORDER BY imprint_passes IS NOT NULL, imprint_passes ASC, "
@@ -1554,24 +1463,22 @@ def shallow_count(db_path=None):
 # ─────────────────────────────────────────────────────────────────────────────
 # Two tiers: a field-addressed working set, and a lexical archive
 #
-# WHY. Addressing costs ~3.48 s/note and a single turn stales every address in
-# the store (100% -> 0% self-retrieval, measured). That is O(n) of upkeep per
-# turn, forever, and at 10,000 notes it is 9.7 hours. Making the correction
-# cheaper was tried and refuted — the drift is 98.8–99.7% one shared shape, but
-# a shared correction reaches 0–17% where a real reindex reaches 100%, because
-# the shared part costs nothing to begin with and the residual is precisely
-# what no shared correction can carry.
+# WHY. Addressing a note costs seconds, and every promotion of the address
+# space stales every address in the store, so re-addressing everything is O(n)
+# of upkeep, forever. A cheaper shared correction does not work: the drift is
+# almost entirely one shared shape, but the shared part costs nothing to begin
+# with, and the residual is precisely what no shared correction can carry.
 #
 # So the number of notes owing re-addressing has to be bounded. Everything
 # beyond the newest `WORKING_SET` is ARCHIVED: still stored, still searchable
 # by its words, no longer re-addressed and no longer surfacing by resonance.
 #
 # THE TRADE, STATED PLAINLY. An archived memory can be found by naming it —
-# lexical search fetched a named memory 20/20 where the field path got 0/20 —
-# but it will not come up on its own because the field drifted near it. The
-# expensive channel is the one that was failing; the free one is the one that
-# works. That is the right way round, and it is still a loss: association is
-# what the field was for.
+# lexical search fetches a named memory where the field path does not — but it
+# will not come up on its own because the field drifted near it. The expensive
+# channel is the one that fails; the free one is the one that works. That is
+# the right way round, and it is still a loss: association is what the field
+# was for.
 #
 # PROFILE NOTES ARE PINNED. They are few, they are identity, and they are
 # injected into every turn anyway — ageing them out would be all cost.
@@ -1579,12 +1486,10 @@ def shallow_count(db_path=None):
 # What earns a place in the working set, best first. Recency decides WITHIN a
 # tier, never across them.
 #
-# ⚠️ RECENCY ALONE WAS WRONG, AND BADLY — . `inquiry` wrote
-# 83 notes of its own overnight, every one newer than every conversation, and
-# the working set became 62 of Mati's own self-asked answers and **0 of the
-# 33 exchanges it had actually lived**. The one channel that costs 3.48 s/note
-# to maintain was spent entirely on the weakest thing in the store, while the
-# strongest was pushed out to lexical-only.
+# ⚠️ RECENCY ALONE IS WRONG. Inquiry can write dozens of notes of its own
+# overnight, every one newer than every conversation, and the working set would
+# become Mati's own self-asked answers and none of the exchanges it actually
+# lived — the costly channel spent entirely on the weakest thing in the store.
 #
 # So: lived first. What a person actually said is what should still be able to
 # surface on its own; what Mati asked itself is exactly the material that
@@ -1612,9 +1517,8 @@ def _rank(source):
 #
 # ⚠️ RECORDED FROM THE TURN ONLY. `recall` and `search` are called by probes,
 # suites and diagnostics as well as by conversation, and a hit from a test is
-# not demand — it is exactly the pollution that put 43 machine-generated
-# "memories" in the store . So neither function records anything
-# on its own: the turn asks for it explicitly.
+# not demand — it is pollution. So neither function records anything on its
+# own: the turn asks for it explicitly.
 #
 # ⚠️ AND RETRIEVED IS NOT USED. This records what was HANDED TO the model, not
 # what the model drew on. Field recall returns k per turn whether or not any of
@@ -1701,15 +1605,13 @@ def settling(lm, db_path=None):
     """How much of the WORKING SET is filed against an older θ₀.
 
     Returns (stale, total). Only the working set is counted — archived notes
-    are never re-addressed by design, so including them reports a repair that
-    can never finish (measured: 169/202 "stale" when only 67 were repairable).
+    are never re-addressed by design, so counting them would report a repair
+    that can never finish.
 
-    ⚠️ This is the signal for leaning on lexical search. Every imprint moves θ₀,
-    so after a wake or a night of study the field path is filed in an old frame
-    and degrades — while lexical search does not depend on θ₀ at all and is
-    exactly as good as it ever is. : lexical 20/20 against
-    the field path's 0/20 at fetching a named memory. During the settling
-    window there is a fully-correct channel sitting idle.
+    ⚠️ This is the signal for leaning on lexical search. After a promotion the
+    field path is filed in an old frame until the working set is re-addressed,
+    while lexical search does not depend on θ₀ at all and is exactly as good
+    as it ever is.
     """
     db_path = NOTES_DB_PATH if db_path is None else db_path
     if not os.path.exists(db_path):
@@ -1738,24 +1640,22 @@ def working_set_ids(db_path=None, limit=None):
     Profile notes are pinned outright — few, identity, and injected into every
     turn regardless.
 
-    ⚠️ SELF-TALK IS PINNED TOO, AND BOUNDED. The user: "pin the self-talk notes
-    so they stay addressable." Reflection writes ~3 notes a night and the
-    working set is chosen by RECENCY, so all three were archived the instant
-    they were written — the one category that exists specifically to be
-    resonated with later was the first thing filed away.
+    ⚠️ SELF-TALK IS PINNED TOO, AND BOUNDED, so it stays addressable.
+    Reflection writes a few notes a night, and with the working set chosen by
+    RECENCY they would be archived the instant they were written — the one
+    category that exists specifically to be resonated with later would be the
+    first thing filed away.
 
     Bounded at `PINNED_SELFTALK` rather than pinned outright, which profile
-    notes can afford because there are five of them. Self-talk grows every
+    notes can afford because there are only a handful. Self-talk grows every
     night; unbounded, it would be the whole pool inside a year and ordinary
     episodes would lose every recall slot to Mati talking to itself.
 
-    ⚠️ AND THIS BUYS LESS THAN IT SOUNDS. Field addressing measured 4/111 =
-    0.036 against chance 0.009, and 0.00 after a single turn of drift, which is
-    why `REINDEX_ON_IDLE` is off. A pin makes a note ELIGIBLE for field recall;
-    what actually reaches self-talk is the lexical path, which never excluded
-    it. Kept because eligibility is the right default for this category and
-    because it now costs almost nothing — not because it is the mechanism that
-    makes reflection findable.
+    ⚠️ AND THIS BUYS LESS THAN IT SOUNDS. A pin makes a note ELIGIBLE for field
+    recall, which performs near chance; what actually reaches self-talk is the
+    lexical path, which never excluded it. Kept because eligibility is the
+    right default for this category and costs almost nothing — not because it
+    is the mechanism that makes reflection findable.
     """
     limit = C.WORKING_SET if limit is None else limit
     db_path = NOTES_DB_PATH if db_path is None else db_path
@@ -1836,42 +1736,48 @@ def tier_counts(db_path=None):
 
 def reindex(lm, tok, db_path=None, limit=None, should_stop=None):
     """
-    Re-address episodes against the CURRENT θ₀, most-stale first.
+    Re-address episodes against the CURRENT address space, most-stale first.
 
-    Trajectory features are deterministic given θ₀ — ⚠️ which was asserted
-    here for months and was FALSE until the RNG was pinned in
-    `address_vector` (; two consecutive calls agreed only to
-    0.999983) — but θ₀ moves with every episode imprinted and every dream.
-    Addresses filed against an older field go stale, and because the newest note
-    was filed against the most recent field, retrieval collapsed to RECENCY:
-    measured drift reached cosine ≈ −0.08 and one episode won every probe.
+    Trajectory features are deterministic given θ₀ (the RNG is pinned in
+    `address_vector`), but the address space moves at every promotion.
+    Addresses filed against an older space go stale, and because the newest
+    notes were filed most recently, unrepaired retrieval collapses to RECENCY.
 
     Cost is O(n) forwards, so `limit` bounds the work per call (config
     REINDEX_LIMIT). Selection is by STALENESS, not recency: each row records the
-    field's gs_std when it was last addressed, and the rows furthest from the
-    current gs_std go first. A plain "most recent N" would permanently strand
+    space's gs_std when it was last addressed, and the rows furthest from the
+    current one go first. A plain "most recent N" would permanently strand
     old episodes in an obsolete address space — they would never re-enter the
     current one, which both breaks their recall and blocks any semantic
     structure θ₀ acquires from ever reaching them. Rotating by staleness means
     every memory is refreshed eventually, just not all at once.
 
     `should_stop` is checked BETWEEN NOTES and commits what is already done.
-    Re-addressing one note takes ~3.8s (TRIPLET_CAP=64), so without it a turn
-    arriving mid-batch waits for the whole batch. Same contract as
-    `study.study`, which already yields this way. Partial progress is always
-    safe: each row carries the gs_std it was addressed against, so an
-    interrupted pass leaves a correctly-labelled mix, and the next pass picks
-    up the most stale rows first.
+    Re-addressing one note takes seconds, so without it a turn arriving
+    mid-batch would wait for the whole batch. Same contract as `study.study`.
+    Partial progress is always safe: each row carries the gs_std it was
+    addressed against, so an interrupted pass leaves a correctly-labelled mix,
+    and the next pass picks up the most stale rows first.
+
+    Returns 0 without doing anything while the vault is locked: re-addressing
+    needs each note's text.
     """
     db_path = NOTES_DB_PATH if db_path is None else db_path
     if not os.path.exists(db_path):
         return 0
+    # ⚠️ NOTHING CAN BE RE-ADDRESSED WITHOUT ITS TEXT. With the vault locked
+    # every body is ciphertext, and raising from here took a dream, an idle
+    # pass or a pack down with it. No work is the true answer; the addresses
+    # stay as stale as `check_addresses` says they are, and
+    # `FieldService._after_unlock` repairs them once the key is back.
+    if vault.is_set_up() and not vault.unlocked():
+        return 0
     limit = C.REINDEX_LIMIT if limit is None else limit
-    # ⚠️ THE ADDRESS SPACE'S FINGERPRINT, NOT THE LIVE FIELD'S. This was
-    # `_gs_std(lm)`, which moved with every imprint — so every row went stale
-    # every turn and this function could never finish its job. Against the
-    # frozen space the figure HOLDS STILL between promotions, so a completed
-    # pass stays completed and the idle worker goes quiet.
+    # ⚠️ THE ADDRESS SPACE'S FINGERPRINT, NOT THE LIVE FIELD'S. `_gs_std(lm)`
+    # moves with every imprint, so every row would go stale every turn and this
+    # function could never finish its job. Against the frozen space the figure
+    # HOLDS STILL between promotions, so a completed pass stays completed and
+    # the idle worker goes quiet.
     gs_now = address_gs(lm)
 
     conn = sqlite3.connect(db_path)
@@ -1890,14 +1796,11 @@ def reindex(lm, tok, db_path=None, limit=None, should_stop=None):
                            else abs(gs_now - float(r[2]))),
             reverse=True,
         )
-        # ⚠️ SKIP WHAT IS ALREADY FILED IN THIS SPACE. There was no threshold
-        # here, so the most-stale N were re-addressed unconditionally — even
-        # when their drift was exactly zero. `reindex` therefore always
-        # returned `limit`, and `server._maybe_reindex`'s two exit conditions
-        # (`if not n` and `if n < REINDEX_BATCH`) could never fire: the worker
-        # re-addressed in a loop forever, at ~3.48 s/note, until a turn
-        # happened to interrupt it. Measured  — `stats.reindexed`
-        # read 21,836 after ~20 h of uptime, one every 3.3 s, continuously.
+        # ⚠️ SKIP WHAT IS ALREADY FILED IN THIS SPACE. Without a threshold the
+        # most-stale N would be re-addressed even when their drift is exactly
+        # zero, `reindex` would always return `limit`, and the worker's exit
+        # conditions (`if not n`, `if n < REINDEX_BATCH`) could never fire — it
+        # would re-address in a loop forever.
         #
         # STALE_EPS is float-noise-tight on purpose: a genuinely stale address
         # is off by ~1e-1, not 1e-9, so nothing that needs work is skipped.
@@ -1958,45 +1861,31 @@ def _ensure_schema(conn):
         # See Mati/digest.py — summarised rather than cut, so the end
         # of a long memory is not the part that gets lost.
         conn.execute("ALTER TABLE notes ADD COLUMN digest TEXT")
-    # ⚠️ EVERY COLUMN THIS MODULE WRITES IS CREATED HERE, AND FIVE WERE NOT.
-    # `verbatim`, `personal_only`, `media` and `media_kind` were
-    # each added lazily by whichever module happened to use them —
-    # `learning.py`, `speaker.py`, `reflect.py`, `world.py` — so a store only
-    # had them once that module had run at least once.
+    # ⚠️ EVERY COLUMN THIS MODULE WRITES IS CREATED HERE. `verbatim`,
+    # `personal_only`, `media` and `media_kind` are also used by other modules —
+    # `learning.py`, `speaker.py`, `reflect.py`, `world.py` — and a column
+    # created only by whichever of them happens to run first would be missing on
+    # a fresh install, where `remember` INSERTs `verbatim` and `speaker` on the
+    # very first episode.
     #
-    # ⚠️ ON A FRESH INSTALL THAT BREAKS THE VERY FIRST MEMORY. `remember`
-    # INSERTs `verbatim` and `speaker` on every episode, and `test_coldstart`
-    # dies on a clean store with "table notes has no column named verbatim".
-    # The first thing a new user says would have failed to record.
-    #
-    # The rule this restores: the schema belongs with the WRITER. A column
-    # created by a reader is a column that exists only after something
-    # unrelated has happened to run.
-    # ⚠️ RE-READ THE COLUMNS, do not trust the snapshot above. `_DDL` is shared
-    # with the field module and already declares some of these, so the `cols`
-    # taken at the top can disagree with the table by the time this runs —
-    # measured: "duplicate column name: speaker". Asking the table each time
-    # costs one PRAGMA and cannot be wrong.
-    # ⚠️ TRY/EXCEPT RATHER THAN A PRE-CHECK, and the pre-check was tried
-    # twice. Both the snapshot at the top of this function and a fresh PRAGMA
-    # read immediately before the loop still produced "duplicate column name:
-    # speaker" — something between here and the table adds it, and chasing
-    # which is less robust than not caring. ALTER … ADD COLUMN is the one
-    # statement whose failure IS the success condition: if the column is
-    # there, there is nothing to do.
-    # ⚠️ `speaker` IS NOT IN THIS LIST AND MUST NOT BE. It already has its own
-    # block further down, guarded by the `cols` snapshot taken at the top of
-    # this function — so adding it here made THAT block fail with "duplicate
-    # column name: speaker", because its snapshot still said the column was
-    # missing. The bug was mine and it was in the fix, not the original.
+    # The rule: the schema belongs with the WRITER. A column created by a reader
+    # is a column that exists only after something unrelated has happened to
+    # run.
+    # ⚠️ TRY/EXCEPT RATHER THAN A PRE-CHECK. `_DDL` is shared with the field
+    # module and already declares some of these, so a snapshot of the columns
+    # can disagree with the table by the time the loop runs. ALTER … ADD COLUMN
+    # is the one statement whose failure IS the success condition: if the
+    # column is there, there is nothing to do.
+    # ⚠️ `speaker` IS NOT IN THIS LIST AND MUST NOT BE. It has its own block
+    # further down, guarded by the `cols` snapshot taken at the top of this
+    # function; adding it here would make that block fail with "duplicate
+    # column name: speaker".
     # ⚠️ `shelved` IS NOT `archived`, AND CONFLATING THEM CORRUPTS THE TIERS.
     # `archived` belongs to `rebalance_tiers`: it marks a note demoted to the
-    # lexical-only tier by age and working-set size. Library shelving wrote
-    # that SAME column, so a book taken off the shelf was indistinguishable
-    # from an old one — and an unshelve would have promoted tier-demoted
-    # notes back into the working set, breaking the bound the two-tier design
-    # rests on. Found when every studied work reported itself
-    # archived, having never been shelved.
+    # lexical-only tier by age and working-set size. A book taken off the shelf
+    # must be distinguishable from an old note, or unshelving would promote
+    # tier-demoted notes back into the working set and break the bound the
+    # two-tier design rests on.
     for col, decl in (("verbatim", "TEXT"),
                       ("personal_only", "INTEGER"), ("media", "TEXT"),
                       ("media_kind", "TEXT"), ("shelved", "REAL")):
@@ -2012,11 +1901,9 @@ def _ensure_schema(conn):
         # for days — so "is there already a question" is not the same as
         # "have I already wondered about this one".
         conn.execute("ALTER TABLE notes ADD COLUMN asked_about REAL")
-    # When a memory was actually NEEDED, as opposed to when it was made.
-    #
-    # ⚠️ THE STORE KNEW WHEN EVERY MEMORY WAS WRITTEN AND NEVER WHEN IT WAS
-    # USED. That is the missing half: a working set chosen by predicted need
-    # cannot be built without demand data, and none was being kept.
+    # When a memory was actually NEEDED, as opposed to when it was made. A
+    # working set chosen by predicted need cannot be built without demand data,
+    # and the time a memory was written says nothing about it.
     #
     # A LOG rather than a counter, deliberately. A count answers "how often";
     # the goal is "what will be wanted this morning", which needs the times as
@@ -2039,13 +1926,13 @@ def _ensure_schema(conn):
         # while a turn was waiting yields after one full pass (see
         # `imprint_question`), so it is REAL but shallower than intended.
         # Recorded so the idle worker can finish the job later — otherwise a
-        # memory formed under load would stay permanently thin, which is a
-        # worse trade than the one that was agreed.
-        # NULL means "written before this column existed"; treat as complete.
+        # memory formed under load would stay permanently thin.
+        # NULL means the depth was never recorded; `deepen_shallow` treats that
+        # as shallow, not as complete.
         conn.execute("ALTER TABLE notes ADD COLUMN imprint_passes INTEGER")
     if "speaker" not in cols:
-        # Who said it. NULL for everything written before , and NULL
-        # is not the owner — it is "nobody recorded it".
+        # Who said it. NULL for everything written before the column existed,
+        # and NULL is not the owner — it is "nobody recorded it".
         conn.execute("ALTER TABLE notes ADD COLUMN speaker TEXT")
     conn.commit()
 
@@ -2058,8 +1945,9 @@ def remember(lm, tok, body, source=EPISODE_SOURCE, db_path=None,
     Write one episode: address it, imprint it, record it.
 
     The address is the trajectory feature (stable). The Δθ₀ triplet measurement
-    is deliberately NOT done here — it was self-invalidating and cost as much as
-    the imprint itself. Returns (note_id, triplet) or None if too short.
+    is deliberately NOT done here — it is self-invalidating (see the addressing
+    note) and costs as much as the imprint itself. Returns (note_id, triplet)
+    or None if too short.
     """
     db_path = NOTES_DB_PATH if db_path is None else db_path
 
@@ -2101,22 +1989,22 @@ def remember(lm, tok, body, source=EPISODE_SOURCE, db_path=None,
             #
             # ⚠️ `speaker` is PLAINTEXT and NULL by default. Plaintext because
             # it is a label the store must be able to group by without the key;
-            # NULL because 258 episodes predate this column and inventing an
-            # attribution for them would be exactly the error it exists to
-            # prevent. NULL means "nobody said", not "the owner".
+            # NULL because inventing an attribution for an episode nobody
+            # labelled would be exactly the error it exists to prevent. NULL
+            # means "nobody said", not "the owner".
             # ⚠️ `parts` is the person's own words and is SEALED like the body.
             # `cut_at` is a word count and stays clear, so "which turns were cut
             # short" can be asked of a locked store. Both are NULL on an
             # ordinary turn — an uninterrupted exchange has no parts to keep
             # separate, and NULL means "was not interrupted" rather than
             # "interrupted at word zero", which `cut_at = 0` genuinely means.
-            # ⚠️ TWO DIFFERENT FINGERPRINTS, AND THEY USED TO BE THE SAME CALL.
-            # `gs_std` is provenance — how deep the LIVE field was when this
-            # happened — and stays live. `feat_gs` says which space `feat` was
-            # computed in, and `feat` came from `address_vector`, which reads
-            # the FROZEN space. Recording the live figure there would mark the
-            # note stale the instant the imprint below moved θ₀, which is to
-            # say immediately, for every note ever written.
+            # ⚠️ TWO DIFFERENT FINGERPRINTS. `gs_std` is provenance — how deep
+            # the LIVE field was when this happened — and stays live. `feat_gs`
+            # says which space `feat` was computed in, and `feat` came from
+            # `address_vector`, which reads the FROZEN space. Recording the live
+            # figure there would mark the note stale the instant the imprint
+            # below moved θ₀, which is to say immediately, for every note ever
+            # written.
             (vault.seal(body), source, triplet[0], triplet[1], triplet[2],
              _gs_std(lm), _now(), feat.tobytes(), address_gs(lm), corrects,
              passes, speaker,
@@ -2125,10 +2013,9 @@ def remember(lm, tok, body, source=EPISODE_SOURCE, db_path=None,
              # ⚠️ THE EXACT WORDS, UNCAPPED AND UNFILTERED. `body` is the gist
              # — short, machinery-free, imprinted, and what Mati speaks from.
              # `verbatim` is what it can be HELD TO, and the two have different
-             # jobs: 0 of 395 episodes had one, so there was nothing for Mati
-             # to study itself from and no way to settle what was actually
-             # said. The whole store is 0.71 MB of text; this was never a
-             # storage question.
+             # jobs: without it there is nothing for Mati to study itself from
+             # and no way to settle what was actually said. A whole store is
+             # well under a megabyte of text; this is not a storage question.
              vault.seal(verbatim) if verbatim else None),
         )
         conn.commit()
@@ -2160,9 +2047,9 @@ def presentable(body):
     What gets dropped is the machinery narration — how many memories surfaced,
     how the work of answering went, whether it settled. Those are true, and
     they are about the apparatus rather than the episode; fed back as "memory"
-    they gave a small model its own instrumentation to recite. `admit.py` and
-    `voice.py` already block that on the way IN and OUT; this closes the third
-    door, which is what Mati reads back.
+    they would give a small model its own instrumentation to recite. `admit.py`
+    and `voice.py` already block that on the way IN and OUT; this closes the
+    third door, which is what Mati reads back.
 
     The `I was asked: / I said:` frame is KEPT — unlike `key_points`, which
     strips it to buy imprint budget. Here it is the shape of a recollection.
@@ -2214,26 +2101,24 @@ _NARRATION = {
 def topic_of(body):
     """The SUBJECT of a memory, as a topic string for `schedule.on_topic`.
 
-    ⚠️ MEASURED , do not simplify this back to `body[:60]`. That was
-    the original and it failed in both directions at once:
+    ⚠️ DO NOT SIMPLIFY THIS TO `body[:60]`. That fails in both directions at
+    once:
 
-      - "what did you use for dinner" RAISED a question about tlamatinime
+      - "what did you use for dinner" would RAISE a question about tlamatinime
         books, because `asked`/`what`/`did`/`use` are in every episode's
         narration and `on_topic` needs only two words to fire;
-      - "what were the amoxtli made of" did NOT raise it, because the subject
-        appeared past character 60;
-      - and the cut landed mid-word, leaving `boo` — a keyword nothing can
-        ever match.
+      - "what were the amoxtli made of" would NOT raise it, because the subject
+        appears past character 60;
+      - and the cut lands mid-word, leaving `boo` — a keyword nothing can ever
+        match.
 
     So: whole body, narration dropped, every content word kept.
 
-    ⚠️ AND NO CAP — measured the same day. Keeping only the N longest words
-    (a Zipf "long words are rare words" argument) looked principled and made
-    recall WORSE than the bug it replaced: it kept `screenfold` and `folded`
-    while dropping `books`, `paint` and `inks`, so the head nouns of the memory
-    — the words a person actually says when they raise it — were gone. All
-    seven probe turns went silent. The narration strip is what removes the
-    false positives; the cap only removed true ones.
+    ⚠️ AND NO CAP. Keeping only the N longest words (a Zipf "long words are
+    rare words" argument) looks principled and loses the head nouns: it keeps
+    `screenfold` and `folded` while dropping `books`, `paint` and `inks` — the
+    words a person actually says when they raise the memory. The narration
+    strip is what removes the false positives; a cap only removes true ones.
 
     Conservatism lives in `schedule.on_topic`'s two-word rule, not here. That
     means one rare word is not enough on its own: a turn mentioning only
@@ -2262,10 +2147,10 @@ def key_points(body):
     """The substantive part of an episode, for imprinting.
 
     TRIPLET_CAP caps the imprint at the FIRST 64 tokens, and an episode opens
-    with `I was asked: <question>` — so the budget was being spent on a prefix
+    with `I was asked: <question>` — so the budget would be spent on a prefix
     shared by every episode, then the question restated, before reaching what
     Mati actually said. Under a shortened imprint (see `imprint_question`'s
-    `should_stop`) that single pass learned mostly scaffolding.
+    `should_stop`) that single pass would learn mostly scaffolding.
 
     This keeps the question and the reply, drops the fixed narration, and puts
     the reply FIRST so a truncated imprint reaches the substance. The stored
@@ -2312,24 +2197,15 @@ def dream(lm, tok, cycles=1, dream_length=12, steps=20, dream_alpha=0.001,
     """
     Consolidate: free-dream N cycles, then repair the index and persist.
 
-    Dreaming deforms θ₀, and every stored address was computed against θ₀ — so
-    dreaming silently ages the whole index. Measured: 3 cycles → 0.031 drift,
-    enough to flip an ambiguous match; left unrepaired across many cycles it
-    degrades retrieval into recency (see `reindex`). Reindexing is therefore
-    part of dreaming, not an optional follow-up, which is why it lives here
-    rather than at the call sites.
+    Addressing reads the FROZEN space (`pin_address_space`), which a dream does
+    not touch, so dreaming does not age the index and the `reindex` here usually
+    finds nothing to do — a cheap SELECT, not minutes of work. It stays because
+    the space does move at `promote()`, and a dream that runs after one should
+    repair rather than wait. ⚠️ Do not "optimise" it away on the grounds that it
+    usually returns 0; that is true only between promotions.
 
-    ⚠️ THAT PARAGRAPH IS NOW HISTORY, AND THE CALL STAYS ANYWAY. Addressing
-    reads the FROZEN space (`pin_address_space`), which a dream does not touch,
-    so dreaming no longer ages the index and this `reindex` finds nothing to do
-    — a cheap SELECT, not minutes of work. It is kept because the space does
-    move at `promote()`, and a dream that happens to run after one should
-    repair rather than wait for the idle worker. ⚠️ Do not "optimise" it away
-    on the grounds that it currently returns 0; that is true only between
-    promotions.
-
-    `reindex_after=False` is for diagnostics only — it lets the persistence test
-    measure raw drift.
+    `reindex_after=False` is for diagnostics only — it lets a test measure raw
+    drift.
     """
     dreamer = DreamingLoop(lm, tokenizer=tok, dream_length=dream_length,
                            steps=steps, dream_alpha=dream_alpha, verbose=False)
@@ -2361,12 +2237,10 @@ def dream(lm, tok, cycles=1, dream_length=12, steps=20, dream_alpha=0.001,
 
 # Self-knowledge is resent only when it CHANGES.
 #
-# ⚠️ IT WENT IN ON EVERY TURN AT ~579 TOKENS, and it is nine qualitative facts
-# that shift maybe once a day — "your field settles differently from one
-# exchange to the next", "everything you hold arrived within a couple of
-# weeks". : a turn carried 3,857 tokens of a 4,096 window,
-# prefill is where the seconds go, and this was the second largest block after
-# the system prompt.
+# ⚠️ IT IS SEVERAL HUNDRED TOKENS of qualitative facts that shift maybe once a
+# day — "your field settles differently from one exchange to the next",
+# "everything you hold arrived within a couple of weeks" — and prefill is where
+# a turn's seconds go.
 #
 # Resending unchanged text every turn buys nothing: it is already in the
 # session history the model is reading. So it is sent when it first appears,
@@ -2412,7 +2286,7 @@ def _name_the_pronouns(fact, who):
     t = " ".join((fact or "").split())
     if not who:
         return t
-    # ⚠️ THE LEADING PRONOUN ONLY. Substituting every "them" produced
+    # ⚠️ THE LEADING PRONOUN ONLY. Substituting every "them" would produce
     # "the user asked me to talk to the user like this" — the sentence-initial
     # pronoun is the one Mati echoes; the rest are ordinary English.
     t = re.sub(r"^They\b", who, t)
@@ -2459,18 +2333,17 @@ def self_knowledge(db_path=None, lm=None):
     """How Mati's own field behaves, worked out from its record.
 
     "Always be faithful" is enforced as continuity of the field and the record.
-    Knowing how that field behaves is part of it — and without this Mati had no
-    grounds at all: asked what its field does, the only self-information it
-    received was one turn's snapshot it was forbidden to quote, so it invented
-    an answer.
+    Knowing how that field behaves is part of it — without this, asked what its
+    field does, Mati would have only one turn's snapshot it is forbidden to
+    quote, and would invent an answer.
 
-    NO CENSUS, DELIBERATELY. An earlier version counted episodes and told Mati
-    "you have lived 50 exchanges". Forty-three of those were a benchmark
-    hammering the same probe at a live server — so the number was true of the
-    STORE and false about Mati's life, and it stated it as autobiography. A
-    count cannot tell a lived exchange from a test, so it is not a thing Mati
-    should be told. What it can honestly know is how the field BEHAVES, which
-    is also the part that lets it predict itself.
+    NO CENSUS, DELIBERATELY. A count of episodes ("you have lived 50
+    exchanges") is true of the STORE and can be false about Mati's life — a
+    benchmark hammering one probe at a live server writes episodes too — and it
+    would be stated as autobiography. A count cannot tell a lived exchange from
+    a test, so it is not a thing Mati should be told. What it can honestly know
+    is how the field BEHAVES, which is also the part that lets it predict
+    itself.
 
     PHRASED, NOT DUMPED. Every filter here exists because a small model that
     receives a number says the number — `admit.py` blocks recited basins,
@@ -2554,14 +2427,13 @@ def self_knowledge(db_path=None, lm=None):
 
     # ── What you can do about your own reach ────────────────────────────────
     # The most actionable fact available, and the reason the marker exists: the
-    # field hands over what it drifted near, which measured 0/20 at fetching a
-    # named memory, while matching a word in it got 20/20.
+    # field hands over what it drifted near and is poor at fetching a named
+    # memory, while matching a word in it is reliable.
     # ⚠️ QUALITATIVE, LIKE EVERYTHING ELSE HERE. The figures behind this reach
     # Mati as `computed` (see `hit_summary`, /health, `/memory`), which is the
     # provenance kind that may be SPOKEN but never written into an episode. A
-    # count in a body comes back later as autobiography — that is the measured
-    # reason this function has no census, and demand data does not get an
-    # exemption.
+    # count in a body comes back later as autobiography — the reason this
+    # function has no census — and demand data does not get an exemption.
     hits = hit_summary(db_path=db_path, days=14)
     if hits["rows"] >= 40 and hits["notes"]:
         _w, _a = tier_counts(db_path=db_path)
@@ -2618,7 +2490,7 @@ def self_knowledge(db_path=None, lm=None):
                    "correction is the part that stands.")
     if span and span[0] and span[1]:
         # wall_created is an ISO-8601 STRING, not an epoch float — subtracting
-        # them raised TypeError the first time this was written.
+        # two of them raises TypeError.
         try:
             import datetime as _dt
             days = abs((_dt.datetime.fromisoformat(span[1]) -
@@ -2674,17 +2546,17 @@ def state_block(triplet, coherence, memories, profile=None, settling=False,
         # late, this can wait" rather than reporting a clock reading.
         lines.append(f"when: {when}")
     if profile:
-        # ⚠️ WHO IS PRESENT, NAMED, AND ADDRESSED DIRECTLY. The user: Mati
-        # "still speaks about me in the third person. That is an important
-        # missing fact from its prediction." The profile was written entirely
+        # ⚠️ WHO IS PRESENT, NAMED, AND ADDRESSED DIRECTLY. A profile written
         # about an absent third party — "They work on Research", "They are
-        # interested in…" — and injected on EVERY turn, so Mati read a
-        # description of someone who was not there and spoke accordingly.
+        # interested in…" — and injected on EVERY turn has Mati reading a
+        # description of someone who is not there, and speaking about the
+        # person in the third person.
         #
         # ⚠️ AND IT CANNOT SIMPLY BECOME "you". This block is addressed TO
         # Mati, so "you work on Research" reads as MATI working on Research —
-        # the re-aiming failure running the other way. The safe form is: NAME the person
-        # inside the block, and state the addressing rule explicitly.
+        # the re-aiming failure running the other way. The safe form is: NAME
+        # the person inside the block, and state the addressing rule
+        # explicitly.
         who = _profile_name(profile)
         if who:
             lines.append(
@@ -2722,17 +2594,15 @@ def state_block(triplet, coherence, memories, profile=None, settling=False,
         # you actually lived" above a studied entry is a contradiction, and a
         # small model resolves it by picking the flattering reading — narrating
         # a passage it read as something it experienced.
-        # ⚠️ PASSIVE INPUTS. These used to end "if one is relevant, you HAVE
-        # talked about it before and should say so" — an instruction to
-        # ANNOUNCE the memory, which is how recall became recitation. The user,
-        # The user: memories are *"passive inputs, to maintain integrity of
-        # personhood while providing knowledge gained through experience"* —
-        # the material an argument is built FROM, not a thing to report.
+        # ⚠️ PASSIVE INPUTS. Memories are the material an argument is built
+        # FROM — they keep personhood intact while carrying what experience has
+        # taught — not a thing to report. An instruction to say "you have
+        # talked about this before" turns recall into recitation.
         #
         # ⚠️ THE LABELS STAY AND THE INSTRUCTION GOES. Each label still governs
         # what Mati may CLAIM about a memory, which is the provenance
-        # guarantee; what is removed is the push to name it aloud. The naming
-        # moved to the record — `info["memories"]`, shown in the terminal —
+        # guarantee; what is absent is any push to name it aloud. The naming
+        # lives in the record — `info["memories"]`, shown in the terminal —
         # because that is derived from the stored `source` and cannot be wrong,
         # while a reply naming its own sources can.
         if any(src and src.startswith("studied:") for _d, _b, src in memories):
@@ -2753,21 +2623,14 @@ def state_block(triplet, coherence, memories, profile=None, settling=False,
                          "announce them, quote them, or say how many there "
                          "are. Anything not listed here you have not "
                          "experienced:")
-        # ⚠️ AND THE ONE THING "DO NOT ANNOUNCE THEM" MUST NEVER BECOME.
-        #
-        # , with FOUR memories in this very block:
-        #   "What do you know about me?"        -> "I don't have any prior
-        #                                          knowledge about you"
-        #   "What did we talk about yesterday?" -> "my memory is limited to the
-        #                                          current session"
-        #
-        # The user: *"It actually says that it does not have continuous
-        # memory."* Nothing was wrong with retrieval — self-retrieval measured
-        # 6/6 on their real store the same hour. The DENIAL was written here, by
-        # me. "Do not announce them" was aimed at recitation, and on a turn
-        # whose subject IS the memory a 3B resolves it the only way left: by
-        # disclaiming the faculty. The rule silenced the answer along with the
-        # recital.
+        # ⚠️ AND THE ONE THING "DO NOT ANNOUNCE THEM" MUST NEVER BECOME: a
+        # denial. With memories in this very block, a 3B told not to announce
+        # them answers "What do you know about me?" with "I don't have any
+        # prior knowledge about you", and "What did we talk about yesterday?"
+        # with "my memory is limited to the current session". Retrieval is
+        # fine; on a turn whose subject IS the memory, the only way left to
+        # obey "do not announce" is to disclaim the faculty, and the rule
+        # silences the answer along with the recital.
         #
         # ⚠️ SO THE SUPPRESSION IS SCOPED, NOT TRADED AWAY. "Do not recite
         # unprompted" and "answer when asked" are not in tension — they are
@@ -2797,14 +2660,13 @@ def state_block(triplet, coherence, memories, profile=None, settling=False,
             # something it experienced. The provenance is written into `source`
             # when the chunk is stored; this is where it becomes visible.
             # ⚠️ EVERY LABEL IS FIRST PERSON, AND THE PRONOUN IS THE POINT.
-            # These read "YOU READ THIS IN <file>", "YOU LIVED THIS with
-            # them", "THIS IS YOUR OWN CHARTER" — correct inside a block
-            # addressed to Mati, and wrong the instant Mati starts speaking,
-            # because then "you" is the person. The user caught it on the
-            # self-asked kind: 291 of Mati's own questions came back to them
-            # as "291 questions you asked".
+            # "YOU READ THIS IN <file>", "YOU LIVED THIS with them", "THIS IS
+            # YOUR OWN CHARTER" are correct inside a block addressed to Mati,
+            # and wrong the instant Mati starts speaking, because then "you" is
+            # the person: Mati's own self-asked questions would come back to
+            # them as "questions you asked".
             #
-            # It is the same defect on all five. A label recited verbatim must
+            # It is the same defect on every kind. A label recited verbatim must
             # still point at Mati, and only the first person does that. "I
             # read this in <file>" survives the change of speaker; "you read
             # this in <file>" hands the person a claim about themselves.
@@ -2824,40 +2686,33 @@ def state_block(triplet, coherence, memories, profile=None, settling=False,
                            "Speak it as mine. I did not live it as an event, "
                            "so never say I remember it happening")
                 elif origin.startswith("asked about "):
-                    # ⚠️ FIRST PERSON, BECAUSE "YOU" GETS RE-AIMED. This read
-                    # "YOU ASKED ABOUT THIS YOURSELF". Inside a block addressed
-                    # to Mati that is correct — and the moment Mati starts
-                    # speaking, "you" means the person. The user saw the result:
-                    # 291 of Mati's OWN self-asked questions reported back to
-                    # them as "291 questions you asked".
+                    # ⚠️ FIRST PERSON, BECAUSE "YOU" GETS RE-AIMED. "YOU ASKED
+                    # ABOUT THIS YOURSELF" is correct inside a block addressed
+                    # to Mati — and the moment Mati starts speaking, "you"
+                    # means the person, so Mati's OWN self-asked questions
+                    # would be reported back to them as questions they asked.
                     #
-                    # The pronoun did not survive the change of speaker. "I"
+                    # The pronoun does not survive the change of speaker. "I"
                     # does: recited verbatim into a reply it still points at
                     # Mati, which is the one property this label needs.
                     how = ("THIS IS A QUESTION I ASKED MYSELF and this is what "
                            "came back — my own model talking, not something I "
                            "lived or verified")
                 else:
-                    # ⚠️ "A FILE" INVITED A PERSON WHO HANDED IT OVER. This
-                    # read "I READ THIS IN <origin> — I studied it, I did not
-                    # live it", with origin a filename. Measured on the user's
-                    # one session, Mati answered a question about a
-                    # passage with:
+                    # ⚠️ "A FILE" INVITES A PERSON WHO HANDED IT OVER. Labelled
+                    # "I READ THIS IN <filename> — I studied it, I did not live
+                    # it", a passage gets answered with "It seems like you're
+                    # asking about the person who gave you a file containing a
+                    # passage about Aztec codices": a third party invented, and
+                    # the reading put on the person rather than on Mati. Told
+                    # twice that it did not live something, and handed a
+                    # filename, a 3B concludes the material is someone else's.
                     #
-                    #   "It seems like you're asking about the person who gave
-                    #    you a file containing a passage about Aztec codices."
-                    #
-                    # It invented a third party, and put the reading on THE USER
-                    # rather than itself. Told twice that it did not live
-                    # something, and handed a filename, a 3B model concludes
-                    # the material is someone else's.
-                    #
-                    # The user's correction, and it is the right one: READING IS
-                    # SOMETHING MATI DID. The act is lived; the events
-                    # described in it are not. Those are different claims and
-                    # only the second needed guarding. So the label now says
-                    # who read it, when, and from what — a title, not a file —
-                    # and keeps the honest limit on the CONTENT.
+                    # READING IS SOMETHING MATI DID. The act is lived; the
+                    # events described in it are not. Those are different
+                    # claims and only the second needs guarding. So the label
+                    # says who read it, when, and from what — a title, not a
+                    # file — and keeps the honest limit on the CONTENT.
                     from . import library as _lib
                     title = _lib.title_of(origin)
                     # ⚠️ No timestamp reaches this loop — `memories` is
@@ -2873,14 +2728,13 @@ def state_block(triplet, coherence, memories, profile=None, settling=False,
                 lines.append(f"  - (resonance {_resonance(d):.3f}) [{how}] "
                              f"{snippet}")
             else:
-                # ⚠️ LABEL THE LIVED ONES TOO. They used to be the bare case —
-                # every other kind carried a bracket and lived carried nothing,
-                # so the STRONGEST claim was the one signalled by an ABSENCE.
-                # : asked to judge a labelled pair, Mati got
-                # the studied one right and then INVENTED a "[lived]" marker for
-                # the other, because it expects a positive signal and there was
-                # none to read. Giving it one costs a few tokens and removes a
-                # rule that only works when the model is paying full attention.
+                # ⚠️ LABEL THE LIVED ONES TOO. If every other kind carried a
+                # bracket and lived carried nothing, the STRONGEST claim would
+                # be the one signalled by an ABSENCE — and a model asked to
+                # judge a labelled pair will INVENT a "[lived]" marker for the
+                # unlabelled one, because it expects a positive signal. Giving
+                # it one costs a few tokens and removes a rule that only works
+                # when the model is paying full attention.
                 lines.append(f"  - (resonance {_resonance(d):.3f}) "
                              f"[I LIVED THIS with them, in conversation — a "
                              f"moment I was part of, with this person] "
@@ -2890,23 +2744,17 @@ def state_block(triplet, coherence, memories, profile=None, settling=False,
         # instruction far better than a global "never invent memories" rule, so
         # state the required behavior HERE, at the point of use.
         lines.append("memories_recalled: 0")
-        # ⚠️ THIS SAID "You have no recollection of it" AND THAT WAS THE
-        # WORSE HALF OF THE DENIAL. The user: *"Mati can no longer
-        # recall any memories. It actually says that it does not have
-        # continuous memory."*
-        #
-        # ⚠️ AND IT WAS NOT TRUE EVEN WHEN IT FIRED. What is zero here is the
+        # ⚠️ NOT "You have no recollection of it" — that is a denial of memory,
+        # and it is not true even when this fires. What is zero here is the
         # FIELD's associative surfacing — one of three ways Mati reaches its
-        # past, and the weakest of them (measured 0/20 on a named memory
-        # against lexical's 20/20). The LEXICAL hits arrive in a different
-        # block, and 3,993 ARCHIVED notes are not searched by this path at
-        # all. So "the field surfaced nothing" was being rendered as "you
-        # remember nothing", which is a claim about the whole store made from
-        # one channel's miss.
+        # past, and the weakest. The LEXICAL hits arrive in a different block,
+        # and ARCHIVED notes are not searched by this path at all. So "the field
+        # surfaced nothing" must not be rendered as "you remember nothing",
+        # which is a claim about the whole store made from one channel's miss.
         #
-        # The confabulation guard it was written for is real and stays: no
-        # specific past event may be described from here. What goes is the
-        # leap from "nothing surfaced" to "I have no memory".
+        # The confabulation guard is real: no specific past event may be
+        # described from here. What must not happen is the leap from "nothing
+        # surfaced" to "I have no memory".
         lines.append("Nothing surfaced from your field for this — that is "
                      "this one associative channel coming up empty, NOT your "
                      "memory being empty. You keep memories between "

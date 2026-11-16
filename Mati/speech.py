@@ -176,9 +176,9 @@ def _speakable(text):
     fenced = False
     for line in (text or "").splitlines():
         s = line.strip()
-        # ⚠️ A FENCE IS A BLOCK, NOT A LINE. Skipping the ``` lines alone left
-        # the code between them to be read out character by character — caught
-        # by probing the filter rather than by reading it.
+        # ⚠️ A FENCE IS A BLOCK, NOT A LINE. Skipping the ``` lines alone
+        # would leave the code between them to be read out character by
+        # character.
         if s.startswith("```"):
             fenced = not fenced
             continue
@@ -269,12 +269,12 @@ def _pump():
                 return
             _proc = p
             # ⚠️ THE TEXT APPEARS WHEN THE VOICE REACHES IT, not when the
-            # model produced it. Reported: "the text changes too quickly…
-            # due to the voice bpm". Exactly — `say` reads at about 175
-            # words a minute and the stream arrives as fast as the model
-            # writes, so the screen ran ahead and the two drifted apart over
-            # a reply. Changing the RATE only changes how fast they drift;
-            # pacing the display to the speech is what keeps them together.
+            # model produced it. `say` reads at about 175 words a minute and
+            # the stream arrives as fast as the model writes, so a screen fed
+            # straight from the stream runs ahead and the two drift apart
+            # over a reply. Changing the RATE only changes how fast they
+            # drift; pacing the display to the speech is what keeps them
+            # together.
             if on_start is not None:
                 try:
                     on_start()

@@ -1,10 +1,8 @@
 """
 The morning report — the conscious focus inside the peripheral field memories.
 
-The user: *"creates a summary of user preferred news for the morning report (not
-prediction, 'the morning report'). The report will contain other things as
-well. This is the conscious focus that is inside the peripheral field
-memories."*
+A summary of the news the person prefers, together with the other things a
+morning needs, in one place. Not a prediction: "the morning report".
 
 ⚠️ THIS IS NOT THE PREDICTION, AND THE DIFFERENCE IS THE POINT. The prediction
 is the subconscious touchstone — a superposition collapsing to the likeliest,
@@ -12,24 +10,22 @@ felt as silence when the day matches it. The report is the opposite kind of
 object: explicit, assembled, and read. One is the blur at the edge; the other
 is the small bright centre.
 
-⚠️ SIX OF ITS SEVEN SECTIONS ALREADY EXISTED AND HAD NO READER. Reflection,
-prediction, reminders, reading, parked questions and health were all being
-written every night and shown to nobody. That is the fourth instance of this
-shape in three days, after the activity log, the catalogue and the book title.
-So this is less a new feature than the reader four finished subsystems have
-been waiting for. Only the news section (`world:`) is genuinely new, and it is
-absent until the feed reader is built.
+⚠️ IT IS A READER FOR THINGS ALREADY WRITTEN. Reflection, prediction,
+reminders, reading, parked questions and health are each kept by their own
+module, and without a reader they would be written every night and shown to
+nobody. Most sections here assemble what those subsystems already hold; the
+news (`world:`) is the one with a source of its own.
 
 ⚠️ COMPOSED IN CODE, NOT WRITTEN BY THE MODEL. Assembling stored facts is the
 conscious layer's job; asking a 3B to write a
 daily briefing is asking the subconscious to do it. Nothing here calls an LLM.
 
-⚠️ BUILT LIVE, NOT STORED, and that is a deliberate departure from "consolidate
-produces it in the night". A stored report is a memory asserting yesterday's
+⚠️ BUILT LIVE, NOT STORED. A stored report is a memory asserting yesterday's
 counts are today's — the same staleness that keeps `health` computed rather
 than indexed. Everything here is cheap enough to assemble on demand, so it is
-always true when read. When the news section arrives it will be the one part
-prepared in sleep, because fetching is what cannot happen on demand.
+always true when read. The news is the one part prepared ahead: feeds are read
+on a timer, overnight included (`server._fetch_world_now`), because fetching
+is what cannot happen on demand.
 
 ⚠️ A SECTION WITH NOTHING IN IT SAYS NOTHING. No filler, no "no updates today".
 A report that invents a line to look complete is the same failure as a memory
@@ -114,13 +110,11 @@ def _news(db_path=None):
             conn.close()
     except Exception:                                    # noqa: BLE001
         return []
-    # ⚠️ AN AGE FILTER, BECAUSE THERE WAS NONE. This took the newest rows
-    # whatever their date and printed them under "My report for Saturday 3
-    # October" — reporting items , fifteen days earlier, as
-    # today's, with no date attached. The cause was that `world.fetch_all`
-    # had no caller, but the report should have refused to call them news
-    # regardless: a briefing that is wrong about the day is worse than one
-    # that says it has nothing.
+    # ⚠️ AN AGE FILTER. Taking the newest rows whatever their date would print
+    # two-week-old items under "My report for Saturday", as today's and with no
+    # date attached — which is what the store holds whenever the feeds stop
+    # being read. A briefing that is wrong about the day is worse than one that
+    # says it has nothing.
     from . import config as _C
     from . import vault
     cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(
@@ -291,20 +285,19 @@ def _asking(db_path=None):
 def _expected(db_path=None):
     """The day's prediction — one line, if there is one and it is trusted.
 
-    ⚠️ `may_influence()` is the existing gate and it stays. Measured
-     the record supported ZERO predictions, and the day-prediction
-    study came in at −0.010 against persistence. A briefing that states a
-    prediction the system itself does not trust is worse than one that omits
-    it.
+    ⚠️ `may_influence()` is the gate and it stays. The day-prediction study
+    came in at −0.010 against persistence, and until enough predictions have
+    resolved the record supports none. A briefing that states a prediction the
+    system itself does not trust is worse than one that omits it.
     """
     try:
         from . import predict
         # ⚠️ `may_influence` RETURNS (bool, reason), AND A NON-EMPTY TUPLE IS
-        # ALWAYS TRUTHY. `if not may_influence(...)` never fired, so the gate
-        # that exists to stop Mati acting on a bad model of the person was
-        # silently bypassed and the report printed its scoreboard anyway —
-        # at a 0.067 hit rate against a 0.60 floor. The gate is the whole
-        # reason prediction "ships inert"; unpacking it is not optional.
+        # ALWAYS TRUTHY. `if not may_influence(...)` would never fire, silently
+        # bypassing the gate that exists to stop Mati acting on a bad model of
+        # the person — and the report would print its scoreboard anyway, at a
+        # 0.067 hit rate against a 0.60 floor. The gate is the whole reason
+        # prediction ships inert; unpacking it is not optional.
         allowed, why = predict.may_influence(db_path=db_path)
         if not allowed:
             return []
@@ -399,14 +392,13 @@ def text(db_path=None, service=None, when=None):
 def block(db_path=None, service=None):
     """The report wrapped for the prompt. Derived, so `<computed>`.
 
-    ⚠️ NOTHING CALLS THIS, AND NOTHING SHOULD. Putting the report in the
-    prompt is what made a 3B retype it — 4/4 news truncations completed out
-    of nothing and 4/4 sources dropped. The report is
-    EMITTED now: `ollin.turn` takes `text()` and streams it through
-    `on_chunk`. This wrapper is kept only because `<computed>` framing is the
-    right shape if the report ever needs to be *referred to* rather than
-    shown — it is not the way to show it. See `Mati/test_report.py`, which
-    fails if `block()` reappears in `turn`.
+    ⚠️ NOTHING CALLS THIS, AND NOTHING SHOULD. A report put in the prompt gets
+    retyped by a 3B — news truncations completed out of nothing and sources
+    dropped, 4 times out of 4. The report is EMITTED: `ollin.turn` takes
+    `text()` and streams it through `on_chunk`. This wrapper is kept only
+    because `<computed>` framing is the right shape if the report ever needs
+    to be *referred to* rather than shown — it is not the way to show it, and
+    it must not reappear in `turn`.
     """
     t = text(db_path=db_path, service=service)
     if not t:
@@ -435,15 +427,21 @@ def asks_for_report(text_in):
 # Politeness and framing that can surround a request without adding to it.
 _FILLER = re.compile(
     r"\b(please|can|could|would|will|you|give|get|show|tell|read|me|my|the|a|"
-    r"an|is|are|was|what|whats|s|for|today|this|morning|mati|hi|hey|hello|"
+    r"an|is|are|was|what|whats|s|for|today|this|morning|hi|hey|hello|"
     r"good|ok|okay|so|and|then|now|just|about|of|on|it|to|do|got|have|any)\b",
     re.I)
 
 
 def _substantive(text_in):
-    """Is there a word here that is not politeness or framing?"""
-    return bool(re.sub(r"[^a-z0-9]+", "",
-                       _FILLER.sub(" ", (text_in or "").lower())))
+    """Is there a word here that is not politeness or framing?
+
+    ⚠️ The assistant's own name counts as framing — "morning report, Mati" —
+    and it is the name this person gave it, read at call time.
+    """
+    from . import config as C
+    t = _FILLER.sub(" ", (text_in or "").lower())
+    t = re.sub(r"\b" + re.escape(C.assistant_name().lower()) + r"\b", " ", t)
+    return bool(re.sub(r"[^a-z0-9]+", "", t))
 
 
 def without_request(text_in):

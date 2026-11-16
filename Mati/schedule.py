@@ -17,7 +17,7 @@ TWO KINDS OF THING TO SAY, and they do not deserve the same permission:
     finding    Mati went and looked something up — usually after you corrected
                it twice and it deferred. It waits for the TOPIC TO COME UP.
 
-WHY A FINDING WAITS FOR THE TOPIC (user). Delivering it at the top
+WHY A FINDING WAITS FOR THE TOPIC. Delivering it at the top
 of the next conversation is still an interruption, just a rescheduled one: you
 say hello and Mati leads with something you were not thinking about. Held
 until you raise the subject yourself, the same sentence arrives as an answer
@@ -108,9 +108,9 @@ DEFAULT_CONSENT = {
     # route out — `pending(user_text=...)` matching its topic against what the
     # person just said — and `_maybe_announce` passes no user_text, so a
     # question cannot be raised unprompted no matter what any consent says.
-    # The key existed briefly and was removed on measuring that turning it ON
-    # changed nothing: a setting that cannot take effect is worse than absent,
-    # because someone will one day set it and believe it did something.
+    # A key for it would change nothing when turned ON, and a setting that
+    # cannot take effect is worse than absent, because someone will one day
+    # set it and believe it did something.
     # Whether Mati may form questions for the person at all. ON by default —
     # asking is how it learns from the one source on the device that actually
     # knows anything — but the person can say stop and it stops.
@@ -121,11 +121,10 @@ DEFAULT_CONSENT = {
 
 def _conn(db_path=None):
     from . import bridge
-    # ⚠️ A BUSY TIMEOUT, BECAUSE THIS WRITES WHILE OTHERS READ. Measured
-    # on the live server: `say_later` raised
-    # "database is locked" twice from the idle worker, losing two
-    # questions Mati had formed for the user. sqlite's default is 5s and
-    # every other writer in this codebase already asks for 10-30.
+    # ⚠️ A BUSY TIMEOUT, BECAUSE THIS WRITES WHILE OTHERS READ. With sqlite's
+    # 5s default, `say_later` from the idle worker can fail with "database is
+    # locked" and lose what Mati meant to raise. Every other writer in this
+    # codebase asks for 10-30s.
     conn = sqlite3.connect(db_path or bridge.NOTES_DB_PATH, timeout=30)
     conn.executescript(_DDL)
     # CREATE TABLE IF NOT EXISTS does not add columns to a table that already
@@ -207,17 +206,16 @@ def read_time(text, now=None):
                                                  microsecond=0)
         return time.mktime(when.timetuple())
 
-    # ⚠️ A WEEKDAY AND A DAY OF THE MONTH WERE BOTH UNREADABLE, and they are
-    # the two commonest ways to schedule a bill. The user: *"I asked Mati to
-    # remind me to pay a bill, but it never reminded me."* Measured
-    # :
+    # ⚠️ A WEEKDAY AND A DAY OF THE MONTH, the two commonest ways to schedule a
+    # bill:
     #
-    #   "remind me to pay a bill on Friday"     -> ('pay a bill on Friday', None)
-    #   "remind me to pay the rent on the 1st"  -> (..., None)
+    #   "remind me to pay a bill on Friday"
+    #   "remind me to pay the rent on the 1st"
     #
-    # `None` means the caller refuses and stores NOTHING, so the reminder
-    # never existed to fire. The refusal was correct — approximating a time is
-    # worse — but the parser simply could not read ordinary English.
+    # Unreadable, each would come back with no time, and the caller then
+    # refuses and stores NOTHING — the reminder would never exist to fire. The
+    # refusal is correct (approximating a time is worse); the parser has to be
+    # able to read ordinary English.
     hour = _NAMED.get(next((p for p in _NAMED if p in low), ""), 9)
 
     m = _WEEKDAY.search(low)
@@ -402,19 +400,17 @@ def pending(now=None, db_path=None, user_text=None, include_held=False):
             (now,)).fetchall()
     finally:
         conn.close()
-    # ⚠️ SEALING `to_say` MADE THIS COST 41 SECONDS. Each value is decrypted by
-    # its own openssl subprocess — 59ms — and this decrypted BOTH columns of
-    # every candidate row before deciding which ones it wanted. Measured
-    # : 690 undelivered and due rows, so ~41s, against a client
-    # timeout of 10. That is the "timed out" the terminal was reporting, and it
-    # was a regression introduced with the sealing.
+    # ⚠️ DECRYPT ONLY WHAT IS NEEDED. Each sealed value is its own openssl
+    # subprocess, so opening both columns of every candidate row before
+    # deciding which ones are wanted would take tens of seconds with a few
+    # hundred rows due — far past a client's timeout.
     #
-    # `notes._open_cached` exists for exactly this — it is what took `recall`
-    # from 101s to 73ms at 8.9k notes. Reused rather than reinvented.
+    # `notes._open_cached` exists for exactly this, and is reused rather than
+    # reinvented.
     #
     # And the BODY is opened only for rows that survive the topic gate: a
     # finding waiting on a subject that has not come up is never read aloud, so
-    # decrypting it was work done to throw away.
+    # decrypting it would be work done to throw away.
     from .notes import _open_cached
 
     def _open(v):

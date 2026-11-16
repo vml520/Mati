@@ -1,13 +1,12 @@
 """
 Condensing a long memory so it FITS, instead of cutting it off.
 
-The user: *"Rather than cut out possibly relevant information, have the verbatim
-be summarized to fit the limit, being sure to keep accuracy and clarity in mind
-first."*
+Rather than cut out possibly relevant information, a long verbatim is
+summarised to fit the limit — accuracy and clarity first.
 
 ⚠️ TRIMMING THROWS AWAY THE END, AND THE END IS OFTEN THE POINT. A transcript
 cut at 1200 characters loses whatever was concluded — which in a correction is
-the correction, and in an answer is the answer. `…[trimmed]` was honest about
+the correction, and in an answer is the answer. `…[trimmed]` is honest about
 having done it and that is not the same as not doing it.
 
 ⚠️ COMPUTED OFF THE TURN, NEVER DURING ONE. Summarising costs an LLM call
@@ -157,15 +156,15 @@ def status(db_path=None):
             "SELECT COUNT(*) FROM notes WHERE digest IS NOT NULL").fetchone()[0]
         # ⚠️ LENGTH() MEASURES THE CIPHERTEXT, NOT THE MEMORY. A sealed value
         # is the prefix plus base64 plus a MAC — roughly 1.4x the plaintext —
-        # so counting on it reported 13 long verbatims where there were 2.
-        # A number that overstates the backlog by 6x would have someone
-        # hunting a stalled queue that was not stalled.
+        # so counting on it overstates the backlog several times over (13 long
+        # verbatims where there are 2), and has someone hunting a stalled
+        # queue that is not stalled.
         #
         # The sealed length is still a SOUND PRE-FILTER: ciphertext is never
         # shorter than plaintext, so anything under the threshold sealed is
         # certainly under it open. Only the candidates are decrypted, which
-        # keeps this from becoming the 101s full-store decryption that
-        # `recall` once was.
+        # keeps this from becoming a full-store decryption — 101s on a large
+        # store.
         rows = conn.execute(
             "SELECT verbatim FROM notes WHERE verbatim IS NOT NULL "
             "AND LENGTH(verbatim) > ?", (NEEDS_DIGEST_OVER,)).fetchall()

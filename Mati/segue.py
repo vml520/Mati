@@ -1,9 +1,9 @@
 """
 One thing Mati may add after it has answered, chosen by what matters most.
 
-The user: "build the segue after generation, filtered by importance to user.
-Urgent information — something Mati knows the user would want to know right
-away — should trump current context."
+The segue is built after generation and filtered by importance to the person.
+Urgent information — something Mati knows the person would want to know right
+away — trumps the current context.
 
 AFTER GENERATION, DELIBERATELY. A block sent before generation becomes material
 the model writes *from*, and it will work the offer into the answer whether or
@@ -12,18 +12,19 @@ dropped whole, which is what makes "silence is the default" enforceable rather
 than aspirational.
 
 ⚠️ URGENCY IS NOT INFERRED, AND TODAY IT CANNOT BE. "Something Mati knows the
-user would want to know right away" is only honestly true of things the person
-ASKED to be told — a reminder they set. Mati cannot yet look at 324 episodes
-and work out what would matter to someone; `predict.may_influence()` is the gate
-for ever letting it try, and it is False (0 predictions resolved of the 10 it
-needs). So tier 1 is recorded intent, not judgement. When the gate opens, that
-is the place to widen it, and widening it is a deliberate act.
+person would want to know right away" is only honestly true of things the
+person ASKED to be told — a reminder they set. Mati cannot yet look at its
+episodes and work out what would matter to someone; `predict.may_influence()`
+is the gate for ever letting it try, and it stays closed until enough
+predictions have resolved. So tier 1 is recorded intent, not judgement. When
+the gate opens, that is the place to widen it, and widening it is a deliberate
+act.
 
 THE TIERS, highest first:
 
   1. URGENT      a reminder that has come due. Already exempt from the topic
                  gate in `schedule.pending`, which is precisely what "trumps
-                 current context" means, and it was already true.
+                 current context" means.
   2. WAITING     a finding whose subject the person has just raised.
   3. CONNECTION  something held that this turn touches. The segue proper.
 
@@ -32,17 +33,11 @@ by the model. A generated segue is an invitation to invent a connection, and the
 one invariant this must keep is that every offer can produce the note it came
 from. Determinism is cheaper than a guard against confabulation, and stronger.
 
-⚠️ IT JUDGES WHAT SURFACED. IT DOES NOT GO LOOKING. The user, on the first
-build: "That is not what humans do. We don't look at every memory to find
-relevance. The relevance brings up the memory. Then we choose if the memory is
-of any consequence. All of this happens in milliseconds."
-
-They are describing the architecture this whole project rests on, and the first
-version violated it. It ran its own `bridge.search` over the store — a scan, to
-compute relevance that the field had ALREADY computed earlier in the same turn.
-: `bridge.search` costs 27.4s cold and 254ms warm, and
-`choose()` added ~965ms on top by re-running the POS tagger once per candidate.
-Roughly a second a turn, to redo work that had been done for free.
+⚠️ IT JUDGES WHAT SURFACED. IT DOES NOT GO LOOKING. People do not look at every
+memory to find relevance: the relevance brings up the memory, and then they
+choose whether the memory is of any consequence, in milliseconds. A scan of
+the store here would recompute relevance that was ALREADY computed earlier in
+the same turn, for about a second a turn.
 
 Surfacing fires once at the top of every turn, before the reply exists. THAT is
 "the relevance brings up the memory". What is left for this module is the second
@@ -50,24 +45,20 @@ half — CONSEQUENCE: of the few things that came up, is any of them worth sayin
 So `choose()` takes what surfaced and never queries. Nothing surfaced means
 silence, which is the honest answer.
 
-⚠️ WHICH CHANNEL SURFACES THEM CHANGED, AND THE ARCHITECTURE DID NOT. This first
-consumed `bridge.recall`, the FIELD path, because that is where surfacing was
-supposed to happen. Measured  on a validated harness: field 4/111 =
-0.036 against chance 0.009, lexical 93/111 = 0.838. The field channel is at
-chance, so a segue built on it offers near-random connections with a citation
-attached — which is worse than none, because the citation makes it look
-checked.
+⚠️ THE LEXICAL SURFACING, NOT THE FIELD'S. On a validated harness field
+addressing scores 4/111 = 0.036 against chance 0.009, and lexical 93/111 =
+0.838. A segue built on the field channel would offer near-random connections
+with a citation attached — worse than none, because the citation makes it look
+checked. So it consumes the lexical surfacing that `turn()` already performs:
+still one surfacing, still before judgement, still never a query of its own.
+See `ARCHITECTURE.md`.
 
-It now consumes the lexical surfacing that `turn()` already performs. Still one
-surfacing, still before judgement, still never a query of its own. Only the
-channel is different. See `ARCHITECTURE.md`.
-
-⚠️ THE STUDY IS BUILT IN. Its design requires the arm to be
-assigned and logged AT OFFER TIME — deciding afterwards which segues "were
-really apposite" is the freedom preregistration removes. `offer()` therefore
-takes an arm and records it, and the control arm is a real, held, topically
-DISTANT memory rather than no segue at all: a polite person follows almost any
-offer, so take-up without a matched control measures manners, not relevance.
+⚠️ THE STUDY IS BUILT IN. Its design requires the arm to be assigned and
+logged AT OFFER TIME — deciding afterwards which segues "were really apposite"
+is the freedom preregistration removes. `offer()` therefore takes an arm and
+records it, and the control arm is a real, held, topically DISTANT memory rather
+than no segue at all: a polite person follows almost any offer, so take-up
+without a matched control measures manners, not relevance.
 """
 
 from __future__ import annotations
@@ -89,24 +80,20 @@ DISTANT = "matched-distant"
 
 TABLE = "segue_offers"
 
-# ⚠️ RARITY IS NOT ABOUTNESS, AND HERE IT INVERTS. Written first as "top
-# tercile by IDF", measured  on "I was reading about the calmecac
-# last night":
+# ⚠️ RARITY IS NOT ABOUTNESS, AND HERE IT INVERTS. In "I was reading about the
+# calmecac last night":
 #
-#     calmecac   idf 5.24     <- the subject, and BELOW the 7.84 tercile floor
-#     stuck      idf MAX      <- absent from the store, so it ranked FIRST
+#     calmecac   idf 5.24     <- the subject, BELOW a top-tercile IDF floor
+#     stuck      idf MAX      <- absent from the store, so it would rank FIRST
 #
 # A word missing from the store gets `_IDF_MAX` by fallback. For a CONNECTION
 # that is self-defeating: the term has to appear in a held note for there to be
-# anything to connect to, so ranking by absence selected precisely the words
+# anything to connect to, so ranking by absence selects precisely the words
 # that cannot connect. The filter could only ever fire on coincidence.
 #
-# This is the second time on this codebase — `_focus` picked "tweaked" and
-# "let'" over "calmecac" for the same reason.
-#
-# ⚠️ AND FOR A CONNECTION, RARITY IS BACKWARDS ALTOGETHER. Replacing the
-# tercile with "above median IDF" still returned nothing, because the store's
-# IDF distribution is dominated by words appearing in ONE note:
+# ⚠️ AND FOR A CONNECTION, RARITY IS BACKWARDS ALTOGETHER. Even an "above
+# median IDF" floor returns nothing, because a store's IDF distribution is
+# dominated by words appearing in ONE note:
 #
 #     median  7.44        max 7.84 (= ln(3090/1), a word seen once)
 #     calmecac    5.24    tlamatinime  4.07
@@ -183,7 +170,7 @@ def _stems(text):
     """Cheap stems. No tagger — candidates do not need parsing, only matching.
 
     The tagger is run ONCE, on the person's turn, to find what it is about.
-    Running it per candidate is what made the first version cost ~965ms.
+    Running it per candidate would cost most of a second a turn.
     """
     return {schedule._stem(w)
             for w in re.findall(r"[a-z0-9'\-]+", (text or "").lower())
@@ -316,9 +303,9 @@ def choose(user_text, reply, surfaced=None, now=None, db_path=None,
 
 
 # ⚠️ THE STORAGE FORMAT IS NOT SPEECH. An episode body is written
-# "I was asked: <them>\nI said: <Mati>" (see `ollin.py`), and `line` used to
-# quote it whole — so a recollection came out as "That connects to something I
-# hold: I was asked: Hello Mati I said: I am here." The narration wrapper is
+# "I was asked: <them>\nI said: <Mati>" (see `ollin.py`), and quoting it whole
+# would have a recollection come out as "That connects to something I hold: I
+# was asked: Hello Mati I said: I am here." The narration wrapper is
 # bookkeeping; Mati's own half is the thing worth saying.
 #
 # ⚠️ STILL VERBATIM. This selects a span of the stored text, it does not
@@ -326,26 +313,19 @@ def choose(user_text, reply, surfaced=None, now=None, db_path=None,
 _EPISODE = re.compile(r"\bI was asked:\s*(?P<asked>.*?)\s*"
                       r"\bI said:\s*(?P<said>.*)\s*$", re.S)
 
-# ⚠️ THE CONNECTION TIER IS NO LONGER SPOKEN, so there are no frames for it.
+# ⚠️ THE CONNECTION TIER IS NOT SPOKEN, so there are no frames for it.
 #
-# Four were added on 29 September because the user said *"the recollections sound
-# canned because they start and end the same"* — one fixed opener and a hard
-# character cut. That was the right reading of the symptom and the wrong level
-# to fix it at. The user:
+# A recollection appended to a reply reads as canned however it is worded,
+# because announcing it at all is the mistake. Memories are passive inputs:
+# they keep personhood intact while carrying what experience has taught, and a
+# memory is material an argument is built from, not a sentence appended to one.
+# No wording makes a recitation into an input.
 #
-#     "They are supposed to be passive inputs, to maintain integrity of
-#      personhood while providing knowledge gained through experience… the
-#      way it is implemented now, in the response, is not correct."
-#
-# A connection read as canned because **announcing it at all was the mistake**.
-# A memory is material an argument is built from, not a sentence appended to
-# one. No wording makes a recitation into an input.
-#
-# ⚠️ THE OFFER STILL HAPPENS AND IS STILL LOGGED. `choose` is unchanged, so
-# the field's judgement about what connects is recorded — `info['segue']`
-# carries the tier and the arm, and `record()` still writes the row. What is
-# gone is Mati saying it out loud. That keeps the study's data collectable;
-# see the note at the head of this file.
+# ⚠️ THE OFFER STILL HAPPENS AND IS STILL LOGGED. `choose` runs as before, so
+# the judgement about what connects is recorded — `info['segue']` carries the
+# tier and the arm, and `record()` still writes the row. What does not happen is
+# Mati saying it out loud. That keeps the study's data collectable; see the
+# note at the head of this file.
 
 
 def _excerpt(body):
@@ -390,15 +370,13 @@ def line(offer):
     if offer["tier"] == URGENT:
         return f"Before you go — you asked me to tell you: {body}"
     if offer["tier"] == WAITING:
-        # ⚠️ NO "Since it came up —" PREFIX. The user: *"it is hardly close to
-        # the subject of the conversation."* And they are right about the
-        # mechanism, not just the phrasing: this tier is a SCHEDULED delivery
+        # ⚠️ NO "Since it came up —" PREFIX. This tier is a SCHEDULED delivery
         # from `schedule.pending`, selected because it was DUE, not because it
-        # relates to anything being discussed. The prefix claimed a connection
-        # to the current topic that was never computed — so it was wrong by
-        # construction rather than wrong occasionally.
+        # relates to anything being discussed. A prefix claiming a connection
+        # to the current topic would be claiming one that was never computed —
+        # wrong by construction rather than wrong occasionally.
         #
-        # ⚠️ Do not restore it, and do not replace it with another connective
+        # ⚠️ Do not add one, and do not replace it with another connective
         # ("speaking of", "that reminds me") — every one of them asserts the
         # same relevance this tier cannot establish. A thing the person asked
         # to be told can simply be said.

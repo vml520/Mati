@@ -5,30 +5,28 @@ A piece of writing Mati is helping with, held between turns.
     python3 -m Mati.drafts --open "title"  start or resume one
     python3 -m Mati.drafts --close
 
-⚠️ WHY THIS EXISTS. The user: *"Mati should act more like an
-editor than a ghostwriter, but at the same time hold the document in memory
-until completed. Right now I have to remind Mati of the project before they
-can continue helping me."*
+⚠️ WHY THIS EXISTS. Mati should act more like an editor than a ghostwriter,
+and hold the document in mind until it is finished — without the person
+having to remind it of the project before it can carry on helping.
 
-That last sentence is the whole defect, and it is not about memory in the
-field sense: every turn simply started cold about the draft. There was
-nowhere for "the thing we are working on" to live.
+That is not about memory in the field sense: without this, every turn simply
+starts cold about the draft. There would be nowhere for "the thing we are
+working on" to live.
 
 ⚠️ MODELLED ON THE ACCOUNTANT, DELIBERATELY. `budgets` is the same shape — a
 persistent, user-owned record that outlives a turn — and its integration
-carries a lesson written in its own comments: the write path must be ACTED ON
-BEFORE the read block is built, or a request is recognised, answered, and
-stores nothing. `budgets: []` after weeks of being told about budgets.
+carries the lesson: the write path must be ACTED ON BEFORE the read block is
+built, or a request is recognised, answered, and stores nothing.
 
 ⚠️ THE ONE THING THE ACCOUNTANT DOES NOT HAVE IS A POINTER. Budgets are all
 equal; there is no "the one in hand". A draft needs exactly that, because
-"I have to remind Mati of the project" IS the absence of it.
+having to remind Mati of the project IS the absence of it.
 
-⚠️⚠️ THE TEXT DOES NOT GO IN THE PROMPT, AND THAT IS NOT A COMPROMISE.
-Measured: a 4,096-token window, ~696 for the system prompt, 160 for the
-reply, leaving ~3,240 for memories, charter, day log and world. A
-1,500-word draft is ~2,025 tokens and would crowd out the things that make
-Mati itself; a 3,000-word draft does not fit at all.
+⚠️⚠️ THE TEXT DOES NOT GO IN THE PROMPT, AND THAT IS NOT A COMPROMISE. A
+4,096-token window, ~696 for the system prompt and 160 for the reply leave
+~3,240 for memories, charter, day log and world. A 1,500-word draft is ~2,025
+tokens and would crowd out the things that make Mati itself; a 3,000-word
+draft does not fit at all.
 
 ⭐ An EDITOR works on a passage with the shape of the whole in mind. A
 GHOSTWRITER needs the entire text because it is generating the next
@@ -195,10 +193,8 @@ def annotate(anchor_text, note, db_path=None):
     A quoted fragment can be looked for, and when it is gone it is VISIBLY
     gone.
 
-    ⚠️ AND THAT IS THE LESSON FROM THIS PROJECT'S OWN NOTES. The audit found
-    a `MEMORY.md` line that had been wrong for six weeks and sent a diagnosis
-    the wrong way — an annotation whose subject had moved and which went on
-    asserting. A stale anchor must SAY it is stale.
+    ⚠️ AN ANNOTATION WHOSE SUBJECT HAS MOVED GOES ON ASSERTING. A stale anchor
+    must SAY it is stale.
     """
     from . import vault
     cur = current(db_path)
@@ -418,12 +414,11 @@ def note_from(text_in, db_path=None):
 def act(text_in, db_path=None):
     """Open or close a draft because the person said so. A sentence, or None.
 
-    ⚠️ ACTED ON BEFORE THE BLOCK IS BUILT, which is the accountant's lesson
-    written in its own comments: a read block alone means a request is
-    recognised, answered, and stores NOTHING. `budgets: []` after weeks of
-    being told about budgets. The same shape here would be Mati agreeing to
-    work on an essay and forgetting it by the next turn — the exact complaint
-    this module exists for.
+    ⚠️ ACTED ON BEFORE THE BLOCK IS BUILT — the accountant's lesson: a read
+    block alone means a request is recognised, answered, and stores NOTHING.
+    The same shape here would be Mati agreeing to work on an essay and
+    forgetting it by the next turn, which is exactly what this module exists
+    to prevent.
 
     ⚠️ A LITERAL TRIGGER, NOT A JUDGEMENT. Opening a draft is a small,
     reversible act, but a false positive would hijack a conversation into

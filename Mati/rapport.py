@@ -1,12 +1,12 @@
 """
 The exchanges that should land the same way every time.
 
-⚠️ MEASURED ABSENT. The user: *"we are creatures of habit, we repeat things like
-catch phrases, quotes, greetings, and we expect the same response to those
-repeated things."* Across 237 turns with a stored reply, the agreement between
-answers to the SAME question was **0.06** — where 1.00 is identical wording and
-0.00 is no shared content words. "hello", asked five times, got five answers
-with almost nothing in common.
+People are creatures of habit: they repeat greetings, catch phrases and
+questions, and expect the same response to the same thing. Left to the model
+they do not get it. Measured across 237 turns with a stored reply, answers to
+the SAME question agree at **0.06** — where 1.00 is identical wording and 0.00
+is no shared content words. "hello", asked five times, gets five answers with
+almost nothing in common.
 
 That is not variety. It is the absence of habit.
 
@@ -18,41 +18,40 @@ come from the model. It has to come from a stored response.
 
 WHAT THIS MAY AND MAY NOT COVER, from the same measurement:
 
-  FIXED — greetings, "who are you", "what is my name", "this is the user".
+  FIXED — greetings, "who are you", "what is my name", "this is <name>".
       Answered here. About 7.5% of all turns.
   STORE-DEPENDENT — "how is your memory?", "what is the number I asked you to
       remember?", "what did you read about the tlamatinime?". NEVER answered
-      here. Those scored 0.04 agreement and that is CORRECT: the honest answer
+      here. Those score 0.04 agreement and that is CORRECT: the honest answer
       differs from day to day, and freezing it would be the failure.
   TIME-DEPENDENT — "what day is today?". Not answered here either; it is cheap
       to compute and wrong to cache.
 
 ⚠️ THE ANSWERS ARE TEMPLATES FILLED FROM AUTHORITATIVE SOURCES, NEVER LITERALS.
-"Your name is the user" hardcoded would become a lie the day the profile changes.
-Everything below reads the profile, the clock or the charter at the moment of
-answering, so a rapport reply is as current as the thing it reports.
+A name written into an answer would become a lie the day the profile changes.
+Everything below that can change reads the profile or the clock at the moment
+of answering, so a rapport reply is as current as the thing it reports.
 
 ⚠️ AND IDENTICAL IS ALSO WRONG. A person does not repeat themselves word for
 word; 1.00 would read as a recording. Greetings vary with the hour, because
 that is a real reason to answer differently and the person shares it. Identity
 answers do not vary, because they are facts.
 
-⚠️ BUILT IN SLEEP, NOT DECIDED IN THE MOMENT. The user: *"the rapport isn't
-something that happens in the moment. It should be part of the prediction."*
-The first version matched hand-written patterns at runtime — which meant I had
-decided what Mati says and to whom. `build()` now runs at sleep and writes the
-day's table FROM THE RECORD: the exchanges this person actually repeats, not
-the ones I guessed they would. `match()` is a lookup and nothing else.
+⚠️ BUILT IN SLEEP, NOT DECIDED IN THE MOMENT. Rapport is part of the
+prediction, not something that happens in the moment. Patterns written by hand
+and matched at runtime would mean the code had decided what Mati says and to
+whom. `build()` runs at sleep and writes the day's table FROM THE RECORD: the
+exchanges this person actually repeats, not the ones anyone guessed they would.
+`match()` is a lookup and nothing else.
 
 **Rapport is therefore earned, and a fresh install has none.** That is correct
 rather than a gap — you do not have rapport with a stranger, and a settled
 answer to a question nobody has asked twice would be an invention.
 
-⚠️ HELD FOR THE WHOLE DAY. The user: *"if something happens against the
-prediction, the prediction is held until the end of the day, because it may
-just be delayed."* The table is stamped with the day it was built for and is
-not rebuilt or revised while that day runs. An exchange that has not come up
-yet has not failed to come up.
+⚠️ HELD FOR THE WHOLE DAY. Something that happens against the prediction does
+not revise it before the day is out, because it may just be delayed. The table
+is stamped with the day it was built for and is not rebuilt or revised while
+that day runs. An exchange that has not come up yet has not failed to come up.
 """
 
 from __future__ import annotations
@@ -67,9 +66,25 @@ from datetime import datetime
 # anchored at both ends and the turn is length-capped.
 MAX_WORDS = 6
 
-_GREETING = re.compile(
-    r"^\s*(?:hi|hey|hello|good\s+(?:morning|afternoon|evening)|"
-    r"morning|evening)\b[\s,!.]*(?:mati)?[\s,!.]*$", re.I)
+# ⚠️ THE GREETING CARRIES THE ASSISTANT'S OWN NAME, NOT THE PRODUCT'S. The
+# name is the person's choice, so "hello mati" is a greeting only to an
+# assistant called Mati. Built at call time and cached on the name, so a
+# rename takes effect without a restart — the same rule as
+# `smalltalk._vocative`.
+_GREETING_CACHE = {}
+
+
+def _greeting():
+    from . import config as C
+    name = C.assistant_name()
+    got = _GREETING_CACHE.get(name)
+    if got is None:
+        got = re.compile(
+            r"^\s*(?:hi|hey|hello|good\s+(?:morning|afternoon|evening)|"
+            r"morning|evening)\b[\s,!.]*(?:" + re.escape(name)
+            + r")?[\s,!.]*$", re.I)
+        _GREETING_CACHE[name] = got
+    return got
 
 _WHO_ARE_YOU = re.compile(
     r"^\s*(?:so\s+)?who\s+(?:are|r)\s+you\s*\??\s*$", re.I)
@@ -78,10 +93,10 @@ _WHO_AM_I = re.compile(
     r"^\s*(?:who\s+am\s+i|what(?:'s| is)\s+my\s+name)\s*\??\s*$", re.I)
 
 # ⚠️ THE LEAD-IN IS CASE-INSENSITIVE, THE NAME IS NOT — the same split
-# `speaker._TELLS` makes, and for the same reason. Without `(?i:)` on the
-# phrase, "This is the user" failed while "this is the user" matched, which is the
-# capitalisation a person actually types. Requiring the capital on the NAME is
-# what keeps "i am tired" from being read as an introduction.
+# `speaker._TELLS` makes, and for the same reason. A case-sensitive lead-in
+# would miss "This is Sam" and accept only "this is Sam", when the capital is
+# what a person actually types. Requiring the capital on the NAME is what keeps
+# "i am tired" from being read as an introduction.
 _ITS_ME = re.compile(
     r"(?i:^\s*(?:it'?s|this\s+is|i\s+am|i'?m)\s+)"
     r"([A-Z][a-z]{1,20})\s*[.!]?\s*$")
@@ -123,13 +138,13 @@ def ensure(db_path=None):
                     made_at  TEXT
                 )""")
         # ⚠️ THE QUESTION IS THE PERSON'S OWN WORDS AND MUST NOT SIT IN THE
-        # CLEAR — but it was also the PRIMARY KEY, looked up by equality, and
-        # `vault.seal` is SALTED, so a sealed value can never match itself.
-        # Sealing it alone silently breaks every lookup: `match` finds nothing,
-        # returns None, and the model answers instead — which looks exactly
-        # like "not learned yet" and nothing reports a fault.
+        # CLEAR — but a lookup by equality cannot use it as the key, because
+        # `vault.seal` is SALTED and a sealed value never matches itself.
+        # Sealing a key-by-text silently breaks every lookup: `match` finds
+        # nothing, returns None, and the model answers instead — which looks
+        # exactly like "not learned yet" and nothing reports a fault.
         #
-        # So the lookup moves to a hash and the text is sealed beside it. Same
+        # So the lookup is by hash and the text is sealed beside it. Same
         # pattern as `gate_log.text_hash`, and for the same reason.
         cols = {r[1] for r in conn.execute(f"PRAGMA table_info({TABLE})")}
         if "qhash" not in cols:
@@ -180,7 +195,7 @@ def _kind(t):
     has a stable answer is a safety rule; deciding that this person says
     "hello" is an observation, and observations belong to the record.
     """
-    if _GREETING.match(t):
+    if _greeting().match(t):
         return "greeting"
     if _WHO_ARE_YOU.match(t):
         return "who_are_you"
@@ -223,8 +238,8 @@ def build(db_path=None, now=None, min_seen=2, verbose=False):
                 raw = " ".join(m.group(1).split())
                 # ⚠️ CLASSIFY THE ORIGINAL, KEY ON THE NORMALISED FORM. `_kind`
                 # requires a CAPITAL on a name — that is what separates "I am
-                # The user" from "i am tired" — and normalising first lowercases
-                # it away, so introductions could never be learned at all.
+                # Sam" from "i am tired" — and normalising first lowercases it
+                # away, so introductions could never be learned at all.
                 seen[_normalise(raw)] += 1
                 first_seen.setdefault(_normalise(raw), raw)
         rows = [(q, _kind(first_seen.get(q, q)), n)
@@ -253,9 +268,12 @@ def _answer(kind, db_path=None, now=None, said=None):
         return (f"Good {_part_of_day(now)}"
                 + (f", {who}." if who else ".") + " I am here.")
     if kind == "who_are_you":
-        return ("I am Mati. I run entirely on this computer, I make no "
-                "outbound network connections by default, and what I hold is "
-                "stored here and changes as we talk.")
+        # ⚠️ THE NAME THIS PERSON GAVE IT, read at answer time — never the
+        # product's name written in. `system_prompt()` makes the same choice.
+        from . import config as C
+        return (f"I am {C.assistant_name()}. I run entirely on this computer, "
+                "I make no outbound network connections by default, and what I "
+                "hold is stored here and changes as we talk.")
     if kind == "who_am_i":
         who = _owner(db_path)
         return (f"You are {who}." if who else
@@ -264,11 +282,11 @@ def _answer(kind, db_path=None, now=None, said=None):
         who = _owner(db_path)
         if who and said and said.lower() == who.lower():
             return f"Hello, {who}. I am here."
-        # ⚠️ `said` CAN BE None AND THE ANSWER USED TO INTERPOLATE IT — Mati
-        # greeted the person with "Hello, None." The kind is matched on the
-        # NORMALISED (lowercased) question, but `_ITS_ME` requires a capital
-        # letter, so anyone typing "i am <name>" without the capital landed
-        # here with no name at all. Common, and it read as a malfunction.
+        # ⚠️ `said` CAN BE None, and interpolating it would greet the person
+        # with "Hello, None." The kind is matched on the NORMALISED
+        # (lowercased) question, but `_ITS_ME` requires a capital letter, so
+        # anyone typing "i am <name>" without the capital lands here with no
+        # name at all. That is common, and it must not read as a malfunction.
         if not said:
             return ("Hello. I did not catch the name — say it again and I will "
                     "keep it.")
