@@ -226,6 +226,35 @@ def already_done(day, db_path=None):
     return any(_local_day(a) == day for (a,) in rows)
 
 
+# How much of an article reaches the reflection prompt. The day's exchanges
+# are already in it, and the window is shared with the waking block.
+REFERENCE_CHARS = 1500
+
+
+def _reference_for(today, limit=3):
+    """An encyclopedia article on something asked today, or None.
+
+    Only what the person ASKED is looked up — their half of an episode is the
+    subject; Mati's half is its own earlier answer, which is what the article
+    is there to check. At most `limit` lookups, so a long day cannot turn the
+    night into a search loop.
+    """
+    import re
+    from . import inquiry
+    tried = 0
+    for t in today:
+        m = re.search(r"I was asked:\s*(.+?)(?:\n|$)", t or "")
+        if not m:
+            continue
+        tried += 1
+        ref = inquiry._reference(m.group(1))
+        if ref:
+            return ref
+        if tried >= limit:
+            break
+    return None
+
+
 def reflect(lm, tok, llm, day=None, rounds=ROUNDS, db_path=None, verbose=False):
     """One night of thinking about the day. Returns what was written.
 
@@ -258,11 +287,36 @@ def reflect(lm, tok, llm, day=None, rounds=ROUNDS, db_path=None, verbose=False):
 
     written = []
     said = None
+    # ⚠️ A SOURCE TO CHECK THE DAY AGAINST, when an encyclopedia on this
+    # machine covers something that was asked. Not a summary to write about:
+    # the point is that Mati notices where what it SAID today disagrees with
+    # the reference. The article is also queued for study, so it is kept.
+    ref = None
+    try:
+        ref = _reference_for(today)
+    except Exception:                                    # noqa: BLE001
+        ref = None
+    checked = ""
+    if ref:
+        from . import encyclopedia, study, untrusted
+        text = untrusted.clean_block(ref["text"])[:REFERENCE_CHARS]
+        checked = ("\n\nAn encyclopedia entry, from this machine, on "
+                   "something you were asked today. Where anything said today "
+                   f"disagrees with it, notice that:\n[{ref['title']}]\n{text}")
+        try:
+            study.enqueue(f"{ref['title']}\n\n{text}",
+                          encyclopedia.title_of(ref.get("book") or "")
+                          or "encyclopedia", tok, db_path=db_path)
+        except Exception:                                # noqa: BLE001
+            pass
+        if verbose:
+            print(f"  [reflect] checking the day against: {ref['title']}",
+                  file=sys.stderr)
     for i in range(max(1, int(rounds))):
         # ── Mati as the PROMPTER ────────────────────────────────────────────
         if said is None:
             ask = (_OPENING + "\n\nToday:\n"
-                   + "\n".join(f"- {t[:300]}" for t in today[:8]))
+                   + "\n".join(f"- {t[:300]}" for t in today[:8]) + checked)
         else:
             # ⚠️ NOT `_FOLLOW`. No memories have been fetched at this point in
             # the round, so a prompt that says they have is a licence to

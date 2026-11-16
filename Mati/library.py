@@ -53,6 +53,12 @@ READ = "read"
 READING = "reading"
 SUGGESTED = "suggested"
 WANTED = "wanted"
+# ⚠️ A REFERENCE IS NOT READ, IT IS CONSULTED. An encyclopedia on this machine
+# belongs on the shelf — it is part of what Mati specialises in — but it is
+# looked things up in, never studied cover to cover, so it is neither read nor
+# wanted. DERIVED from the files present (`encyclopedia.zims`), never stored:
+# a subject dropped in shows up, and one deleted is gone.
+REFERENCE = "reference"
 
 # Sources that are documents Mati read. `studied:asked about X` is excluded:
 # those are Mati's own questions to itself, not works — filing them as books
@@ -233,6 +239,21 @@ def forget(title, db_path=None):
         conn.close()
 
 
+def _reference_works():
+    """The encyclopedias present on this machine, as shelf entries."""
+    try:
+        from . import encyclopedia
+        zs = encyclopedia.zims()
+    except Exception:                                    # noqa: BLE001
+        return []
+    return [{"title": encyclopedia.title_of(z["name"]),
+             "origin": f"encyclopedia:{z['name']}", "passages": 0,
+             "status": REFERENCE, "kind": "encyclopedia",
+             "size_mb": round(z["bytes"] / 1e6), "suggested_by": None,
+             "done": None, "total": None, "share": None, "priority": None}
+            for z in zs]
+
+
 def catalogue(db_path=None):
     """The whole library: read and in progress, then suggested and wanted.
 
@@ -285,7 +306,9 @@ def catalogue(db_path=None):
     # about what Mati reaches for next. Lower is sooner, and `intake.shelve`
     # sets it to the passage count — shortest first, because a short paper
     # finishing this week beats a long book finishing next month.
-    order = {READING: 0, READ: 1, SUGGESTED: 2, WANTED: 3}
+    for w in _reference_works():
+        works.setdefault(w["title"], w)
+    order = {READING: 0, READ: 1, SUGGESTED: 2, WANTED: 3, REFERENCE: 4}
 
     def _key(w):
         pri = w.get("priority")
@@ -311,6 +334,7 @@ def describe(db_path=None, limit=8, voice="i"):
     reading = [w for w in items if w["status"] == READING]
     read = [w for w in items if w["status"] == READ]
     want = [w for w in items if w["status"] in (SUGGESTED, WANTED)]
+    refs = [w for w in items if w["status"] == REFERENCE]
 
     # ⚠️ THE WAKING BLOCK ADDRESSES MATI AS "YOU". Written first in the first
     # person, this line sat directly under "You are not part way through
@@ -357,6 +381,9 @@ def describe(db_path=None, limit=8, voice="i"):
                                    if w.get("suggested_by") else "")
                 for w in want[:limit]]
         parts.append(f"{have} not read " + _join(bits) + " yet.")
+    if refs:
+        parts.append(f"{have} " + _join([w["title"] for w in refs]) +
+                     " on this machine, to look things up in.")
     return " ".join(parts) or None
 
 

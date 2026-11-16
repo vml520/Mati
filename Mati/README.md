@@ -183,6 +183,10 @@ to see its name.
 - **Give Mati something to read**: choose a plain-text file, or paste text, then
   click **Add**. Before anything starts, Mati says how long reading it will
   take. It reads when it is not busy talking to you.
+- **Encyclopedias** you have added (see
+  [Adding an encyclopedia](#adding-an-encyclopedia)) appear here too, as
+  references. Mati looks things up in them when it looks into a subject on its
+  own, and at night checks what it said that day against them.
 
 **Terminal** — only when *Show terminal* is on, and for the curious. It shows
 the full record of every exchange and what each answer was built from, a choice

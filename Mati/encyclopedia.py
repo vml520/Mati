@@ -116,6 +116,27 @@ def zims():
     return sorted(got, key=lambda z: z["name"], reverse=True)
 
 
+_FLAVOURS = {"mini": "article introductions", "nopic": "full text",
+             "maxi": "full text with pictures"}
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December")
+
+
+def title_of(name):
+    """A person's name for a ZIM file. `wikipedia_en_mathematics_mini_2026-06`
+    -> "Encyclopedia of mathematics (Wikipedia, article introductions, June
+    2026)". Unrecognised names come back as they are."""
+    m = re.match(r"^([a-z]+)_([a-z]{2,3})_(.+?)_(mini|nopic|maxi)_(\d{4})-(\d{2})$",
+                 name or "")
+    if not m:
+        return name
+    source, _lang, subject, flavour, year, month = m.groups()
+    subject = subject.replace("_", " ")
+    when = f"{_MONTHS[int(month) - 1]} {year}" if 1 <= int(month) <= 12 else year
+    return (f"Encyclopedia of {subject} ({source.capitalize()}, "
+            f"{_FLAVOURS[flavour]}, {when})")
+
+
 def binary():
     """Path to `kiwix-serve`, or None. Checked, not assumed."""
     s = C._settings().get("kiwix_serve")

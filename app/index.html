@@ -1463,9 +1463,14 @@
         const row = document.createElement("div"); row.className = "work";
         const name = document.createElement("span");
         const shelved = w.shelved > 0;
-        name.innerHTML = "<b>" + w.title + "</b> — " + w.passages +
-          " passages" + (shelved ? " · archived" : "");
+        const reference = w.status === "reference";
+        name.innerHTML = "<b>" + w.title + "</b> — " + (reference
+          ? "encyclopedia, " + w.size_mb + " MB"
+          : w.passages + " passages" + (shelved ? " · archived" : ""));
         const acts = document.createElement("span"); acts.className = "acts";
+        // ⚠️ An encyclopedia is consulted, not studied: there are no passages
+        // to archive or remove, so it gets no shelf actions.
+        if (reference) { row.appendChild(name); box.appendChild(row); continue; }
         // ⚠️ Archive and reshelf are opposites; only the relevant one shows.
         for (const [label, path, confirmNeeded] of
              shelved ? [["Reshelf", "/library/reshelf", false],

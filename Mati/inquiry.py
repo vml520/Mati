@@ -159,6 +159,71 @@ def _pick(conn):
             vault.open_body(row[2]) if row[2] else row[2])
 
 
+# Words that say nothing about WHAT a question is about, for the relevance test
+# below. Four letters and up only, so short connectives never count.
+_NOT_A_SUBJECT = {"what", "when", "where", "which", "does", "that", "this",
+                  "with", "from", "about", "have", "there", "their", "into",
+                  "between", "would", "could", "should", "they", "them",
+                  "were", "been", "being", "more", "most", "some", "such",
+                  "than", "then", "your", "explain", "describe", "mean",
+                  "means", "called", "known", "used", "work", "works"}
+
+
+def _stem(w):
+    return w[:-1] if len(w) > 4 and w.endswith("s") else w
+
+
+def _subject_words(text):
+    """The words that say what a text is about, in order, plurals folded."""
+    return [_stem(w) for w in re.findall(r"[a-z]{4,}", (text or "").lower())
+            if w not in _NOT_A_SUBJECT]
+
+
+def _reference(question):
+    """An encyclopedia article that covers this question, or None.
+
+    ⚠️ SEARCH ON THE SUBJECT, NOT THE SENTENCE. "What is a prime number?" sent
+    whole finds "Formula for primes"; "prime number" finds the article itself.
+
+    ⚠️ AND A SEARCH ALWAYS RETURNS SOMETHING. Full-text search finds the
+    nearest article whether or not it is about the question, so a hit counts
+    only when its TITLE shares the question's subject words — otherwise a
+    mathematics article would "ground" a question about archaeology. Of the
+    hits, the title sharing the most subject words wins, the one with fewer
+    extra words breaking a tie: "Prime number" over "List of prime numbers".
+    """
+    words = list(dict.fromkeys(_subject_words(question)))
+    if not words:
+        return None
+    try:
+        from . import encyclopedia
+        if not encyclopedia.connected():
+            return None
+        hits = encyclopedia.search(" ".join(words), k=10,
+                                   wait=encyclopedia.START_TIMEOUT)
+    except Exception:                                    # noqa: BLE001
+        return None
+    want = set(words)
+
+    def fit(h):
+        title = set(_subject_words(h.get("title")))
+        return (len(want & title), -len(title - want))
+
+    # ⚠️ ONE SHARED WORD IS NOT ENOUGH. "How did the Maya calendar work?" would
+    # take "Maya numerals" on `maya` alone — related, and still not the
+    # calendar. Two subject words, or all of them when there is only one.
+    best = max(hits or [], key=fit, default=None)
+    if best is None or fit(best)[0] < min(2, len(want)):
+        return None
+    try:
+        text = encyclopedia.article(best["book"], best["path"])
+    except Exception:                                    # noqa: BLE001
+        return None
+    if not (text or "").strip():
+        return None
+    return {"title": best["title"], "book": best["book"], "text": text}
+
+
 def step(lm, tok, llm, db_path=None, verbose=True):
     """One question, asked and absorbed. Returns a summary, or None if idle.
 
@@ -190,10 +255,24 @@ def step(lm, tok, llm, db_path=None, verbose=True):
                    + "\n".join(f"- {' '.join(b.split())[:200]}"
                                for _d, b, _s in held))
 
+    # ⚠️ GROUNDED WHERE AN ENCYCLOPEDIA COVERS IT. Asked open questions, a 3B
+    # writes confident, plausible, wrong sentences, and this loop stores them.
+    # With an article in hand the model answers FROM it — and the article
+    # itself is read as studied material, under the encyclopedia's name, so
+    # what Mati keeps on the subject includes the source and not only a
+    # paraphrase of it.
+    ref = _reference(question)
+    source = ""
+    if ref:
+        from . import encyclopedia, untrusted
+        ref_text = untrusted.clean_block(ref["text"])
+        source = ("\n\nAn encyclopedia entry on this, from this machine. "
+                  "Answer from it, and say plainly where it does not cover the "
+                  f"question:\n[{ref['title']}]\n{ref_text}")
     try:
         answer, _raw = llm.reply(
             [{"role": "user",
-              "content": f"{ASK_SYSTEM}\n\n{question}{context}"}],
+              "content": f"{ASK_SYSTEM}\n\n{question}{source}{context}"}],
             max_tokens=400)
     except Exception as e:
         if verbose:
@@ -209,6 +288,10 @@ def step(lm, tok, llm, db_path=None, verbose=True):
     # replayed and pollution there outlives any prompt fix.
     clean = bridge._clean_for_memory(body, limit=10_000)
     queued = 0
+    if ref:
+        book = encyclopedia.title_of(ref.get("book") or "")
+        study.enqueue(f"{ref['title']}\n\n{ref_text}", book or "encyclopedia",
+                      tok, db_path=db_path)
     if clean:
         summary = study.enqueue(clean, f"asked about {topic}", tok,
                                 db_path=db_path)
@@ -255,6 +338,7 @@ def step(lm, tok, llm, db_path=None, verbose=True):
               file=sys.stderr)
     return {"topic": topic, "question": question, "queued": queued,
             "next_q": next_q, "recalled": len(held),
+            "reference": ref.get("title") if ref else None,
             "dropped_as_machinery": clean is None}
 
 
