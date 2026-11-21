@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Mati avatar</title>
+<!-- ⚠️ SELF-CONTAINED. React and the compiled animation are served by Mati
+     from vendor/; nothing is fetched from a CDN. The delivered clips loaded
+     React, ReactDOM and Babel (~3 MB) from unpkg.com at runtime, which broke
+     the README's no-outbound-connections claim and blanked the avatar
+     offline. -->
+<style>
+  html,body { margin:0; height:100%; background:#05202a; overflow:hidden; }
+  #root { width:100%; height:100%; }
+
+  /* ⚠️ HIDE THE PLAYER CHROME. `RiverApp` is the animation's DEMO HARNESS: it
+     renders the 1080×1080 stage, and below it a transport bar — pause, step,
+     a scrubber — plus a draggable "Tweaks" panel. Inside a small round avatar
+     that chrome would take most of the box and squeeze the square stage into
+     a corner.
+
+     Both carry `data-omelette-chrome`, and the component's own source says
+     of the bar: "Shown only outside the app — the host bar suppresses this
+     whenever it is present." Mati is the host, so this is the sanctioned
+     behaviour rather than a hack around the component.
+
+     ⚠️ CSS, NOT A REBUILD. The alternative is rendering CompositionStage
+     without the harness, which means regenerating avatar.js from the
+     delivered .jsx. One attribute selector leaves that source untouched. */
+  [data-omelette-chrome] { display: none !important; }
+</style>
+<div id="root"></div>
+<script src="./react.production.min.js"></script>
+<script src="./react-dom.production.min.js"></script>
+<script>
+  // The scene table lives in axolotl-river.jsx as CANON:
+  //   River Approach Attentive Idle1 Thinking Idle2 Idea Idle3
+  //   Confused Idle4 Focused Idle5 Sleepy Idle6 Pullback
+  function setScene(name) {
+    window.OM_SCENES = JSON.stringify([{ name: name, dur: 2 }]);
+    window.OM_CLIP = [[name, name]];
+    window.OM_PLAYBACK = JSON.stringify({ mode: "loop" });
+  }
+  setScene(new URLSearchParams(location.search).get("scene") || "Idle2");
+  window.TWEAK_DEFAULTS = { glow: 0.3, particles: 0.2, motionEditor: false };
+</script>
+<script src="./avatar.js"></script>
+<script>
+  var el = document.getElementById("root"), root = null;
+  if (window.RiverApp && window.ReactDOM) {
+    root = ReactDOM.createRoot(el);
+    root.render(React.createElement(window.RiverApp));
+    // ⚠️ SCENE CHANGES ARRIVE BY postMessage, NOT BY RELOADING THE FRAME.
+    // Mati changes state several times per turn — listening, thinking, idle —
+    // and reloading would flash the dark background each time. The component
+    // reads window.OM_CLIP on every render, so setting the globals and
+    // re-rendering is enough.
+    window.addEventListener("message", function (e) {
+      if (!e.data || !e.data.scene) return;
+      setScene(String(e.data.scene));
+      root.render(React.createElement(window.RiverApp));
+    });
+    parent.postMessage({ avatar: "ready" }, "*");
+  } else {
+    // ⚠️ Says WHICH piece is missing rather than showing a blank frame.
+    el.textContent = "avatar unavailable: " +
+      (!window.ReactDOM ? "React did not load" : "RiverApp not defined");
+    el.style.cssText = "color:#7fd6c8;font:12px -apple-system;padding:12px";
+    parent.postMessage({ avatar: "failed" }, "*");
+  }
+</script>

@@ -1,0 +1,137 @@
+Mati
+Copyright 2026 Mati contributors
+
+This product is licensed under the Apache License, Version 2.0 (the "License").
+You may obtain a copy of the License in the LICENSE file distributed with this
+work, or at http://www.apache.org/licenses/LICENSE-2.0
+
+
+--------------------------------------------------------------------------------
+Language models
+--------------------------------------------------------------------------------
+
+Mati does not bundle, redistribute, or host any language model weights. It runs
+against a model that you download yourself using Ollama (https://ollama.com).
+Model weights remain subject to their own licenses, which are separate from and
+unaffected by Mati's Apache-2.0 license.
+
+Built with Llama.
+
+Mati's default configuration uses Meta's Llama 3.2 (3B). Llama 3.2 is licensed
+under the Llama 3.2 Community License Agreement, Copyright (c) Meta Platforms,
+Inc. All Rights Reserved. Use of Llama 3.2 is additionally subject to Meta's
+Acceptable Use Policy: https://www.llama.com/llama3_2/use-policy
+
+    Llama 3.2 Community License:
+    https://github.com/meta-llama/llama-models/blob/main/models/llama3_2/LICENSE
+
+Mati's model is user-configurable (see MATI_MODEL in Mati/config.py). If you
+select a different model, that model's license governs your use of it. Note that
+licensing can differ between sizes within the same model family — for example,
+several Qwen2.5 sizes are Apache-2.0 while Qwen2.5-3B is released under a
+non-commercial research license. Check the license for the specific model you
+intend to use.
+
+
+--------------------------------------------------------------------------------
+Third-party dependencies
+--------------------------------------------------------------------------------
+
+NumPy                 BSD 3-Clause    https://numpy.org
+tiktoken              MIT             https://github.com/openai/tiktoken
+Ollama (external)     MIT             https://ollama.com
+React 18.3.1          MIT            https://react.dev
+React DOM 18.3.1      MIT            https://react.dev
+
+React and React DOM are vendored verbatim and unmodified in the application
+(`vendor/react*.production.min.js`), which draws the avatar. Their full MIT
+license text is reproduced in the application's own NOTICE file, alongside the
+LICENSE that their headers refer to. The application bundles no other
+third-party code, no web fonts and no CDN scripts.
+
+Ollama is required at runtime but is installed separately by the user and is not
+redistributed with Mati.
+
+The optional Anthropic provider (Mati/llm.py) uses the `anthropic` Python SDK
+(MIT) only if explicitly enabled. It is off by default and is not required.
+
+
+--------------------------------------------------------------------------------
+Data sources, attribution and their terms
+--------------------------------------------------------------------------------
+
+Mati contacts these services only when you ask for the thing they provide.
+Naming them in the README's privacy table is a disclosure of what leaves the
+machine; this section is the separate obligation — what their licences require
+to be said.
+
+OpenStreetMap, via the Overpass API           https://overpass-api.de
+    Place and point-of-interest data.
+    © OpenStreetMap contributors. Available under the Open Database License
+    (ODbL): https://www.openstreetmap.org/copyright
+    Mati's client leaves at least 3 seconds between calls and caches results
+    for an hour, which is inside the OSM operations policies.
+
+Open-Meteo                                    https://open-meteo.com
+    Forecasts and place-name geocoding.
+    Weather data by Open-Meteo.com, licensed CC-BY 4.0:
+    https://creativecommons.org/licenses/by/4.0/
+    ⚠️ THE FREE API IS FOR NON-COMMERCIAL USE: "You may only use the free API
+    services for non-commercial purposes." Free-tier limits are under 10,000
+    calls a day. Mati's own use is far below that and is non-commercial — but
+    Mati is Apache-2.0, and that licence lets YOU use Mati commercially. If
+    you do, the weather calls become your responsibility: take an Open-Meteo
+    paid plan or point the feature elsewhere. This is the same shape as the
+    model-licence caution in the README.
+
+Radio Browser                                 https://api.radio-browser.info
+    Internet radio station directory.
+    Free and open; the project explicitly permits use in "free and non free
+    software". It asks for a descriptive User-Agent so operators can see who
+    is calling, which `config.USER_AGENT` provides. No attribution required.
+
+Internet Archive                              https://archive.org
+    Public-domain film, audio and texts.
+    Items carry their OWN licences, which differ per item. Mati stores and
+    displays the licence field it is given rather than assuming public domain.
+
+gpodder.net                                   https://gpodder.net
+    Podcast search, via the public directory endpoint `/search.json`.
+    No API key and no authentication: the Directory API is documented as
+    public content. No attribution is required and no rate limit is published
+    — so Mati imposes its own, leaving a second between calls and caching
+    results for an hour, because a community-run free service deserves that
+    whether or not it asks. The feed and the audio are fetched from the
+    PUBLISHER, not from gpodder.
+    The service software (mygpo) is AGPLv3. That covers their server, not an
+    HTTP client, so it places no obligation on Mati.
+
+Ticketmaster Discovery API                    https://developer.ticketmaster.com
+    Events. OFF unless you add your own API key, and Mati ships no key.
+    Their API terms of service bind whoever supplies the key, which is you.
+
+Flipp (backflipp.wishabi.com)
+    Local store circulars.
+    ⚠️ UNDOCUMENTED AND UNPROMISED. This is the backend Flipp's own web app
+    talks to: no key, no block, and no published terms either. Mati
+    identifies itself honestly here as everywhere — it does NOT present as a
+    browser — and the feature degrades to "I can't see local flyers right now"
+    whenever it stops working, which it may at any time.
+
+Apple MapKit / MKDirections / AVSpeechSynthesis
+    Routing and the voice, through macOS frameworks on this machine.
+    Governed by your macOS and Apple developer terms, not by Mati's.
+
+RSS feeds
+    The headline fetch reads feeds the publisher offers for that purpose.
+    Titles and summaries are third-party content, shown as quotations and
+    passed through `untrusted.clean` before they reach the model.
+
+
+--------------------------------------------------------------------------------
+Included model state
+--------------------------------------------------------------------------------
+
+Mati ships a trained phase-field checkpoint. It was trained solely on the seed
+corpus authored for this project (Mati/field/qa_data.py). It contains no
+third-party training corpora.

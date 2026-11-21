@@ -1,0 +1,50 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Tooling ──────────────────────────────────────────────────────────────────
+.claude/
+*.log
+
+# ── Mati's state ─────────────────────────────────────────────────────────────
+# `.cache/` is where Mati keeps everything it learns on this machine. Ignore
+# the directory and re-admit, by name, only what ships with every install.
+.cache/*
+!.cache/.gitkeep
+
+# ⭐ MATI'S FIRST MEMORIES — the shipped build artefact, tracked on purpose.
+#
+# ⚠️ THE NAMES ARE NOT `mati_notes.*`, DELIBERATELY. That is the PERSONAL
+# store: one person's conversations, and the θ₀ those conversations shaped. It
+# is created on the first turn and belongs to whoever had that conversation;
+# tracking it would put somebody's memories into every clone. These are what
+# `make_ship_field` produces — the charter verbatim and four measured
+# self-check rows, identical on every install — and `Mati/first_run.py`
+# copies them into place when there is no store yet.
+!.cache/first_memories.db
+
+# The vocabulary that goes with the shipped checkpoint.
+!.cache/qa_vocab.json
+
+# ── Results that are outputs, not source ─────────────────────────────────────
+*.npy
+*.npz
+
+# ⚠️ EVERY .npz THAT SHIPS IS RE-ADMITTED HERE, BELOW `*.npz`. Git honours the
+# LAST matching rule, so an exception placed above this point is silently
+# overridden — and the store would ship WITHOUT the address space its `feat`
+# column is measured against, which is not a degraded install but a
+# meaningless one. `git check-ignore -v <path>` names the rule that decided.
+#
+# The shipped checkpoint (ep40, ppl_nu=965.6) and its base θ₀:
+!.cache/diag_pattern8d_shuf_final.npz
+!.cache/diag_pattern8d_shuf_final_theta0.npz
+# Mati's first memories travel with their own address space:
+!.cache/first_memories_theta0.npz
+!.cache/first_memories_theta0_address.npz
