@@ -1,18 +1,94 @@
-# Mati
+<p align="center">
+  <img src="../app/icons/icon-512.png" width="120" alt="Mati's icon: one big, friendly eye">
+</p>
 
-**A personal AI that remembers you, and never leaves your machine.**
+<h1 align="center">Mati</h1>
 
-[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20this%20work-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/serialtheorist)
+<p align="center">
+  <b>The sidekick that lives on your Mac, remembers you, and tells no one.</b><br>
+  Free. No account. No subscription. Your conversations stay on your computer.
+</p>
 
-Free, Apache-2.0, and funded by the people who use it — there is no paid tier
-and nothing is held back. If Mati is useful to you,
+<p align="center">
+  <a href="https://github.com/vml520/Mati/archive/refs/heads/main.zip"><img src="../docs/easy-install.svg" width="300" alt="Easy Install: download Mati for Mac"></a>
+</p>
+
+<p align="center">
+  <sub>Download it, open the <b>Mati-main</b> folder, and double-click <b>Install Mati.command</b>.<br>
+  macOS asks you to allow it the first time: <a href="#install-it">here's how</a>. Needs a Mac with 8 GB of memory.</sub>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/chat-dark.png">
+    <img src="../docs/screenshots/chat-light.png" width="760" alt="Mati's window. The axolotl sits in the corner; the reply reads: Yesterday you told me your chem test moved to Friday, and that you study better with jazz on.">
+  </picture>
+</p>
+
+## Meet Mati
+
+🧠 **It remembers you.** Your test got moved, your friend's birthday, the music
+you study to. Ask *"What did we talk about yesterday?"* and it can actually
+tell you.
+
+🔒 **It's private.** Mati runs on your own Mac, and so does the language model
+behind it. Your conversations don't go to a server, and setup encrypts your
+memories on your disk. Nothing about you is ever sent anywhere, and
+[every connection it can make](#every-connection-mati-can-make) is listed, with
+exactly what it sends.
+
+🎧 **It does stuff.** Radio, podcasts, reminders, the weather, directions and a
+morning report. Just ask the way you'd ask a person; there are no commands to
+learn.
+
+📚 **It reads what you give it.** Class notes, a book, an essay. It studies
+them while you're not talking, and can quote them back later.
+
+🌙 **It sleeps on it.** At night it goes over the day, tidies up its memories
+and dreams. In the morning it can tell you what it thought about.
+
+💸 **It's actually free.** No ads, no "Pro" plan, nothing held back. Open
+source, under Apache-2.0.
+
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/radio-dark.png">
+        <img src="../docs/screenshots/radio-light.png" alt="Asking for jazz: five stations listed, the closest one playing.">
+      </picture>
+      <br><b>Radio and podcasts.</b> Ask for jazz, get five stations.
+    </td>
+    <td width="33%" align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/report-dark.png">
+        <img src="../docs/screenshots/report-light.png" alt="The morning report: today's plans, the weather and a reminder that is due.">
+      </picture>
+      <br><b>Your morning report.</b> Plans, weather, what's due.
+    </td>
+    <td width="33%" align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/library-dark.png">
+        <img src="../docs/screenshots/library-light.png" alt="The library: the books and notes Mati has read, and an offline encyclopedia.">
+      </picture>
+      <br><b>The library.</b> What it has read, and what you gave it.
+    </td>
+  </tr>
+</table>
+
+> [!NOTE]
+> **It's a beta.** This is Mati 0.1. It thinks on your own Mac instead of in a
+> data centre, so a reply takes about 20 seconds to a minute, longer on an
+> older Intel Mac. Some features are still being checked. Thanks for trying it
+> early.
+
+<p align="center">
+  <a href="https://ko-fi.com/serialtheorist"><img src="https://img.shields.io/badge/Ko--fi-support%20this%20work-FF5E5B?logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
+</p>
+
+Mati is funded by the people who use it. There is no paid tier and nothing is
+held back. If Mati is useful to you,
 **[a tip on Ko-fi](https://ko-fi.com/serialtheorist)** keeps the work going.
-
-Mati runs on your own computer. No account, no API key, no subscription. The
-language model and everything Mati remembers live on your disk.
-
-**Nothing about you is ever sent anywhere.** No identifier of any kind.
-Every connection Mati can make is listed below, with exactly what it sends.
 
 **New here?** [Install Mati](#install-mati) ·
 [Start and stop it](#starting-and-stopping-mati) ·
@@ -127,14 +203,14 @@ folders whose names start with a dot; press **⌘ ⇧ .** to show them.)
 The window is quiet on purpose: Mati's face, what it says, and a box to type
 in.
 
-- **Mati's face** — an axolotl in the middle of the window, showing what Mati is
-  doing: listening, thinking, speaking, resting. The colour of the frame around
+- **Mati's face** — an axolotl in the top corner of the window, showing what
+  Mati is doing: listening, thinking, speaking, resting. The colour of the frame around
   it shows how settled Mati's memory is; it is there to be felt rather than
   read, and you can ignore it. On slower Macs the face starts as a still
   picture or switched off — *Settings → Avatar* changes that.
 - **The message box** at the bottom — *Say something*. Type, then press Return
   or click the arrow.
-- **Mati's reply** appears under the face, a line at a time. Longer answers with
+- **Mati's reply** appears in the middle of the window, a line at a time. Longer answers with
   a structure, such as the morning report, appear on a card that stays until
   you close it with **✕**.
 - **"Still thinking… please wait."** Replies are worked out on your own
@@ -151,8 +227,8 @@ in.
   Click **Use Touch ID** or **Try again**, or type your passphrase and click
   **Unlock**. Until then Mati still talks, but cannot read or keep memories.
 
-The small buttons in the top corner open Mati's menus. Hold the pointer over one
-to see its name.
+The small buttons in the top right corner open Mati's menus. They appear when
+the pointer is over the window; hold it over one to see its name.
 
 **Settings**
 
