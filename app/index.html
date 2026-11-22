@@ -1356,8 +1356,8 @@
       }
       await loadVoices();
       applyTerm();
-      // ⚠️ APPLIED, NOT JUST SHOWN IN THE SHEET. The select carried the stored
-      // value correctly and the disc ignored it.
+      // ⚠️ APPLIED, NOT JUST SHOWN IN THE SHEET. Setting the select alone
+      // would leave the disc on the old mode.
       applyAvatar(d.avatar || "on");
     } catch (e) { /* server down: leave the page as it is */ }
   }
@@ -2479,15 +2479,12 @@
     wrongOrigin();
   } else {
     // ⚠️ THE NOW-PLAYING POLL STARTS HERE, because `SERVED` exists by now.
-    // It read `if (SERVED)` fifty lines above its own `const`, which is a
-    // temporal dead zone — see the note there.
+    // Reading it any earlier is a temporal dead zone — see the note there.
     refreshNowPlaying();
-    // ⚠️ THE STATION PANEL NEEDS ITS OWN CALL HERE, AND NOT HAVING ONE WAS
-    // THE BUG. My patch landed inside the row-click handler instead of the
-    // startup path, so the panel only ever refreshed AFTER a click — which
-    // means it never appeared at all, because the first render is what shows
-    // it. It polls on the same 4s tick as the now-playing chip: both read
-    // cheap endpoints and neither spends a turn.
+    // ⚠️ THE STATION PANEL NEEDS ITS OWN CALL HERE. Refreshed only after a
+    // row click, it would never appear, because the first render is what
+    // shows it. It polls on the same 4s tick as the now-playing chip: both
+    // read cheap endpoints and neither spends a turn.
     refreshStations();
     setInterval(refreshNowPlaying, NP_MS);
     setInterval(refreshStations, NP_MS);
