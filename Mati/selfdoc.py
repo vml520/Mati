@@ -85,7 +85,7 @@ _IMPERATIVE = re.compile(
 
 # Third person -> first. Order matters: possessive before bare.
 _REAIM = (
-    (re.compile(r"\bOlin'?s\b"), "my"),
+    (re.compile(r"\bMati'?s\b"), "my"),
     (re.compile(r"\bMati\b"), "I"),
 )
 
@@ -198,8 +198,17 @@ def _root():
 
 
 def _digest(root):
-    """What the documents say right now, as one hash."""
+    """What the documents say right now, and how they are rewritten, as one hash.
+
+    ⚠️ THE RULES ARE PART OF IT. A change to how passages are re-aimed leaves
+    every document on disk as it was, so a hash of the documents alone would
+    keep the old passages indexed until one of them happened to change.
+    """
     h = hashlib.sha256()
+    for pat, rep in _REAIM:
+        h.update(pat.pattern.encode("utf-8") + b"\0" + rep.encode("utf-8"))
+    h.update(_THIRD_PERSON_VERB.pattern.encode("utf-8"))
+    h.update(_IMPERATIVE.pattern.encode("utf-8"))
     for rel, _title in SELF_DOCS:
         h.update(rel.encode("utf-8"))
         p = os.path.join(root, rel)
