@@ -42,6 +42,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 from . import bridge
+from . import outbound
 from . import config as C
 
 # ⚠️ gpodder.net, NOT iTunes, and no Apple service anywhere in the path. A
@@ -156,8 +157,10 @@ def search(term, limit=5):
 
 
 def _fetch(url, timeout=NET_TIMEOUT):
+    # ⚠️ THROUGH `outbound`: a feed URL is whatever the publisher listed,
+    # and the episode URLs inside it are theirs too. See `outbound`.
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with outbound.urlopen(req, timeout=timeout) as r:
         return r.read()
 
 
@@ -241,7 +244,7 @@ def download(ep, db_path=None, verbose=False):
     tmp = path + ".part"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=120) as r:
+        with outbound.urlopen(req, timeout=120) as r:
             declared = int(r.headers.get("Content-Length") or 0)
             if declared and declared / 1e6 > MAX_EPISODE_MB:
                 return None, (f"the server says it is "

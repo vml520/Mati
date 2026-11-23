@@ -56,6 +56,20 @@ BLOCKS = ("world", "computed", "system", "interrupted", "charter", "memory",
 # is a list someone eventually gets around.
 _TAG = re.compile(r"<[^>\n]{0,120}>")
 
+# ⚠️ AND A "<" THAT COULD STILL START ONE. `_TAG` stops at 120 characters so a
+# stray "<" cannot swallow a paragraph — which also let any tag LONGER than
+# that through whole (`<img src=x onerror="…">` padded past 120 survived).
+# Whatever `_TAG` leaves, a "<" followed by a letter, "/", "!" or "?" — the
+# only way a tag can begin — becomes a look-alike that cannot. This step
+# leaves a "<" before a space or a digit alone ("x < y", "<3").
+_TAG_START = re.compile(r"<(?=[A-Za-z/!?])")
+
+# ⚠️ THE MODEL'S OWN "SAY THIS LATER" MARKER. A reply holding `[later: …]` is
+# cut from what is shown and parked as a finding, which can come back as a
+# notification in the assistant's name. Carried in by a feed or an article
+# and repeated, it would be a stranger writing that notification.
+_LATER = re.compile(r"\[\s*later\s*:[^\]\n]*\]?", re.I)
+
 # The provenance labels, which are the highest-value forgery in the system.
 _LABEL = re.compile(
     r"\[\s*(?:" + "|".join(BLOCKS) + r"|self-asked|they told me|my own|"
@@ -75,6 +89,8 @@ def clean(text, max_len=MAX_LEN):
         return ""
     s = str(text)
     s = _TAG.sub(" ", s)             # no markup, no fake blocks
+    s = _TAG_START.sub("‹", s)       # nor a tag too long for _TAG
+    s = _LATER.sub(" ", s)           # no notification in our name
     s = _LABEL.sub(" ", s)           # no forged provenance
     s = _BULLET.sub(" ", s)          # no fake list items
     # ⚠️ NEWLINES ARE THE ATTACK. Without them a hostile title is one bullet
@@ -130,6 +146,8 @@ def clean_block(text, max_len=BLOCK_MAX):
         return ""
     s = str(text)
     s = _TAG.sub(" ", s)
+    s = _TAG_START.sub("‹", s)
+    s = _LATER.sub(" ", s)
     s = _LABEL.sub(" ", s)
     s = _BLOCK_LINE.sub(" ", s)
     s = s.replace("\r", "\n")
@@ -158,6 +176,7 @@ def is_suspicious(text):
     if not text:
         return False
     s = str(text)
-    return bool(_TAG.search(s) or _LABEL.search(s)
+    return bool(_TAG.search(s) or _TAG_START.search(s) or _LATER.search(s)
+                or _LABEL.search(s)
                 or "\n" in s or "\r" in s
                 or re.search(r"[​-‏‪-‮⁦-⁩]", s))

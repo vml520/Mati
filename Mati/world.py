@@ -34,6 +34,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 from . import bridge
+from . import outbound
 from . import config as C
 
 SOURCE = "world"
@@ -78,16 +79,17 @@ def is_public_url(url):
     retrieved by Mati from itself. Any function that fetches a URL from
     outside calls this FIRST.
     """
+    # ⚠️ A FIRST ANSWER, NOT THE GUARD ITSELF. This reads every spelling of
+    # a local address (`outbound.host_refused`) so a refusal can be said up
+    # front; the guard that holds is `outbound.urlopen`, which checks the
+    # address actually connected to, on every redirect hop. A public name that
+    # resolves to 127.0.0.1 passes here and is refused there.
     u = urllib.parse.urlparse(url or "")
     if u.scheme not in ("http", "https") or not u.hostname:
         return False, "that has to be an http or https address"
-    host = u.hostname.lower().strip("[]")
-    if (host in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "::")
-            or host.endswith(".local") or host.endswith(".internal")
-            or host.startswith(("127.", "10.", "192.168.", "169.254.",
-                                "fc", "fd", "fe80:"))
-            or re.match(r"^172\.(1[6-9]|2\d|3[01])\.", host)):
-        return False, "that address is on this machine, not the world"
+    why = outbound.host_refused(u.hostname)
+    if why:
+        return False, why
     return True, "ok"
 
 
@@ -161,7 +163,7 @@ def discover_feed(page_url, timeout=NET_TIMEOUT):
 
     req = urllib.request.Request(page_url, headers={"User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with outbound.urlopen(req, timeout=timeout) as r:
             # ⚠️ STREAMED UNTIL `</head>`, NOT A FLAT SLICE. A 200 KB read
             # missed the feed link on BOTH pages first tried: modern shopping
             # pages inline so much JSON and CSS that the <head> alone runs
@@ -247,7 +249,7 @@ def preview(page_url, timeout=NET_TIMEOUT):
         return None, why
     req = urllib.request.Request(page_url, headers={"User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with outbound.urlopen(req, timeout=timeout) as r:
             # ⚠️ Capped and stopped at </head>. The measurement that produced
             # this function read 200 KB to find four tags; `discover_feed`
             # already learned that a flat slice is the wrong shape.
@@ -333,7 +335,7 @@ def read(feed_url, limit=20):
     """Items from one feed. Raises rather than returning [] on failure."""
     req = urllib.request.Request(feed_url, headers={"User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=NET_TIMEOUT) as r:
+        with outbound.urlopen(req, timeout=NET_TIMEOUT) as r:
             raw = r.read()
     except Exception as e:                                   # noqa: BLE001
         raise FeedUnavailable(f"could not reach {feed_url} "

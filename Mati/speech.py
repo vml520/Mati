@@ -262,8 +262,10 @@ def _pump():
             cmd = [_SAY] + (["-v", str(voice)] if voice else [])
             if rate:
                 cmd += ["-r", str(int(rate))]
+            # ⚠️ "--" BEFORE THE TEXT. Without it a sentence starting "-f…"
+            # is read as `say -f`, which reads a FILE aloud — measured.
             try:
-                p = subprocess.Popen(cmd + [said], stdout=subprocess.DEVNULL,
+                p = subprocess.Popen(cmd + ["--", said], stdout=subprocess.DEVNULL,
                                      stderr=subprocess.DEVNULL)
             except Exception:
                 return
@@ -336,7 +338,7 @@ def say(text, db_path=None):
         if voice:
             cmd += ["-v", str(voice)]
         gen = _duck()                  # before the first syllable, not after
-        _proc = subprocess.Popen(cmd + [said],
+        _proc = subprocess.Popen(cmd + ["--", said],
                                  stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL)
         threading.Thread(target=_watch, args=(_proc, gen),

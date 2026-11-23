@@ -405,6 +405,28 @@ def _make_player(url):
     return AVPlayer.playerWithURL_(u)
 
 
+def _playable_address(url):
+    """(ok, why) for an address the player is about to fetch by itself.
+
+    ⚠️ A STATION'S ADDRESS IS PUBLIC DATA ANYONE CAN EDIT — the directory is
+    community-run — and AVPlayer will fetch whatever it is given, this
+    machine and its network included. So it is resolved and refused if local
+    (`outbound.check_url`) before the player sees it. A `file://` address is
+    allowed only for an episode this install downloaded itself.
+    """
+    import os
+    from . import outbound
+    u = urllib.parse.urlparse(url or "")
+    if u.scheme == "file":
+        from . import podcast
+        path = os.path.realpath(urllib.parse.unquote(u.path))
+        root = os.path.realpath(podcast.DIR)
+        if path.startswith(root + os.sep) and os.path.isfile(path):
+            return True, "ok"
+        return False, "that file is not one of the kept episodes"
+    return outbound.check_url(url)
+
+
 def play(station):
     """Start a stream. (ok, message). ⚠️ Replaces whatever was playing.
 
@@ -421,6 +443,9 @@ def play(station):
             return False, (f"nothing here matched {station!r} — is that a "
                            f"genre, a place, or a station's name?")
         station = found[0]
+    ok, why = _playable_address(station.get("url"))
+    if not ok:
+        return False, why
     stop(keep_paused=True)
 
     def _start():

@@ -168,6 +168,13 @@ def base_url():
 
 def _get(path, timeout=NET_TIMEOUT):
     """GET from the local server. Bytes, or None. ⚠️ Never raises upward."""
+    # ⚠️ NOTHING UNTIL CONNECTED, AND CHECKED HERE, ON THE REQUEST PATH. The
+    # header promises every call returns nothing until the program and a file
+    # both exist — but `search` only asked whether something answered on the
+    # port, so with neither present it searched whatever was listening there:
+    # another install's kiwix-serve, or one still serving files since deleted.
+    if not connected():
+        return None
     try:
         url = _loopback_only(base_url() + path)
     except ValueError:

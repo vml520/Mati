@@ -722,6 +722,11 @@ def play_video(name, url, db_path=None):
     """
     if not url or not url.startswith(("http://", "https://")):
         return False
+    # ⚠️ THE APP FETCHES IT, NOT THIS PROCESS, so the address is checked
+    # first: refused if it resolves to this machine or its network.
+    from . import outbound
+    if not outbound.check_url(url)[0]:
+        return False
     _note_launch("QuickTime Player")
     out = _osa(["on run argv",
                 'tell application "QuickTime Player"',
@@ -739,6 +744,11 @@ def play_video(name, url, db_path=None):
 def play_station(name, url, db_path=None):
     """Play an internet radio stream through Music.app, and record it."""
     if not url or not url.startswith(("http://", "https://")):
+        return False
+    # ⚠️ THE APP FETCHES IT, NOT THIS PROCESS, so the address is checked
+    # first: refused if it resolves to this machine or its network.
+    from . import outbound
+    if not outbound.check_url(url)[0]:
         return False
     _note_launch("Music")
     if _osa(["on run argv",

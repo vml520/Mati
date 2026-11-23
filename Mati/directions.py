@@ -361,7 +361,7 @@ def speak(text, voice=None):
         cmd += ["-v", str(voice)]
     try:
         # Not awaited — a long route would otherwise block the turn.
-        subprocess.Popen(cmd + [str(text)],
+        subprocess.Popen(cmd + ["--", str(text)],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     except Exception:                                        # noqa: BLE001

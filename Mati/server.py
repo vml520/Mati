@@ -32,7 +32,10 @@ leaves your machine" is a property of the binding, not a promise in a README.
 
 import argparse
 import inspect
+import base64
+import hashlib
 import json
+import re
 import os
 import queue
 import sqlite3
@@ -2555,6 +2558,88 @@ def _terminal_on():
         return False
 
 
+# ── who may ask ──────────────────────────────────────────────────────────────
+#
+# ⚠️ LOOPBACK IS NOT THE SAME AS "ONLY THIS PERSON". Binding 127.0.0.1 keeps
+# the network out, but every web page open in a browser on this Mac runs here
+# too, and a page can send requests to 127.0.0.1. Two ways, both measured
+# against a live server before this existed:
+#
+#   - a cross-site POST (`text/plain`, no preflight) was parsed and routed, so
+#     any page could chat, set reminders, switch the terminal on through
+#     `/settings`, stop the server, or hand `/library/read` a path to read;
+#   - DNS rebinding — a page whose own name is re-pointed at 127.0.0.1 — was
+#     answered in full with `Host: attacker.example`, which is everything this
+#     server can show: conversations, memories, settings.
+#
+# So every request is checked before anything else runs. The Host must name
+# this server, an Origin (sent by browsers) must be this server's own, and a
+# body must be JSON — which a page on another origin cannot send without a
+# preflight this server never answers. Nothing that already talks to it is
+# affected: the app is served from this origin and sends JSON, the client and
+# `curl` send no Origin, and a bodiless `curl -X POST` stays a valid request.
+_LOCAL_NAMES = ("127.0.0.1", "localhost", "[::1]")
+_BODY_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+
+
+def foreign_request(method, headers, port):
+    """Why this request must be refused, or None if it may proceed.
+
+    `headers` is anything with `.get` — the request's own headers.
+    """
+    own = {f"{h}:{port}" for h in _LOCAL_NAMES}
+    host = (headers.get("Host") or "").strip().lower()
+    # ⚠️ AN ABSENT HOST IS ALLOWED, a WRONG one is not. Every browser sends
+    # one; an HTTP/1.0 tool may not, and has no page behind it.
+    if host and host not in own:
+        return f"this server answers to 127.0.0.1:{port}, not {host}"
+    origin = headers.get("Origin")
+    if origin is not None:
+        # ⚠️ "null" IS A FOREIGN ORIGIN: sandboxed frames and file:// pages
+        # send it, and neither is this app.
+        if origin.strip().lower() not in {f"http://{h}" for h in own}:
+            return "requests from other pages are refused"
+    if method.upper() in _BODY_METHODS:
+        ctype = (headers.get("Content-Type") or "").split(";")[0]
+        try:
+            n = int(headers.get("Content-Length") or 0)
+        except ValueError:
+            return "unreadable Content-Length"
+        if ((n or headers.get("Transfer-Encoding"))
+                and ctype.strip().lower() != "application/json"):
+            return "a request body must be JSON"
+    return None
+
+
+# ⚠️ THE PAGE POLICY HASHES THE APP'S OWN INLINE SCRIPTS, and allows nothing
+# else to run. The app is one inline <script>; the avatar frame has its own.
+# A hash, unlike 'unsafe-inline', also forbids inline event handlers — which
+# is how markup slipped into the page (an `<img onerror>` in a title) would
+# run. Computed as each page is served, so editing the app cannot leave a
+# stale hash behind. Films stream from archive.org into the page's <video>,
+# so media is the one thing allowed from elsewhere.
+_INLINE_SCRIPT = re.compile(
+    rb"<script\b(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script\s*>", re.S | re.I)
+
+
+def page_policy(html):
+    """The Content-Security-Policy for one served HTML page (bytes)."""
+    hashes = []
+    for m in _INLINE_SCRIPT.finditer(html):
+        # Browsers hash the script with line endings normalised to LF.
+        text = m.group(1).replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        digest = base64.b64encode(hashlib.sha256(text).digest()).decode()
+        hashes.append(f"'sha256-{digest}'")
+    return ("default-src 'self'; "
+            f"script-src 'self' {' '.join(hashes)}".rstrip() + "; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "media-src 'self' https://archive.org https://*.archive.org; "
+            "connect-src 'self'; "
+            "frame-src 'self'; frame-ancestors 'self'; "
+            "object-src 'none'; base-uri 'none'; form-action 'self'")
+
+
 class Handler(BaseHTTPRequestHandler):
     service = None                     # set by serve()
     protocol_version = "HTTP/1.1"
@@ -2624,8 +2709,29 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         # The app is local and changes while it is being built.
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if ext == ".html":
+            self.send_header("Content-Security-Policy", page_policy(body))
+            self.send_header("X-Frame-Options", "SAMEORIGIN")
+            self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(body)
+        return True
+
+    def _refuses_foreign(self):
+        """Answer 403 and return True when the request is not this app's.
+
+        ⚠️ CALLED FIRST BY EVERY METHOD, before a body is read or a route is
+        matched. See `foreign_request`.
+        """
+        why = foreign_request(self.command, self.headers,
+                              self.server.server_address[1])
+        if not why:
+            return False
+        # ⚠️ AN UNREAD BODY WOULD BE TAKEN FOR THE NEXT REQUEST on a kept-alive
+        # connection, so the connection ends with the refusal.
+        self.close_connection = True
+        self._json({"error": "refused", "why": why}, 403)
         return True
 
     def _sse_open(self):
@@ -2644,6 +2750,8 @@ class Handler(BaseHTTPRequestHandler):
     # ── routes ───────────────────────────────────────────────────────────────
 
     def do_GET(self):
+        if self._refuses_foreign():
+            return
         path = self.path.split("?")[0].rstrip("/") or "/"
         svc = self.service
         # ⚠️ `/` NOW SERVES THE APP, AND `/health` STILL ANSWERS JSON. The two
@@ -2823,6 +2931,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "not found", "path": path}, 404)
 
     def do_DELETE(self):
+        if self._refuses_foreign():
+            return
         path = self.path.split("?")[0].rstrip("/")
         if path.startswith("/sessions/"):
             sid = path[len("/sessions/"):]
@@ -2830,6 +2940,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "not found", "path": path}, 404)
 
     def do_POST(self):
+        if self._refuses_foreign():
+            return
         path = self.path.split("?")[0].rstrip("/") or "/"
         body = self._body()
         if body is None:

@@ -1464,9 +1464,16 @@
         const name = document.createElement("span");
         const shelved = w.shelved > 0;
         const reference = w.status === "reference";
-        name.innerHTML = "<b>" + w.title + "</b> — " + (reference
+        // ⚠️ textContent, NEVER innerHTML. A title is whatever a work was
+        // added under — a file's name, or the title field of /library/read —
+        // and markup in it ran as script in this page, with the whole API
+        // behind it.
+        const titleEl = document.createElement("b");
+        titleEl.textContent = w.title;
+        name.appendChild(titleEl);
+        name.appendChild(document.createTextNode(" — " + (reference
           ? "encyclopedia, " + w.size_mb + " MB"
-          : w.passages + " passages" + (shelved ? " · archived" : ""));
+          : w.passages + " passages" + (shelved ? " · archived" : ""))));
         const acts = document.createElement("span"); acts.className = "acts";
         // ⚠️ An encyclopedia is consulted, not studied: there are no passages
         // to archive or remove, so it gets no shelf actions.

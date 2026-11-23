@@ -85,7 +85,7 @@ def follow(url, name=None, db_path=None):
     else goes through `world.discover_feed` + `subscribe`. Nothing new is
     stored and no third table appears.
     """
-    from . import agenda, world
+    from . import agenda, outbound, world
     import urllib.request
 
     ok, why = world.is_public_url(url)
@@ -97,7 +97,7 @@ def follow(url, name=None, db_path=None):
     if looks_ical:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=NET_TIMEOUT) as r:
+            with outbound.urlopen(req, timeout=NET_TIMEOUT) as r:
                 text = r.read(4_000_000).decode("utf-8", "replace")
         except Exception as e:                               # noqa: BLE001
             return False, f"that calendar could not be read ({type(e).__name__})"
