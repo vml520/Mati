@@ -92,8 +92,12 @@ and off-topic goes — it is a real place, and the thing is not lost.
 """
 
 
-def system_prompt():
+def system_prompt(remote=None):
     """`SYSTEM_PROMPT` with the assistant called what this person calls it.
+
+    `remote` says where the words are composed; None reads it from the
+    person's model choice. (The server passes False for the local model that
+    stands in when the chosen one cannot be reached.)
 
     ⚠️ THE ASSISTANT IS RENAMEABLE, THE PRODUCT IS NOT. Mati is a personal AI,
     so its name is the person's to choose. Only the line where it names ITSELF
@@ -110,12 +114,34 @@ def system_prompt():
     setting changes about never, and a change costs exactly one miss.
     """
     from . import config as _C
+    text = SYSTEM_PROMPT
+    # ⚠️ WHERE THE WORDS ARE MADE MUST BE SAID TRUE. With a remote model the
+    # memory is still here but the composing is not, and "I run on the
+    # person's own machine" would be a false claim about itself — one sentence
+    # changes, nothing else, so a local install's prompt is byte-identical.
+    try:
+        if remote is None:
+            from . import llm as _L
+            ch = _C.model_choice()
+            remote = ch["kind"] == "anthropic" or (
+                ch["kind"] == "openai" and not _L.is_local_url(ch["url"]))
+        if remote:
+            text = text.replace(_ON_THIS_MACHINE, _COMPOSED_ELSEWHERE, 1)
+    except Exception:
+        pass
     name = _C.assistant_name()
     if name == _C.DEFAULT_ASSISTANT_NAME:
-        return SYSTEM_PROMPT
+        return text
     # ⚠️ ONLY THE IDENTITY LINE, and only once. Anything else in the prompt
     # that names the product is about the product, not about who is speaking.
-    return SYSTEM_PROMPT.replace("I am Mati.", f"I am {name}.", 1)
+    return text.replace("I am Mati.", f"I am {name}.", 1)
+
+
+_ON_THIS_MACHINE = ("I run on the\nperson's own machine, where every word is "
+                    "time they wait.")
+_COMPOSED_ELSEWHERE = ("My memory lives on\nthe person's own machine; my words "
+                       "are composed by a model they chose, over the\n"
+                       "internet, and every word is still time they wait.")
 
 
 
@@ -403,6 +429,12 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     """
     history = list(history or [])
     info = {}
+    # ⚠️ THE SAFEGUARDS THIS MODEL GETS, from `model_settings` — carried by the
+    # client that speaks. Every check below follows these switches, and the
+    # turn works whichever are on. A client with no settings (a test's stub)
+    # gets them all.
+    from . import model_settings as _ms
+    _sg_model = _ms.safeguards(getattr(llm, "settings", None))
 
     # ⚠️ WHAT IS ANSWERED vs WHAT IS REMEMBERED. The person is answered on what
     # they just said; the memory keeps every part of the exchange, marked. Two
@@ -588,6 +620,32 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         named = bridge.search(user_text, k=k_named)
     except _vault.Locked:
         named, locked = [], True
+
+    # ⚠️⚠️ A PROJECT IS STATE, NOT MEMORY — and it is read here, in code,
+    # because recall did not carry it. Asked to help with a move, Mati
+    # remembered where and why and re-advised researching documents the person
+    # had already said were ready: the four memories that turn were handed
+    # held nothing from the night it was settled. `projects.act` answers an
+    # outright request (open, show, target, step); `_proj` is the project this
+    # turn is about, whose state is said below, before anything is generated.
+    # Shown on request and in this window only (the user).
+    _proj_said, _proj_only, _proj = "", False, None
+    _where_said, _proj_guard = "", None
+    if remember:
+        try:
+            from . import projects as _pj
+            _proj_said, _proj_only, _proj = _pj.act(user_text, session=session,
+                                                     history=history)
+            if _proj is not None and not _proj_said:
+                _where_said = _pj.where_we_are(_proj)
+            if _proj is not None:
+                info["project"] = _proj["id"]
+        except _vault.Locked:
+            pass
+        except Exception as e:                          # noqa: BLE001
+            if verbose:
+                print(f"  [projects] skipped: {e!r}", file=sys.stderr)
+
     if named:
         bridge.record_hits([n["note_id"] for n in named], "name")
     info['n_named'] = len(named)
@@ -1052,6 +1110,18 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         if verbose:
             print(f"  [drafts] skipped: {e}", file=sys.stderr)
 
+    # ⚠️ AIMS THE ADVICE; IT DOES NOT HOLD IT. The model is told the next
+    # step and what is settled, but a 3B's checklist prior beats context —
+    # the guard handed to `ReplyFilter` below is what removes re-advice.
+    if _proj is not None and not _proj_only:
+        try:
+            from . import projects as _pj
+            parts.append(_pj.prompt_block(_proj))
+            _proj_guard = _pj.guard(_proj, user_text)
+        except Exception as e:                          # noqa: BLE001
+            if verbose:
+                print(f"  [projects] block skipped: {e!r}", file=sys.stderr)
+
     # An encyclopedia entry, when one was explicitly asked for.
     #
     # ⚠️ ONLY ON AN EXPLICIT ASK, AND THAT IS THE DESIGN, NOT A LIMITATION.
@@ -1256,6 +1326,13 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     if _money_said and on_chunk is not None:
         on_chunk(_money_said + "\n\n")
 
+    # A project request answered in code, or where a project stands — both
+    # composed from its record and said as written.
+    if _proj_said and on_chunk is not None:
+        on_chunk(_proj_said + ("" if _proj_only else "\n\n"))
+    elif _where_said and on_chunk is not None:
+        on_chunk(_where_said + "\n\n")
+
     if _report_text and on_chunk is not None:
         on_chunk(_report_text + "\n\n")
 
@@ -1301,13 +1378,20 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         # still written, below.
         info['report_only'] = True
         reply, resp = _report_text, None
+    elif _proj_only and _proj_said:
+        # ⚠️ ANSWERED FROM THE RECORD. "Show me the project" is the record;
+        # a model run after it could only paraphrase it, which is how a
+        # settled step turns back into advice.
+        info["project_only"] = True
+        reply, resp = _proj_said, None
     elif _settled is not None:
         info['rapport'] = True
         if on_chunk is not None:
             on_chunk(_settled)
         reply, resp = _settled, None
     elif hasattr(llm, "stream_reply"):
-        clean = voice.ReplyFilter(user_text, memories=_surfaced_count())
+        clean = voice.ReplyFilter(user_text, memories=_surfaced_count(),
+                                  drop=_proj_guard, safeguards=_sg_model)
         pieces = []
         _think = {}
         _llm_t0 = time.time()
@@ -1352,7 +1436,8 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         # ending mid-word is.
         _stages.mark('llm', _llm_t0)
         tail = clean.flush()
-        if tail and getattr(llm, "last_done_reason", None) == "length":
+        if (tail and _sg_model["drop_cut_fragment"]
+                and getattr(llm, "last_done_reason", None) == "length"):
             if verbose:
                 print(f"  [length] dropped a cut fragment: {tail.strip()[:40]!r}",
                       file=sys.stderr)
@@ -1388,7 +1473,8 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
                     "words. Say so if it matters, and answer from what you "
                     "do have. Do not invent the memory.\n"
                     "</recalled_by_name>")}]
-            clean = voice.ReplyFilter(user_text, memories=_surfaced_count())
+            clean = voice.ReplyFilter(user_text, memories=_surfaced_count(),
+                                  drop=_proj_guard, safeguards=_sg_model)
             pieces = []
             for chunk in bridge.think_while(lm, llm.stream_reply(messages),
                                             stats=_think):
@@ -1420,7 +1506,8 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         with _stages.time("llm"):
             reply, resp = llm.reply(messages)
         reply = voice.clean_reply(reply, user_text, _person_name(),
-                                  memories=_surfaced_count())
+                                  memories=_surfaced_count(),
+                                  safeguards=_sg_model)
 
     # ⚠️ THE TRANSCRIPT MUST MATCH THE SCREEN. The report was streamed above
     # but the model's `reply` knows nothing about it, so without this the
@@ -1438,6 +1525,16 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     # than left unreachable: `continuity_only` is now true whenever anything
     # was composed, so prefixing could only ever have fired on a state that
     # cannot occur. Dead defensive code reads as a supported case.
+    # ⚠️ WHAT THE MODEL SAID, BEFORE ANYTHING COMPOSED IS PUT IN FRONT. Only
+    # this is Mati's advice; the record's own lines are not suggestions.
+    _generated = "" if resp is None and (
+        info.get("project_only") or info.get("money_only")
+        or info.get("clarify_only") or info.get("continuity_only")
+        or info.get("report_only") or info.get("rapport")) else (reply or "")
+    if _proj_said and not info.get("project_only"):
+        reply = _proj_said + "\n\n" + (reply or "")
+    elif _where_said:
+        reply = _where_said + "\n\n" + (reply or "")
     if _money_said and not info.get("money_only"):
         reply = _money_said + "\n\n" + (reply or "")
     if _report_text and not info.get("report_only"):
@@ -1492,7 +1589,8 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
         _offer = segue.choose(user_text, reply, surfaced=named)
         _line = segue.line(_offer)
         if _line:
-            _line = voice.clean_reply(_line, user_text, _person_name())
+            _line = voice.clean_reply(_line, user_text, _person_name(),
+                                      safeguards=_sg_model)
         if _offer and _line:
             info['segue'] = {"tier": _offer["tier"], "arm": _offer.get("arm"),
                              "note_id": _offer.get("note_id")}
@@ -1554,6 +1652,29 @@ def turn(lm, tok, llm, user_text, history=None, verbose=True, remember=True,
     # where they are" to a 3B gets a question about an invented city.
     try:
         from . import asks as _asks2
+        # ⚠️ A PROJECT QUESTION FIRST: it is about what was JUST said ("I
+        # have all the paperwork ready"), and the morning report keeps.
+        # Advice is logged as said; whether it came to anything is the
+        # person's to confirm. A halted multi-step task with no project is
+        # offered one, once.
+        if remember and not info.get("answered_ask"):
+            try:
+                from . import projects as _pj2
+                _pp = _proj or _pj2.pointed(session)
+                if _pp is not None:
+                    # ⚠️ ONLY ON A TURN THAT NAMED THE PROJECT. The pointer
+                    # catches a follow-up like "the paperwork is ready"; it
+                    # must not file a weather answer as advice on the move.
+                    if _generated and _proj is not None:
+                        info["advice_logged"] = _pj2.record_advice(
+                            _pp, _generated)
+                    _pj2.notice(_pj2.state(_pp["id"]), user_text)
+                else:
+                    _pj2.offer_if_halted(user_text, history, session=session)
+            except Exception as e:                      # noqa: BLE001
+                if verbose:
+                    print(f"  [projects] after-reply skipped: {e!r}",
+                          file=sys.stderr)
         _q = _asks2.pending()
         if _q and not info.get("answered_ask"):
             _line = "\n\n" + _q["question"]

@@ -244,6 +244,66 @@ THINKING    = {"type": "adaptive"}
 EFFORT      = "high"         # low | medium | high | xhigh | max
 
 
+# ── Which model speaks — the person's choice, read at call time ──────────────
+#
+# Mati connects to the model the person chooses — most popular models.
+#
+#   model_choice        "local:<ollama name>" or "conn:<id>"
+#   model_connections   [{id, kind, label, url, model}], kind "openai" (any
+#                       OpenAI-compatible service or local server) or
+#                       "anthropic"
+#
+# ⚠️ THE DEFAULT IS UNCHANGED: with no `model_choice`, the local Ollama model
+# (`local_model`, else LOCAL_MODEL) speaks, exactly as before.
+# ⚠️ KEYS ARE NOT HERE. A connection's key lives sealed in `credentials`,
+# under `model:<id>`; settings hold only what is safe to read unlocked.
+CONNECTION_KINDS = ("openai", "anthropic")
+ANTHROPIC_URL = "https://api.anthropic.com"
+
+
+def model_connections():
+    """The connections the person has added, in the order they added them."""
+    got = _settings().get("model_connections") or []
+    return [c for c in got if isinstance(c, dict) and c.get("id")
+            and c.get("kind") in CONNECTION_KINDS and c.get("model")]
+
+
+def connection(conn_id):
+    return next((c for c in model_connections() if c["id"] == conn_id), None)
+
+
+def model_choice():
+    """What speaks now: {"choice", "kind", "model", "url", "label", "conn"}.
+
+    ⚠️ A CHOICE THAT NO LONGER RESOLVES FALLS BACK TO THE LOCAL MODEL, and
+    says so in `missing`. A removed connection must not leave Mati mute.
+    """
+    s = _settings()
+    # ⚠️ `MATI_MODEL` STILL WINS, for one run, over every saved choice —
+    # setup tells people they can do exactly that.
+    env = os.environ.get("MATI_MODEL")
+    if env:
+        return {"choice": f"local:{env}", "kind": "local", "model": env,
+                "url": OLLAMA_URL, "label": env, "conn": None}
+    local = s.get("local_model") or LOCAL_MODEL
+    ch = s.get("model_choice") or ""
+    if ch.startswith("conn:"):
+        c = connection(ch[len("conn:"):])
+        if c:
+            url = (ANTHROPIC_URL if c["kind"] == "anthropic"
+                   else (c.get("url") or "")).rstrip("/")
+            return {"choice": ch, "kind": c["kind"], "model": c["model"],
+                    "url": url, "label": c.get("label") or c["model"],
+                    "conn": c["id"]}
+        return {"choice": f"local:{local}", "kind": "local", "model": local,
+                "url": OLLAMA_URL, "label": local, "conn": None,
+                "missing": ch}
+    if ch.startswith("local:") and len(ch) > len("local:"):
+        local = ch[len("local:"):]
+    return {"choice": f"local:{local}", "kind": "local", "model": local,
+            "url": OLLAMA_URL, "label": local, "conn": None}
+
+
 # ── Field ─────────────────────────────────────────────────────────────────────
 VOCAB_PATH   = os.path.join(CACHE_DIR, 'qa_vocab.json')
 CKPT_PATH    = os.path.join(CACHE_DIR, 'diag_pattern8d_shuf_final.npz')

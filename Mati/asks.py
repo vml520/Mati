@@ -255,6 +255,16 @@ def _encyclopedia(text):
     return None
 
 
+@handler("project")
+def _project(text):
+    """⚠️ A PROJECT CHANGES ONLY HERE. Mati spotted a sentence that settles a
+    step, picks an option or rules one out, and asked; this is the answer.
+    What is being confirmed is held by `projects` itself, since a pending ask
+    carries only its wording."""
+    from . import projects
+    return projects.confirm(text)
+
+
 def ask_encyclopedia_if_needed():
     """They asked for a reference and there is none. True if asked.
 

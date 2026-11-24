@@ -54,13 +54,19 @@ _PROMPT = (
     "exactly. Do not mention the passage, the text, or reading. No preamble.")
 
 _LLM = None
+_LLM_FOR = None
 
 
 def _client():
-    global _LLM
-    if _LLM is None:
+    """⚠️ REBUILT WHEN THE PERSON CHANGES THE MODEL. Kept for good, it went on
+    using the first model after a switch — the one cached client among the
+    callers of `make_llm`."""
+    global _LLM, _LLM_FOR
+    from . import config as C
+    now = C.model_choice()["choice"]
+    if _LLM is None or _LLM_FOR != now:
         from . import llm as L
-        _LLM = L.make_llm(_PROMPT)
+        _LLM, _LLM_FOR = L.make_llm(_PROMPT), now
     return _LLM
 
 

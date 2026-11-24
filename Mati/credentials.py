@@ -93,9 +93,26 @@ def known():
     return sorted(SERVICES)
 
 
+MODEL_PREFIX = "model:"
+
+
 def about(service):
     """What a service gives, where to get a key, what it costs. Raises Unknown."""
     s = str(service or "").strip().lower()
+    # ⚠️ A MODEL CONNECTION'S KEY, named for the connection the person added
+    # (`config.model_connections`). Still a closed list: a connection that
+    # does not exist is Unknown, exactly as a typo'd service is — the registry
+    # just has one entry per connection instead of one per service.
+    if s.startswith(MODEL_PREFIX):
+        c = C.connection(s[len(MODEL_PREFIX):])
+        if not c:
+            raise Unknown(f"There is no model connection called "
+                          f"'{s[len(MODEL_PREFIX):]}'.")
+        return {"service": s, "what": f"the model {c['model']} "
+                f"({c.get('label') or c['kind']})",
+                "where": "the service's own account page",
+                "cost": "billed by the service, per use — their prices",
+                "field": "API key"}
     if s in REFUSED:
         raise Unknown(REFUSED[s])
     if s not in SERVICES:

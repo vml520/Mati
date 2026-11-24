@@ -42,7 +42,7 @@ from . import inquiry
 from . import vault
 
 # Asked in this order. Only the first is required — a name is what makes the
-# difference between "I don't remember" and "I don't remember, Luna", and the
+# difference between "I don't remember" and "I don't remember, Sam", and the
 # rest are things people actually want an assistant to hold onto.
 # ⚠️ "Anything else Mati should ALWAYS KNOW about you?" was cut.
 # A program that opens by asking what it should always know about you reads as
@@ -52,8 +52,8 @@ from . import vault
 # length they like, or nothing at all.
 QUESTIONS = [
     ("name",      "What should Mati call you?",                       True),
-    # Separate from what to CALL them: someone called Vic may be Victoria on a
-    # form, and Mati should use the first while knowing the second.
+    # Separate from what to CALL them: someone called Sam may be Samantha on
+    # a form, and Mati should use the first while knowing the second.
     ("fullname",  "And your full name? (optional)",                    False),
     ("work",      "What do you work on? (one line)",                   False),
     ("interests", "What are you interested in? (a few topics)",        False),
@@ -178,11 +178,18 @@ def choose_model():
         print(f"  Leaving {C.LOCAL_MODEL} in place.\n")
         return None
 
-    C.save_settings(local_model=pick, provider="local")
+    # ⚠️ THE CHOICE TOO, not only `local_model`: once a service has been
+    # chosen, `model_choice` outranks `local_model`, and running this step
+    # again would otherwise change nothing.
+    C.save_settings(local_model=pick, provider="local",
+                    model_choice=f"local:{pick}")
     print(f"  {detail}\n")
     print(f"  Mati will speak through {pick}. Change it any time with")
     print("  `python3 -m Mati.setup --model`, or for one run only:")
-    print("      MATI_MODEL=other:tag python3 -m Mati.server\n")
+    print("      MATI_MODEL=other:tag python3 -m Mati.server")
+    print("  In the window, with the terminal switched on, the arrow beside")
+    print("  the model's name changes it too. Mati can connect to most")
+    print("  popular models.\n")
     return pick
 
 

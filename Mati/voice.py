@@ -335,11 +335,39 @@ def _instead_of_denial(memories=None):
             "Tell me a detail and I'll look again.")
 
 
-def clean_reply(text, user_text="", name=None, memories=None):
+# ── The safeguards, as switches (`model_settings`) ──────────────────────────
+# ⚠️ EVERY CHECK BELOW IS ONE OF THESE, and each may be off for a model whose
+# settings say so. Off means skipped — the text passes that check untouched —
+# never a crash, and never a different check standing in for it.
+
+def _sg(safeguards):
+    from . import model_settings
+    return model_settings.safeguards({"safeguards": safeguards or {}})
+
+
+def _cut(text, sg):
+    """The cuts: stage directions and asides."""
+    if sg["stage_directions"]:
+        text = _strip_stage(text)
+    if sg["asides"]:
+        text = _strip_asides(text)
+    return text
+
+
+def _refused(seg, sg):
+    """Is this segment dropped whole — a leak, a stale time, a denial?"""
+    return ((sg["leaks"] and _leaks(seg))
+            or (sg["stale_time"] and _stale_time(seg))
+            or (sg["memory_denial"] and _denies_memory(seg)))
+
+
+def clean_reply(text, user_text="", name=None, memories=None, safeguards=None):
     """Remove references to the private state block, and hold the register.
 
-    ⚠️ Never returns empty.
+    ⚠️ Never returns empty. `safeguards` comes from `model_settings`; every
+    one is on when it is not given.
     """
+    sg = _sg(safeguards)
     # ⚠️ FIRST, and before every other branch. `[reading:…]` is the marker that
     # stops a reading milestone being written twice — bookkeeping, never
     # speech. Stripping it at one of the returns missed the other three.
@@ -349,13 +377,12 @@ def clean_reply(text, user_text="", name=None, memories=None):
         return text
     if asked_about_machinery(user_text):
         # they asked; answering is not leaking — but the register still holds
-        return in_register(_tidy(_strip_stage(text)), name)
+        return in_register(_tidy(_strip_stage(text) if sg["stage_directions"]
+                                 else text), name)
 
-    cut = _strip_asides(_strip_stage(text))
+    cut = _cut(text, sg)
     segments = _segments(cut)
-    kept = [s for s in segments
-            if not _leaks(s) and not _stale_time(s)
-            and not _denies_memory(s)]
+    kept = [s for s in segments if not _refused(s, sg)]
     out = _tidy("".join(kept))
     if out and segments and (not kept or kept[0] is not segments[0]):
         out = _open_sentence(out)          # the opening clause was cut
@@ -366,7 +393,8 @@ def clean_reply(text, user_text="", name=None, memories=None):
     # was entirely machinery is shown anyway — the leak beats showing nothing
     # and keeps the failure visible. A reply that was entirely a DENIAL is
     # replaced, because showing it is publishing something untrue.
-    if any(_denies_memory(x) for x in (segments or [text])):
+    if sg["memory_denial"] and any(_denies_memory(x)
+                                   for x in (segments or [text])):
         return in_register(_instead_of_denial(memories), name)
     return in_register(text, name)
 
@@ -729,9 +757,18 @@ class ReplyFilter:
     on the whole text — `test_voice.py` checks that on every case it has.
     """
 
-    def __init__(self, user_text="", memories=None):
+    def __init__(self, user_text="", memories=None, drop=None,
+                 safeguards=None):
         self.user_text = user_text
         self.memories = memories
+        # Which checks this model gets (`model_settings`); all on if not given.
+        self.sg = _sg(safeguards)
+        # ⚠️ AN EXTRA SENTENCE TEST FROM THE CALLER — `projects.guard`, which
+        # removes advice about a step already settled. A sentence it drops is
+        # gone on purpose, so the "nothing survived, show the original"
+        # fallback in `flush` must not bring it back.
+        self.drop = drop
+        self.dropped = 0
         self.passthrough = asked_about_machinery(user_text)
         self._buf = ""
         self._emitted_any = False
@@ -759,7 +796,7 @@ class ReplyFilter:
         # Mid-reply it is almost always the model narrating ("let me recall:")
         # rather than asking, and acting on that would silently truncate an
         # answer that was going fine.
-        if not self._emitted_any:
+        if not self._emitted_any and self.sg["recall_marker"]:
             lead = self._buf.lstrip()
             # ⚠️ A SHORT LEAD-IN IS ALLOWED. A 3B model rarely starts with
             # the marker itself; it writes "Let me check." or "Sure." first.
@@ -800,9 +837,16 @@ class ReplyFilter:
 
     def _judge(self, segment):
         """Keep, cut the aside, or drop — for one segment, with no fallback."""
-        cut = _strip_asides(_strip_stage(segment))
-        if _leaks(cut) or _stale_time(cut) or _denies_memory(cut):
+        cut = _cut(segment, self.sg)
+        if _refused(cut, self.sg):
             return ""
+        if self.drop is not None and cut.strip():
+            try:
+                if self.drop(cut):
+                    self.dropped += 1
+                    return ""
+            except Exception:
+                pass
         return _seam(cut)
 
     def flush(self):
@@ -824,6 +868,9 @@ class ReplyFilter:
         # replaced instead of shown.
         if self._emitted_any:
             return ""
-        if any(_denies_memory(x) for x in _segments(self._seen or tail)):
+        if self.sg["memory_denial"] and any(
+                _denies_memory(x) for x in _segments(self._seen or tail)):
             return _instead_of_denial(self.memories)
+        if self.dropped:
+            return ""              # removed on purpose; see `__init__`
         return tail

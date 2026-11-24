@@ -43,8 +43,20 @@ def available():
     return os.path.exists(_SAY)
 
 
-def voices(lang="en"):
-    """The installed voices, names only."""
+# ⚠️ BUBBLES BY DEFAULT (the user) — when this Mac has it. macOS ships a
+# different set of voices per install, so a default that is not installed
+# falls back to the system's own voice rather than to silence.
+DEFAULT_VOICE = "Bubbles"
+
+_TABLE = {"at": 0.0, "rows": []}
+
+
+def _voice_table():
+    """[(name, language, demo sentence)] from `say -v ?`, kept for a minute —
+    the list changes only when someone installs a voice."""
+    import time
+    if _TABLE["rows"] and time.time() - _TABLE["at"] < 60:
+        return _TABLE["rows"]
     if not available():
         return []
     try:
@@ -52,12 +64,56 @@ def voices(lang="en"):
                              text=True, timeout=10).stdout
     except Exception:
         return []
-    got = []
+    rows = []
     for line in out.splitlines():
-        m = re.match(r"(\S+(?: \S+)?)\s+([a-z]{2})_", line)
-        if m and (not lang or m.group(2) == lang):
-            got.append(m.group(1))
-    return got
+        m = re.match(r"(\S+(?: \S+)?)\s+([a-z]{2})_\S*\s*#\s*(.*)$", line)
+        if m:
+            rows.append((m.group(1), m.group(2), m.group(3).strip()))
+    _TABLE.update(at=time.time(), rows=rows)
+    return rows
+
+
+def voices(lang="en"):
+    """The installed voices, names only."""
+    return [n for n, lg, _d in _voice_table() if not lang or lg == lang]
+
+
+def voice_name():
+    """The voice Mati speaks with: the person's choice, else Bubbles if this
+    Mac has it, else None — which is the system's own voice."""
+    try:
+        from . import config as C
+        chosen = C._settings().get("voice_name")
+    except Exception:
+        chosen = None
+    if chosen:
+        return chosen
+    return DEFAULT_VOICE if DEFAULT_VOICE in voices(lang=None) else None
+
+
+def sample(name):
+    """Say this voice's own demo sentence, now. True if it started.
+
+    ⚠️ ON REQUEST ONLY — the person picked the voice in the selector — so it
+    plays whether or not replies are spoken; hearing a voice is how it is
+    chosen. ⚠️ ONLY AN INSTALLED VOICE, by exact name: the name goes to `say`
+    as an argument and nothing else is accepted.
+    """
+    global _proc
+    row = next((r for r in _voice_table() if r[0] == name), None)
+    if row is None:
+        return False
+    demo = row[2] or f"Hello! My name is {name}."
+    try:
+        stop()
+        gen = _duck()
+        _proc = subprocess.Popen([_SAY, "-v", name, "--", demo],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+        threading.Thread(target=_watch, args=(_proc, gen), daemon=True).start()
+        return True
+    except Exception:
+        return False
 
 
 def _duck():
@@ -246,11 +302,7 @@ def _pump():
                 if not _queue:
                     return
                 said, on_start = _queue.pop(0)
-            try:
-                from . import config as C
-                voice = C._settings().get("voice_name")
-            except Exception:
-                voice = None
+            voice = voice_name()
             # ⚠️ RATE IS A SETTING because 175 wpm is a default, not a law.
             # Someone reading along wants it faster; someone listening while
             # doing something else wants it slower.
@@ -334,7 +386,7 @@ def say(text, db_path=None):
             return False
         stop()
         cmd = [_SAY]
-        voice = st.get("voice_name")
+        voice = voice_name()
         if voice:
             cmd += ["-v", str(voice)]
         gen = _duck()                  # before the first syllable, not after

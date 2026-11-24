@@ -826,6 +826,11 @@ SEALED_COLUMNS = (
     ("targets", "what"),
     ("targets", "basis"),
     ("targets", "why"),
+    # ⚠️ A PROJECT'S LOG IS THE PERSON'S PLANS IN THEIR OWN WORDS — "a
+    # vegetable bed by spring", "I have all the paperwork ready" — and Mati's
+    # advice about them. Both text columns sealed; `projects.py` seals at
+    # the one write there is (`log`).
+    ("project_log", "text"), ("project_log", "evidence"),
     # ⚠️ AN ANNOTATION QUOTES THE PERSON'S PROSE in its anchor and is
     # Mati's own observation in its note — both sealed, for the two
     # separate reasons the rule already covers.
@@ -933,6 +938,10 @@ CLEAR_COLUMNS = {
     ("targets", "status"): "open/met/superseded/withdrawn — a state",
     ("targets", "created"): "timestamp",
     ("targets", "touched"): "timestamp",
+    ("projects", "opened"): "timestamp",
+    ("project_log", "kind"): "title/target/step/option/advice/status — an enum",
+    ("project_log", "state"): "open/done/chosen/declined… — a state, not content",
+    ("project_log", "at"): "timestamp",
     ("draft_notes", "title"): "which draft it belongs to; the lookup key",
     ("draft_notes", "created"): "timestamp",
     ("drafts", "status"): "open/done — a state, not content",

@@ -180,6 +180,11 @@
   .chrome {
     flex: none; display: flex; justify-content: flex-end; gap: 2px;
     padding: 8px 10px; opacity: 0; transition: opacity .25s ease;
+    /* ⚠️ ITS OWN LAYER, ABOVE THE AVATAR. The model list drops down out of
+       this bar, and without a layer the avatar — later in the page — painted
+       over it (seen in a headless screenshot). Below the film (40) and the
+       sheets (45), which should still cover it. */
+    position: relative; z-index: 10;
   }
   .front:hover .chrome,
   .front:focus-within .chrome { opacity: 1; }
@@ -196,6 +201,60 @@
      takes all the free space in the bar, so Library / Commands / Settings
      stay at the right. */
   #toTerm { margin-right: auto; }
+
+  /* The model selector, in the terminal button's place: the NAME opens the
+     terminal, the ARROW opens the list of models. */
+  .modelsplit { position: relative; display: flex; align-items: center; }
+  .modelsplit[hidden] { display: none; }
+  .ms-name, .ms-arrow {
+    min-height: var(--tap); background: none; border: 0; cursor: pointer;
+    color: var(--label-3); font: 400 0.9rem/1 var(--sans);
+  }
+  .ms-name { padding: 0 4px 0 10px; border-radius: 10px 0 0 10px;
+             max-width: 14rem; overflow: hidden; text-overflow: ellipsis;
+             white-space: nowrap; }
+  .ms-arrow { padding: 0 8px; border-radius: 0 10px 10px 0; display: grid;
+              place-items: center; }
+  .ms-name:hover, .ms-arrow:hover { color: var(--tint); }
+  .ms-name:focus-visible, .ms-arrow:focus-visible {
+    outline: 2px solid var(--tint); outline-offset: -2px; }
+  .ms-menu {
+    position: absolute; top: 100%; left: 0; z-index: 50; min-width: 16rem;
+    max-width: 22rem; background: var(--surface); padding: 6px;
+    border: 1px solid var(--separator); border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.25);
+  }
+  .ms-menu[hidden] { display: none; }
+  .ms-head { color: var(--label-2); font-size: 0.75rem; padding: 8px 10px 2px; }
+  .ms-say { color: var(--label-2); font-size: 0.8rem; padding: 6px 10px; }
+  .ms-row { display: flex; align-items: center; }
+  .ms-item {
+    display: flex; align-items: center; gap: 8px; flex: 1; width: 100%;
+    text-align: left; background: none; border: 0; color: var(--label);
+    font: inherit; padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  }
+  .ms-item:hover, .ms-item:focus-visible { background: var(--bg); outline: none; }
+  .ms-item[aria-checked="true"] { color: var(--tint); }
+  .ms-item .ms-sub { color: var(--label-2); font-size: 0.8rem; margin-left: auto; }
+  .ms-x { background: none; border: 0; color: var(--label-3); cursor: pointer;
+          padding: 8px; border-radius: 8px; font: inherit; }
+  .ms-x:hover { color: var(--tint); }
+  .connwarn { margin: 6px 18px; padding: 10px 12px; border-radius: 10px;
+              border: 1px solid var(--tint); color: var(--label); }
+  .connwarn p { margin: 0 0 6px; font-size: 0.9rem; }
+  .connack { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; }
+  #connUrlRow[hidden] { display: none; }
+  /* Sized to the sheet, not to its longest option (seen running off the
+     edge in a headless screenshot). */
+  #connKind { max-width: 15rem; }
+  /* ⚠️ CONNECT STAYS IN VIEW. The form plus the warning is taller than a
+     small window, and a button that has to be scrolled to after the
+     warning reads as missing. */
+  #connectSheet footer { position: sticky; bottom: 0; display: flex;
+                         align-items: center; gap: 4px;
+                         background: var(--surface); }
+  #connAck { margin-right: auto; }
+  #connAck[hidden] { display: none; }
 
   /* ── VERTICAL: the conversation fills the page. ──────────────────────── */
   /* ⚠️ ONE CELL, TWO LAYERS. The avatar and the subtitle occupy the SAME
@@ -588,8 +647,18 @@
     <!-- ── Mati. Vertical, avatar-led, one utterance at a time. ────────── -->
     <section class="face front" aria-label="Mati">
       <div class="chrome">
-        <button class="icon-btn" id="toTerm" type="button" hidden
-                aria-label="Open terminal" title="Terminal"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7l5 5-5 5M12 17h8"/></svg></button>
+        <!-- ⚠️ THE MODEL SELECTOR IS THE TERMINAL BUTTON (the user): the
+             model's NAME opens the terminal, the ARROW changes the model.
+             Shown when the terminal is switched on, as the button was. -->
+        <div class="modelsplit" id="toTerm" role="group"
+             aria-label="Model and terminal" hidden>
+          <button class="ms-name" id="modelName" type="button"
+                  title="Open the terminal">model</button>
+          <button class="ms-arrow" id="modelArrow" type="button"
+                  aria-haspopup="menu" aria-expanded="false"
+                  aria-label="Change the model" title="Change the model"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="ms-menu" id="modelMenu" role="menu" hidden></div>
+        </div>
         <!-- ⚠️ COMMANDS ARE NOT SETTINGS. A setting is what Mati is like
              and persists; a command is something you do now and is over.
              Putting Restart next to Speaking pace would be the same
@@ -718,11 +787,9 @@
           <button class="pick" data-cmd="/reindex" data-cost="Reindexing re-addresses the working set. Minutes, and it holds the field throughout.">Reindex</button>
           <button class="pick" data-cmd="/pack" data-cost="Packing writes everything to disk. Safe any time.">Pack</button>
         </div>
-        <h2>Model</h2>
-        <div class="librow">
-          <select id="modelPick" class="pick"></select>
-        </div>
-        <p class="hint" id="cmdOut">⚠️ A new model takes effect after a restart — the running one is already loaded.</p>
+        <!-- The model is chosen with the arrow beside its name, on the front;
+             a change takes effect from the next reply. -->
+        <p class="hint" id="cmdOut"></p>
         <h2>The record — what was said, and what it was composed with</h2>
         <div id="origins"></div>
       </div>
@@ -901,6 +968,58 @@
   </div>
 
   <footer><button class="done cancel" id="cancelSettings" type="button">Cancel</button><button class="done" id="closeSettings" type="button">Done</button></footer>
+</dialog>
+
+<!-- ── Adding a model service ────────────────────────────────────────────
+     ⚠️ THE WARNING COMES BEFORE CONNECTING (the user), and Connect refuses a
+     model on the internet until it is acknowledged. The server refuses too,
+     so the page is not the only thing standing between a key and a service. -->
+<dialog class="sheet" id="connectSheet">
+  <header>
+    <h2>Connect another model</h2>
+    <p class="hint"><span class="aname">Mati</span> can connect to most popular
+      models. A key, if it needs one, is kept encrypted on this Mac.</p>
+  </header>
+  <div class="switchrow">
+    <label for="connKind">Kind</label>
+    <select id="connKind" class="pick">
+      <option value="openai">OpenAI-compatible</option>
+      <option value="anthropic">Claude (Anthropic)</option>
+    </select>
+  </div>
+  <div class="switchrow" id="connUrlRow">
+    <label for="connUrl">Address</label>
+    <input id="connUrl" class="pick" type="url" autocomplete="off"
+           spellcheck="false" placeholder="the address the model gives you">
+  </div>
+  <div class="switchrow">
+    <label for="connModel">Model</label>
+    <input id="connModel" class="pick" type="text" autocomplete="off"
+           spellcheck="false" placeholder="the service's model name">
+  </div>
+  <div class="switchrow">
+    <label for="connLabel">Name it</label>
+    <input id="connLabel" class="pick" type="text" maxlength="40"
+           autocomplete="off" placeholder="optional">
+  </div>
+  <div class="switchrow">
+    <label for="connKey">API key</label>
+    <input id="connKey" class="pick" type="password" autocomplete="off"
+           placeholder="not needed for a server on this Mac">
+  </div>
+  <div class="connwarn" id="connWarn" hidden>
+    <p><strong>Before you connect to a model on the internet</strong></p>
+    <p>Every time you talk, it receives everything <span class="aname">Mati</span>
+      is given: your memories, your profile, and today's conversation.
+      <span class="aname">Mati</span> also uses it on its own while you are
+      away — studying, its own questions, the night's reflection — and the
+      service may bill each of those. What it receives is covered by that
+      service's terms, not <span class="aname">Mati</span>'s.</p>
+  </div>
+  <p class="hint" id="connSaid" style="padding:12px 18px"></p>
+  <!-- ⚠️ THE ACKNOWLEDGEMENT SITS WITH THE BUTTONS, in the pinned footer, so
+       what Connect needs is always in view beside it. -->
+  <footer><label class="connack" id="connAck" hidden><input type="checkbox" id="connUnderstood"> I understand</label><button class="done cancel" id="cancelConnect" type="button">Cancel</button><button class="done" id="doConnect" type="button">Connect</button></footer>
 </dialog>
 
 <script>
@@ -1355,6 +1474,15 @@
         if (el.type === "checkbox") el.checked = Boolean(v); else el.value = v;
       }
       await loadVoices();
+      // ⚠️ AFTER THE VOICES EXIST. The loop above set the select's value
+      // while it still had no options, which does nothing — so the saved
+      // voice never showed. With none chosen, Bubbles is the default (the user),
+      // when this Mac has it; the server speaks with the same rule.
+      const vn = $("voiceName");
+      if (vn) {
+        const want = d.voice_name || "Bubbles";
+        if ([...vn.options].some(o => o.value === want)) vn.value = want;
+      }
       applyTerm();
       // ⚠️ APPLIED, NOT JUST SHOWN IN THE SHEET. Setting the select alone
       // would leave the disc on the old mode.
@@ -1380,6 +1508,13 @@
   // ⚠️ IMMEDIATE, NOT ON THE NEXT RELOAD. Choosing "Still frame" and watching
   // the axolotl carry on swimming reads as the setting not working.
   $("avatarMode").addEventListener("change", (e) => applyAvatar(e.target.value));
+  // ⚠️ A VOICE IS CHOSEN BY HEARING IT (the user): picking one plays its own
+  // sample sentence, whether or not replies are spoken aloud.
+  $("voiceName").addEventListener("change", (e) => {
+    fetch("/voice/sample", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ voice: e.target.value }) }).catch(() => {});
+  });
 
   // ⚠️ THE WHOLE ROW TOGGLES, not just the label and the 51px switch. A 51x31
   // target inside a scrolling sheet is small enough to miss; the row is
@@ -1555,46 +1690,229 @@
     });
   }
 
-  async function loadModels() {
-    const sel = $("modelPick");
-    if (!sel || sel.options.length) return;
+  // ── The model selector — it IS the terminal button (the user) ─────────────
+  // The NAME opens the terminal; the ARROW changes the model. A change takes
+  // effect from the next reply — the server switches without a restart.
+  // ⚠️ A WARNING BEFORE ANY MODEL ON THE INTERNET (the user). It receives every
+  // turn's prompt, and Mati uses it while the person is away too.
+  // A function, because NAME is learned from the server after load.
+  const remoteWarning = () =>
+    "A model on the internet receives everything " + NAME + " is given each " +
+    "time you talk: your memories, your profile, and today's conversation. " +
+    NAME + " also uses it on its own while you are away — studying, its own " +
+    "questions, the night's reflection — and the service may bill each of " +
+    "those. What it receives is covered by that service's terms, not " +
+    NAME + "'s.";
+  const modelName = $("modelName"), modelArrow = $("modelArrow"),
+        modelMenu = $("modelMenu");
+  let models = null;
+
+  async function refreshModels() {
     try {
-      const d = await (await fetch("/models", { cache: "no-store" })).json();
-      for (const m of (d.models || [])) {
-        const o = document.createElement("option");
-        // ⚠️ THE SIZE IS SHOWN BECAUSE THE FIELD SHARES THE MEMORY. A model
-        // that fits Ollama may not fit beside the simulation — and too big
-        // swaps rather than fails, which reads as Mati going slow rather
-        // than as a bad choice.
-        const gb = (d.sizes || {})[m];
-        const tight = gb && d.comfortable_gb && gb > d.comfortable_gb;
-        o.value = m;
-        o.textContent = m + (gb ? `  (${gb} GB${tight ? " — tight on this machine" : ""})` : "");
-        if (m === d.current) o.selected = true;
-        sel.appendChild(o);
-      }
-      if (!(d.models || []).length) {
-        const o = document.createElement("option");
-        o.textContent = "no models pulled"; o.disabled = true;
-        sel.appendChild(o);
-      }
-    } catch (e) { /* server down: leave it empty rather than invent a list */ }
+      models = await (await fetch("/models", { cache: "no-store" })).json();
+      modelName.textContent = models.label || "model";
+      modelName.title = "Open the terminal — " + (models.remote
+        ? "a model on the internet is answering"
+        : "the model is on this Mac") +
+        (models.fallback ? ". Standing in, because: " + models.fallback : "");
+    } catch (e) { /* server down: keep the last name rather than guess */ }
   }
-  $("modelPick").addEventListener("change", async (e) => {
-    // ⚠️ SAVED, NOT APPLIED. The running server already loaded its model;
-    // saying "done" would be a lie until a restart.
+
+  function closeModelMenu() {
+    modelMenu.hidden = true;
+    modelArrow.setAttribute("aria-expanded", "false");
+  }
+
+  function menuLine(cls, text) {
+    const p = document.createElement("div");
+    p.className = cls; p.textContent = text;
+    modelMenu.appendChild(p);
+    return p;
+  }
+
+  function menuItem(text, sub, checked, onPick, role) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "ms-item";
+    b.setAttribute("role", role || "menuitemradio");
+    if (!role) b.setAttribute("aria-checked", checked ? "true" : "false");
+    const t = document.createElement("span"); t.textContent = text;
+    b.appendChild(t);
+    if (sub) {
+      const s = document.createElement("span");
+      s.className = "ms-sub"; s.textContent = sub; b.appendChild(s);
+    }
+    b.addEventListener("click", onPick);
+    return b;
+  }
+
+  async function openModelMenu() {
+    await refreshModels();
+    modelMenu.textContent = "";
+    if (!models) { menuLine("ms-say", "The server is not answering."); }
+    else {
+      menuLine("ms-head", "On this Mac");
+      // ⚠️ THE SIZE IS SHOWN BECAUSE THE FIELD SHARES THE MEMORY. Too big
+      // swaps rather than fails, which reads as going slow, not a bad pick.
+      for (const m of models.local || [])
+        modelMenu.appendChild(menuItem(m.name,
+          m.gb ? m.gb + " GB" + (m.tight ? " — tight here" : "") : "",
+          m.id === models.current, () => chooseModel(m.id, false, m.licence)));
+      if (!(models.local || []).length)
+        menuLine("ms-say", "No models in Ollama yet.");
+      if ((models.connections || []).length) {
+        menuLine("ms-head", "Other models");
+        for (const c of models.connections) {
+          const row = document.createElement("div"); row.className = "ms-row";
+          row.appendChild(menuItem(c.name,
+            (c.remote ? "internet" : "this network") +
+            (c.remote && !c.has_key ? " — no key" : ""),
+            c.id === models.current, () => chooseModel(c.id, c.remote, c.licence)));
+          const x = document.createElement("button");
+          x.type = "button"; x.className = "ms-x"; x.textContent = "✕";
+          x.setAttribute("aria-label", "Remove " + c.name);
+          x.addEventListener("click", () => forgetModel(c));
+          row.appendChild(x);
+          modelMenu.appendChild(row);
+        }
+      }
+      modelMenu.appendChild(menuItem("Connect another model…", "", false,
+                                     openConnect, "menuitem"));
+    }
+    modelMenu.hidden = false;
+    modelArrow.setAttribute("aria-expanded", "true");
+    const first = modelMenu.querySelector("button");
+    if (first) first.focus();
+  }
+
+  // ⚠️ A LICENCE THAT MUST BE AGREED TO, EVERY TIME (the user) — Qwen2.5 at
+  // 3B is non-commercial only. Asked on every choice, and once per run of
+  // Mati before the model in use speaks; the server refuses without it.
+  const licenceAlert = (lic) =>
+    lic.model + " — " + lic.name + "\n\n" + lic.text +
+    "\n\nThe full licence: " + lic.read + "\n\nDo you agree to its terms?";
+
+  async function chooseModel(id, remote, licence) {
+    if (models && id === models.current && !licence) { closeModelMenu(); return; }
+    if (remote && !window.confirm(remoteWarning() + "\n\nConnect?")) return;
+    if (licence && !window.confirm(licenceAlert(licence))) return;
+    const say = menuLine("ms-say", "Switching…");
     try {
-      await fetch("/settings", { method: "POST",
+      const r = await fetch("/model", { method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ local_model: e.target.value }) });
-      $("cmdOut").textContent = e.target.value +
-        " will be used after a restart — Commands ▸ Restart.";
-    } catch (err) { $("cmdOut").textContent = "That did not save."; }
+        body: JSON.stringify(licence ? { choice: id, agree: true }
+                                     : { choice: id }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { say.textContent = d.error || "That model could not be used."; return; }
+      await refreshModels();
+      closeModelMenu();
+    } catch (e) { say.textContent = "The server did not answer."; }
+  }
+
+  async function forgetModel(c) {
+    if (!window.confirm("Remove " + c.name + " and its key?")) return;
+    try {
+      await fetch("/model/forget", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: c.id }) });
+    } catch (e) { /* the menu re-reads the truth below */ }
+    await openModelMenu();
+  }
+
+  modelName.addEventListener("click", () => {
+    closeModelMenu();
+    card.classList.add("flipped");
+  });
+  modelArrow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (modelMenu.hidden) openModelMenu(); else closeModelMenu();
+  });
+  document.addEventListener("click", (e) => {
+    if (!modelMenu.hidden && !$("toTerm").contains(e.target)) closeModelMenu();
+  });
+  modelMenu.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeModelMenu(); modelArrow.focus(); }
+  });
+  // On every start of Mati the agreement is gone, so the model in use asks
+  // again — here, once per page load, before anything is said to it.
+  refreshModels().then(async () => {
+    const lic = models && models.needs_agreement;
+    if (!lic || !window.confirm(licenceAlert(lic))) return;
+    try {
+      await fetch("/model/agree", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: lic.model }) });
+    } catch (e) { /* the next reply will say what is needed */ }
   });
 
-  // ⚠️ EACH SURFACE REFRESHES WHAT IT OWNS: the terminal and the library are
-  // separate faces, so neither refreshes the other.
-  $("toTerm").addEventListener("click", loadModels);
+  // ── Adding a model service ──────────────────────────────────────────────
+  // ⚠️ THE KEY GOES STRAIGHT TO THE SERVER, which tests it and stores it
+  // sealed; the field is cleared whenever the sheet closes.
+  const connectEl = $("connectSheet");
+
+  function isLocalAddress(url) {
+    try {
+      const h = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+      return h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local")
+        || /^127\./.test(h) || h === "::1" || /^10\./.test(h)
+        || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+        || !h.includes(".");
+    } catch (e) { return false; }
+  }
+
+  function connectIsRemote() {
+    return $("connKind").value === "anthropic" || !isLocalAddress($("connUrl").value);
+  }
+
+  function applyConnectKind() {
+    const claude = $("connKind").value === "anthropic";
+    $("connUrlRow").hidden = claude;
+    $("connModel").placeholder = claude ? "e.g. claude-haiku-5-5" : "the service's model name";
+    $("connKey").placeholder = claude ? "your Anthropic API key"
+                                      : "not needed for a server on this Mac";
+    $("connWarn").hidden = $("connAck").hidden = !connectIsRemote();
+  }
+
+  function openConnect() {
+    closeModelMenu();
+    for (const id of ["connUrl", "connModel", "connLabel", "connKey"]) $(id).value = "";
+    $("connUnderstood").checked = false;
+    $("connSaid").textContent = "";
+    applyConnectKind();
+    connectEl.showModal();
+  }
+
+  function closeConnect() {
+    $("connKey").value = "";
+    connectEl.close();
+  }
+
+  $("connKind").addEventListener("change", applyConnectKind);
+  $("connUrl").addEventListener("input", applyConnectKind);
+  $("cancelConnect").addEventListener("click", closeConnect);
+  connectEl.addEventListener("cancel", (e) => { e.preventDefault(); closeConnect(); });
+  $("doConnect").addEventListener("click", async () => {
+    const remote = connectIsRemote();
+    if (remote && !$("connUnderstood").checked) {
+      $("connSaid").textContent = "Read the warning above and tick “I understand” first.";
+      return;
+    }
+    $("connSaid").textContent = "Checking the connection…";
+    try {
+      const r = await fetch("/model/connect", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: $("connKind").value,
+          url: $("connUrl").value, model: $("connModel").value,
+          label: $("connLabel").value, key: $("connKey").value,
+          understood: remote ? true : undefined }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { $("connSaid").textContent = d.error || "That did not connect."; return; }
+      $("connSaid").textContent = d.switched
+        ? "Connected — it answers from the next reply."
+        : "Added, but it could not be used yet: " + (d.fallback || d.error || "");
+      await refreshModels();
+      if (d.switched) setTimeout(closeConnect, 900);
+    } catch (e) { $("connSaid").textContent = "The server did not answer."; }
+  });
 
   const libraryEl = $("library");
   $("openLibrary").addEventListener("click", () => {
@@ -1731,7 +2049,9 @@
   });
   $("closeSettings").addEventListener("click", () => closeSheet($("settings"), false));
   $("cancelSettings").addEventListener("click", () => closeSheet($("settings"), true));
-  toTerm.addEventListener("click", () => card.classList.add("flipped"));
+  // ⚠️ NOT ON `toTerm` ANY MORE: it is the selector now, and a click on the
+  // list inside it must not flip the card. The model's name opens the
+  // terminal — see the selector above.
   $("toMati").addEventListener("click", () => card.classList.remove("flipped"));
 
   // ⚠️ TYPING OVER A REPLY CUTS IT OFF, and the server already owns this:

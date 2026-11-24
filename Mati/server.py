@@ -215,15 +215,24 @@ class FieldService:
         self.telemetry = Telemetry()
         self.started = time.time()
 
-        self.llm = llm if llm is not None else make_llm(system_prompt(), provider)
         self.provider = provider or C.PROVIDER
-        if hasattr(self.llm, "available"):
-            ok, detail = self.llm.available()
-            if not ok:
-                raise LLMUnavailable(detail)
-            self._llm_detail = detail
-        else:
+        # ⚠️ ONLY AN EXPLICIT PROVIDER IS PASSED ON. `self.provider` defaults
+        # to C.PROVIDER, which is "local", and handing that to `make_llm`
+        # would pin every client to Ollama and silently ignore the model the
+        # person chose (`config.model_choice`).
+        self._provider_arg = provider
+        # Why the chosen model is not the one speaking, or None. See `_open_llm`.
+        self._model_fallback = None
+        if llm is not None:
+            self.llm = llm
             self._llm_detail = self.provider
+            if hasattr(self.llm, "available"):
+                ok, detail = self.llm.available()
+                if not ok:
+                    raise LLMUnavailable(detail)
+                self._llm_detail = detail
+        else:
+            self.llm, self._llm_detail = self._open_llm()
 
         # TWO clients on purpose. `self.llm` carries the bare system prompt and
         # is what the study/dream/inquiry worker uses. `self.chat_llm` carries
@@ -513,6 +522,88 @@ class FieldService:
             print(f"  [mati] resuming reading focus, "
                   f"{(until - time.time())/60:.0f} min left", file=sys.stderr)
         return until
+
+    # ── which model speaks ───────────────────────────────────────────────────
+
+    def _local_name(self):
+        return C._settings().get("local_model") or C.LOCAL_MODEL
+
+    def _client(self, extra=""):
+        """A client for the model that speaks now, with `extra` after the
+        system prompt (the waking block, for the one that talks to a person).
+
+        ⚠️ ONE PLACE BUILDS THEM, so the plain client, the oriented one and a
+        switch can never disagree about which model is speaking.
+        """
+        from . import llm as _L
+        if self._model_fallback:
+            return _L.LocalLLM(system_prompt(remote=False) + extra,
+                               model=self._local_name())
+        return make_llm(system_prompt() + extra, self._provider_arg)
+
+    def _open_llm(self):
+        """(client, detail) for the person's choice — or the local model, with
+        the reason kept in `_model_fallback`, if that choice cannot be used.
+
+        ⚠️ A REMOTE SERVICE BEING DOWN MUST NOT STOP MATI STARTING. Offline,
+        or with the key's vault locked, the conversation goes on locally and
+        `/health` says why. Only when the LOCAL model is unusable does
+        starting fail, as it always did.
+        """
+        self._model_fallback = None
+        why = None
+        try:
+            llm = self._client()
+            ok, detail = (llm.available() if hasattr(llm, "available")
+                          else (True, self.provider))
+            if ok:
+                return llm, detail
+            why = detail
+        except Exception as e:                               # noqa: BLE001
+            why = str(e)
+        if self._provider_arg or C.model_choice()["kind"] == "local":
+            raise LLMUnavailable(why)
+        self._model_fallback = why
+        if self.verbose:
+            print(f"  [mati] the chosen model cannot be used now ({why}) — "
+                  f"speaking through {self._local_name()} instead",
+                  file=sys.stderr)
+        llm = self._client()
+        ok, detail = llm.available()
+        if not ok:
+            raise LLMUnavailable(detail)
+        return llm, detail + " — standing in"
+
+    def switch_model(self):
+        """Use whatever `config.model_choice` now says. From the next reply.
+
+        ⚠️ NO RESTART. The model is the language faculty only: addresses come
+        from the field's own lm and tokenizer, so nothing is reindexed. A turn
+        in flight keeps the client it started with.
+        ⚠️ THE OLD LOCAL MODEL IS UNLOADED. Ollama keeps a model resident for
+        `keep_alive`; two 3B models side by side beside the field is more than
+        8 GB holds, and that swaps rather than fails.
+        """
+        from . import llm as _L
+        old = self.llm
+        try:
+            new, detail = self._open_llm()
+        except Exception as e:                               # noqa: BLE001
+            return {"switched": False, "error": str(e)}
+        self.llm, self._llm_detail = new, detail
+        if self.orientation is not None and not self._llm_injected:
+            self._oriented_llm = self._client("\n\n" + self.orientation)
+        if (isinstance(old, _L.LocalLLM)
+                and getattr(new, "model", None) != old.model):
+            try:
+                old._post("/api/generate", {"model": old.model,
+                                            "keep_alive": 0}, timeout=15)
+            except Exception:
+                pass
+        if not _L.is_remote(self.chat_llm):
+            threading.Thread(target=self._prewarm, daemon=True).start()
+        return {"switched": not self._model_fallback, "llm": detail,
+                "remote": _L.is_remote(new), "fallback": self._model_fallback}
 
     @property
     def chat_llm(self):
@@ -1253,8 +1344,7 @@ class FieldService:
         self.orientation = block
         n, within = orient.size(block)
         if not self._llm_injected:
-            self._oriented_llm = make_llm(system_prompt() + "\n\n" + block,
-                                          self.provider)
+            self._oriented_llm = self._client("\n\n" + block)
         if self.verbose:
             print(f"  [mati] waking block: {n} tokens"
                   f"{'' if within else ' — OVER BUDGET, it eats history'}",
@@ -1275,6 +1365,14 @@ class FieldService:
 
     def _prewarm(self):
         """Pay the first prefill now rather than on the person's first turn."""
+        # ⚠️ NEVER FOR A REMOTE MODEL. Warming is a generation, and a remote
+        # generation is billed — Mati would spend the person's money on every
+        # start for a cache the service keeps on its own terms.
+        from . import llm as _L
+        if _L.is_remote(self.chat_llm) or not (
+                getattr(self.chat_llm, "settings", None) or {}).get(
+                    "prewarm", True):
+            return
         try:
             t = time.time()
             self.chat_llm.reply([{"role": "user", "content": "."}],
@@ -2424,6 +2522,12 @@ class FieldService:
             "vault_id": vault.vault_id(),
             "provider": self.provider,
             "llm": self._llm_detail,
+            # Which model speaks, whether its words leave this machine's
+            # network, and — if the chosen one could not be used — why not.
+            "model": getattr(self.llm, "label", None)
+                     or getattr(self.llm, "model", None),
+            "model_remote": bool(getattr(self.llm, "remote", False)),
+            "model_fallback": self._model_fallback,
             "uptime_seconds": round(time.time() - self.started, 1),
             # Stale means: the files changed after this process imported them,
             # so what is answering is not what is on disk. See `_code_stamp`.
@@ -2811,11 +2915,41 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
                 prof = _m.profile()
-                return self._json({"models": names, "reachable": ok,
-                                   "current": _c.LOCAL_MODEL, "sizes": sizes,
-                                   "ram_gb": prof.get("ram_gb"),
-                                   "comfortable_gb": round(
-                                       max(1.0, (prof.get("ram_gb") or 8) * 0.3), 1)})
+                comfortable = round(max(1.0, (prof.get("ram_gb") or 8) * 0.3), 1)
+                # ⚠️ ONE LIST FOR THE SELECTOR: the local models Ollama has,
+                # then the connections the person added. Keys are never in it
+                # — only whether one is stored, which needs no unlocking.
+                from . import credentials as _cr, llm as _L
+                from . import model_settings as _ms
+                ch = _c.model_choice()
+                # ⚠️ A LICENCE THAT MUST BE AGREED TO travels with each model,
+                # so the window can ask EVERY time it is chosen (the user).
+                local = [{"id": f"local:{n}", "name": n,
+                          "gb": sizes.get(n),
+                          "tight": bool(sizes.get(n) and sizes[n] > comfortable),
+                          "licence": _ms.licence_for(n)}
+                         for n in (names or [])]
+                conns = [{"id": f"conn:{c['id']}", "name": c.get("label")
+                          or c["model"], "model": c["model"], "kind": c["kind"],
+                          "remote": c["kind"] == "anthropic"
+                          or not _L.is_local_url(c.get("url")),
+                          "has_key": _cr.have(_cr.MODEL_PREFIX + c["id"]),
+                          "licence": _ms.licence_for(c["model"])}
+                         for c in _c.model_connections()]
+                return self._json({
+                    "current": ch["choice"], "label": ch["label"],
+                    "remote": any(x["id"] == ch["choice"] and x["remote"]
+                                  for x in conns),
+                    "fallback": svc._model_fallback,
+                    # The model in use, if its licence is not yet agreed to
+                    # in this run — the window asks before the first reply.
+                    "needs_agreement": (None if _ms.agreed(ch["model"])
+                                        else _ms.licence_for(ch["model"])),
+                    "local": local, "connections": conns, "reachable": ok,
+                    # The old shape, for anything still reading it.
+                    "models": names, "sizes": sizes,
+                    "ram_gb": prof.get("ram_gb"),
+                    "comfortable_gb": comfortable})
             except Exception as e:                           # noqa: BLE001
                 return self._json({"models": [], "error": str(e)})
         if path == "/voices":
@@ -2994,6 +3128,140 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({k: st.get(k) for k in _APP_SETTINGS})
             except Exception as e:                           # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
+        if path == "/model":
+            # ⚠️ THE MODEL SELECTOR. Takes effect from the next reply, no
+            # restart (`switch_model`). A choice that cannot be used is put
+            # BACK — a bad pick must not leave Mati speaking through a model
+            # the person never chose without saying so.
+            from . import config as _c
+            body = body or {}
+            ch = str(body.get("choice") or "")
+            if ch.startswith("local:"):
+                from . import machine as _m
+                _ok, names = _m.ollama_ready()
+                if ch[len("local:"):] not in (names or []):
+                    return self._json({"error": "that model is not in Ollama "
+                                       "on this Mac"}, 400)
+            elif ch.startswith("conn:"):
+                if not _c.connection(ch[len("conn:"):]):
+                    return self._json({"error": "no such connection"}, 400)
+            else:
+                return self._json({"error": "choose local:<name> or "
+                                   "conn:<id>"}, 400)
+            # ⚠️ A LICENCE IS AGREED TO EVERY TIME THE MODEL IS CHOSEN
+            # (the user). The window shows it and sends `agree`; without it the
+            # choice is refused, whatever was agreed before.
+            from . import model_settings as _ms
+            _name = (ch[len("local:"):] if ch.startswith("local:")
+                     else _c.connection(ch[len("conn:"):])["model"])
+            _lic = _ms.licence_for(_name)
+            if _lic:
+                if body.get("agree") is not True:
+                    return self._json({"error": "its licence has to be "
+                                       "agreed to", "licence": _lic}, 409)
+                _ms.agree(_name)
+            before = _c.model_choice()["choice"]
+            _c.save_settings(model_choice=ch, **(
+                {"local_model": ch[len("local:"):]}
+                if ch.startswith("local:") else {}))
+            res = svc.switch_model()
+            if not res.get("switched"):
+                _c.save_settings(model_choice=before)
+                svc.switch_model()
+                return self._json({"error": res.get("fallback")
+                                   or res.get("error") or "it could not be "
+                                   "used", "kept": before}, 409)
+            return self._json(dict(res, choice=ch))
+        if path == "/model/connect":
+            # ⚠️ ADDING A SERVICE, with the key the person brings. Tested
+            # BEFORE anything is saved, so a mistyped key is a sentence now
+            # rather than a broken reply later. ⚠️ A REMOTE MODEL RECEIVES
+            # EVERY TURN'S PROMPT — memories, profile, the day's conversation
+            # — so the window shows that warning and this refuses without
+            # `understood`. The key goes straight to the sealed store.
+            import secrets as _sec
+            from . import config as _c, credentials as _cr, llm as _L
+            body = body or {}
+            kind = body.get("kind")
+            model = " ".join(str(body.get("model") or "").split())
+            label = " ".join(str(body.get("label") or "").split())[:40]
+            url = str(body.get("url") or "").strip().rstrip("/")
+            key = " ".join(str(body.get("key") or "").split()) or None
+            if kind not in _c.CONNECTION_KINDS or not model:
+                return self._json({"error": "a kind and a model name are "
+                                   "needed"}, 400)
+            if kind == "anthropic":
+                url = _c.ANTHROPIC_URL
+                if not key:
+                    return self._json({"error": "Claude needs an API key"},
+                                      400)
+            remote = kind == "anthropic" or not _L.is_local_url(url)
+            if remote and body.get("understood") is not True:
+                return self._json({"error": "the warning has to be accepted "
+                                   "first"}, 400)
+            try:
+                test = (_L.ClaudeLLM("", model, key, label=label or "Claude")
+                        if kind == "anthropic" else
+                        _L.OpenAICompatLLM("", model, url, key=key,
+                                           label=label or model))
+                ok, detail = test.available()
+            except Exception as e:                           # noqa: BLE001
+                ok, detail = False, str(e)
+            if not ok:
+                return self._json({"error": detail}, 400)
+            cid = (re.sub(r"[^a-z0-9]+", "-", (label or model).lower())
+                   .strip("-")[:24] or "model") + "-" + _sec.token_hex(2)
+            conns = _c.model_connections() + [{
+                "id": cid, "kind": kind, "label": label or model,
+                "url": url, "model": model}]
+            _c.save_settings(model_connections=conns)
+            if key:
+                try:
+                    _cr.set_key(_cr.MODEL_PREFIX + cid, key)
+                except Exception as e:                       # noqa: BLE001
+                    _c.save_settings(model_connections=[
+                        c for c in conns if c["id"] != cid])
+                    return self._json({"error": f"the key could not be "
+                                       f"stored: {e}"}, 500)
+            before = _c.model_choice()["choice"]
+            _c.save_settings(model_choice=f"conn:{cid}")
+            res = svc.switch_model()
+            if not res.get("switched"):
+                _c.save_settings(model_choice=before)
+                svc.switch_model()
+            return self._json(dict(res, id=f"conn:{cid}", added=True))
+        if path == "/model/agree":
+            # Agreeing to the licence of the model ALREADY in use, for this
+            # run — asked by the window before the first reply after a start.
+            from . import config as _c, model_settings as _ms
+            model = _c.model_choice()["model"]
+            if str((body or {}).get("model") or "") != model:
+                return self._json({"error": "that is not the model in use"},
+                                  400)
+            _ms.agree(model)
+            return self._json({"agreed": model})
+        if path == "/model/forget":
+            # Removes a connection AND its key. If it was speaking, the local
+            # model speaks from the next reply.
+            from . import config as _c, credentials as _cr
+            cid = str((body or {}).get("id") or "")
+            cid = cid[len("conn:"):] if cid.startswith("conn:") else cid
+            if not _c.connection(cid):
+                return self._json({"error": "no such connection"}, 400)
+            _c.save_settings(model_connections=[
+                c for c in _c.model_connections() if c["id"] != cid])
+            try:
+                _cr.forget(_cr.MODEL_PREFIX + cid)
+            except Exception:
+                pass
+            if _c._settings().get("model_choice") == f"conn:{cid}":
+                _c.save_settings(model_choice=f"local:{svc._local_name()}")
+                svc.switch_model()
+            return self._json({"forgotten": cid})
+        if path == "/voice/sample":
+            from . import speech as _sp
+            name = str((body or {}).get("voice") or "")
+            return self._json({"playing": _sp.sample(name)})
         if path == "/library/read":
             # ⚠️ READS A PATH ON THE USER'S MACHINE. Loopback-only, but the
             # route still refuses what it cannot read as plain text rather
