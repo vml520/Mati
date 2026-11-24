@@ -63,6 +63,12 @@
   .face { position: absolute; inset: 0; display: flex; flex-direction: column;
           backface-visibility: hidden; -webkit-backface-visibility: hidden; }
   .face.back { transform: rotateY(180deg); }
+  /* ⚠️ WHILE THE TERMINAL IS OPEN THE MAIN PAGE IS INACTIVE. Its top bar
+     has its own layer, so the model list clears the avatar — and on the
+     flipped card that layer still caught clicks over the Terminal page.
+     Hidden faces are not enough; they have to stop taking input. */
+  .card.flipped .face.front { pointer-events: none; }
+  .card.flipped .face.front .chrome { visibility: hidden; }
   @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
 
   /* ── The station list and the presets ─────────────────────────────────── */
@@ -1838,6 +1844,15 @@
   modelMenu.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { closeModelMenu(); modelArrow.focus(); }
   });
+  // ⚠️ THE MAIN PAGE IS INERT WHILE THE TERMINAL IS OPEN — no click and no
+  // keyboard focus, not just out of sight. Watched on the card itself, so
+  // every way of flipping it is covered, not only the two buttons.
+  const frontFace = card.querySelector(".face.front");
+  new MutationObserver(() => {
+    const open = card.classList.contains("flipped");
+    frontFace.inert = open;
+    if (open) closeModelMenu();
+  }).observe(card, { attributes: true, attributeFilter: ["class"] });
   // On every start of Mati the agreement is gone, so the model in use asks
   // again — here, once per page load, before anything is said to it.
   refreshModels().then(async () => {
