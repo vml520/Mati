@@ -579,6 +579,9 @@
   .nav { flex:none; display:flex; align-items:center; justify-content:space-between;
          padding:10px 16px; border-bottom:0.5px solid var(--separator); }
   .nav h1 { font:600 1.0625rem/1.2 var(--sans); margin:0; }
+  /* The terminal's bar: the way back first, at the left, then its title.
+     The Library drawer keeps its own Done at the right. */
+  .nav.back-left { justify-content: flex-start; gap: 6px; }
   .term { flex:1; min-height:0; overflow-y:auto; padding:16px 18px 28px;
           font:400 .8125rem/1.55 var(--mono); }
   .term h2 { font:600 .7rem/1 var(--mono); letter-spacing:.08em;
@@ -770,10 +773,13 @@
 
     <!-- ── Terminal ──────────────────────────────────────────────────────── -->
     <section class="face back" aria-label="Terminal">
-      <div class="nav">
-        <h1>Terminal</h1>
+      <!-- ⚠️ THE WAY BACK IS AT THE TOP LEFT, where a way back is looked
+           for. It was "Done" at the right, which read as finishing
+           something rather than leaving the terminal. -->
+      <div class="nav back-left">
         <button class="icon-btn" id="toMati" type="button"
-                aria-label="Back to Mati">Done</button>
+                aria-label="Back to Mati">Back</button>
+        <h1>Terminal</h1>
       </div>
       <div class="term">
         <!-- ⚠️ FIELD AND MODEL COMMANDS. Sleep, wake, rest and restart live
